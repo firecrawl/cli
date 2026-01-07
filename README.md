@@ -10,15 +10,18 @@ Install Firecrawl CLI globally using npm:
 npm install -g firecrawl-cli
 ```
 
-## Usage
+## Quick Start
 
-Get started with Firecrawl CLI by checking out our [documentation](https://docs.firecrawl.dev/cli).
+Set your API key:
 
-The CLI provides easy access to all of Firecrawl's powerful capabilities:
-- **Scrape** URLs and get clean, LLM-ready markdown
-- **Crawl** entire websites and extract structured data
-- **Map** websites to discover all URLs
-- **Search** the web and extract content from results
-- **Extract** structured data with AI-powered extraction
+```bash
+firecrawl config
+```
 
-For detailed usage instructions, examples, and command reference, visit the [CLI documentation](https://docs.firecrawl.dev/cli).
+Scrape a URL:
+
+```bash
+firecrawl https://firecrawl.dev
+```
+
+For detailed usage instructions, examples, and all available commands, visit the [CLI documentation](https://docs.firecrawl.dev/cli).
