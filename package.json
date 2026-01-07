@@ -1,10 +1,10 @@
 {
-  "name": "firecrawl-cli",
-  "version": "1.0.0",
-  "description": "",
+  "name": "@firecrawl/cli",
+  "version": "0.0.1",
+  "description": "Command-line interface for Firecrawl. Scrape, crawl, and extract data from any website directly from your terminal.",
   "main": "dist/index.js",
   "bin": {
-    "firecrawl": "./dist/index.js"
+    "firecrawl": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -14,9 +14,33 @@
     "prepublishOnly": "pnpm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "firecrawl",
+    "cli",
+    "web-scraping",
+    "crawler",
+    "scraper",
+    "data-extraction",
+    "llm",
+    "markdown"
+  ],
+  "author": "Firecrawl",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firecrawl/firecrawl-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/firecrawl/firecrawl-cli/issues"
+  },
+  "homepage": "https://docs.firecrawl.dev/cli",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "packageManager": "pnpm@10.12.1",
   "devDependencies": {
     "@types/node": "^20.0.0",
