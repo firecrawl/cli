@@ -23,7 +23,7 @@ export async function executeScrape(options: ScrapeOptions): Promise<ScrapeResul
 
     // Build scrape options
     const formats: FormatOption[] = [];
-    
+
     if (options.format) {
       formats.push(options.format);
     }
@@ -88,4 +88,3 @@ export async function handleScrapeCommand(options: ScrapeOptions): Promise<void>
   const result = await executeScrape(options);
   handleScrapeOutput(result, options.format, options.output, options.pretty);
 }
-

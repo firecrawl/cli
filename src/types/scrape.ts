@@ -43,4 +43,3 @@ export interface ScrapeResult {
   data?: any;
   error?: string;
 }
-

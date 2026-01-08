@@ -12,7 +12,16 @@
     "start": "node dist/index.js",
     "clean": "rm -rf dist",
     "prepublishOnly": "pnpm run build",
+    "prepare": "husky",
+    "format": "prettier --write \"src/**/*.{ts,json}\" \"*.{json,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,json}\" \"*.{json,md}\"",
+    "type-check": "tsc --noEmit",
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "lint-staged": {
+    "*.{ts,json,md}": [
+      "prettier --write"
+    ]
   },
   "keywords": [
     "firecrawl",
@@ -44,6 +53,9 @@
   "packageManager": "pnpm@10.12.1",
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
+    "prettier": "^3.0.0",
     "typescript": "^5.0.0"
   },
   "dependencies": {

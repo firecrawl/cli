@@ -19,22 +19,22 @@ function extractContent(data: any, format?: ScrapeFormat): string | null {
     if (format === 'html' || format === 'rawHtml') {
       return data.html || data.rawHtml || data[format] || null;
     }
-    
+
     // Handle markdown format
     if (format === 'markdown') {
       return data.markdown || data[format] || null;
     }
-    
+
     // Handle links format
     if (format === 'links') {
       return data.links || data[format] || null;
     }
-    
+
     // Handle images format
     if (format === 'images') {
       return data.images || data[format] || null;
     }
-    
+
     // Handle summary format
     if (format === 'summary') {
       return data.summary || data[format] || null;
@@ -57,11 +57,7 @@ function extractContent(data: any, format?: ScrapeFormat): string | null {
 /**
  * Write output to file or stdout
  */
-export function writeOutput(
-  content: string,
-  outputPath?: string,
-  silent: boolean = false
-): void {
+export function writeOutput(content: string, outputPath?: string, silent: boolean = false): void {
   if (outputPath) {
     const dir = path.dirname(outputPath);
     if (dir && !fs.existsSync(dir)) {
@@ -104,7 +100,14 @@ export function handleScrapeOutput(
   }
 
   // Text formats that should output raw content (curl-like)
-  const rawTextFormats: ScrapeFormat[] = ['html', 'rawHtml', 'markdown', 'links', 'images', 'summary'];
+  const rawTextFormats: ScrapeFormat[] = [
+    'html',
+    'rawHtml',
+    'markdown',
+    'links',
+    'images',
+    'summary',
+  ];
   const shouldOutputRaw = format && rawTextFormats.includes(format);
 
   if (shouldOutputRaw) {
@@ -120,19 +123,16 @@ export function handleScrapeOutput(
   // Always stringify the entire data object to ensure valid JSON
   let jsonContent: string;
   try {
-    jsonContent = pretty 
-      ? JSON.stringify(result.data, null, 2)
-      : JSON.stringify(result.data);
+    jsonContent = pretty ? JSON.stringify(result.data, null, 2) : JSON.stringify(result.data);
   } catch (error) {
     // If stringification fails, try to create a minimal error response
-    jsonContent = JSON.stringify({ 
+    jsonContent = JSON.stringify({
       error: 'Failed to serialize response',
-      message: error instanceof Error ? error.message : 'Unknown error'
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
-  
+
   // Ensure clean JSON output (no extra newlines or text before JSON)
   // Output directly to stdout without any prefix
   writeOutput(jsonContent, outputPath, !!outputPath);
 }
-

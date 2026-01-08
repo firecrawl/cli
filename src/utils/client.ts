@@ -15,7 +15,7 @@ let clientInstance: Firecrawl | null = null;
  */
 export function getClient(options?: Partial<FirecrawlClientOptions>): Firecrawl {
   // Helper to convert null to undefined and ensure we have a string or undefined
-  const normalizeApiKey = (value: string | null | undefined): string | undefined => 
+  const normalizeApiKey = (value: string | null | undefined): string | undefined =>
     value === null || value === undefined ? undefined : value;
 
   // If options provided, create a new instance (useful for command-specific overrides)
@@ -23,11 +23,11 @@ export function getClient(options?: Partial<FirecrawlClientOptions>): Firecrawl 
     const config = getConfig();
     const apiKey = normalizeApiKey(options.apiKey) ?? config.apiKey;
     const apiUrl = normalizeApiKey(options.apiUrl) ?? config.apiUrl;
-    
+
     // Normalize apiKey for validation (convert null to undefined)
     const normalizedApiKey = apiKey === null ? undefined : apiKey;
     validateConfig(normalizedApiKey);
-    
+
     const clientOptions: FirecrawlClientOptions = {
       apiKey: normalizedApiKey || undefined,
       apiUrl: apiUrl === null ? undefined : apiUrl,
@@ -35,7 +35,7 @@ export function getClient(options?: Partial<FirecrawlClientOptions>): Firecrawl 
       maxRetries: options.maxRetries ?? config.maxRetries,
       backoffFactor: options.backoffFactor ?? config.backoffFactor,
     };
-    
+
     return new Firecrawl(clientOptions);
   }
 
@@ -43,7 +43,7 @@ export function getClient(options?: Partial<FirecrawlClientOptions>): Firecrawl 
   if (!clientInstance) {
     const config = getConfig();
     validateConfig(config.apiKey);
-    
+
     const clientOptions: FirecrawlClientOptions = {
       apiKey: config.apiKey || undefined,
       apiUrl: config.apiUrl || undefined,
@@ -51,7 +51,7 @@ export function getClient(options?: Partial<FirecrawlClientOptions>): Firecrawl 
       maxRetries: config.maxRetries,
       backoffFactor: config.backoffFactor,
     };
-    
+
     clientInstance = new Firecrawl(clientOptions);
   }
 
@@ -67,7 +67,7 @@ export function initializeClient(config?: Partial<GlobalConfig>): Firecrawl {
     const { initializeConfig } = require('./config');
     initializeConfig(config);
   }
-  
+
   // Reset instance to force recreation with new config
   clientInstance = null;
   return getClient();
@@ -79,4 +79,3 @@ export function initializeClient(config?: Partial<GlobalConfig>): Firecrawl {
 export function resetClient(): void {
   clientInstance = null;
 }
-

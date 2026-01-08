@@ -31,7 +31,9 @@ export interface CreditUsageOptions {
 /**
  * Execute the credit usage command
  */
-export async function executeCreditUsage(options: CreditUsageOptions = {}): Promise<CreditUsageResult> {
+export async function executeCreditUsage(
+  options: CreditUsageOptions = {}
+): Promise<CreditUsageResult> {
   try {
     // Update global config if API key is provided via options
     if (options.apiKey) {
@@ -41,7 +43,7 @@ export async function executeCreditUsage(options: CreditUsageOptions = {}): Prom
     // Get config and validate API key
     const config = getConfig();
     validateConfig(config.apiKey);
-    
+
     const apiUrl = config.apiUrl || 'https://api.firecrawl.dev';
     const apiKey = config.apiKey!;
 
@@ -50,7 +52,7 @@ export async function executeCreditUsage(options: CreditUsageOptions = {}): Prom
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
     });
@@ -61,7 +63,7 @@ export async function executeCreditUsage(options: CreditUsageOptions = {}): Prom
     }
 
     const result = await response.json();
-    
+
     // Extract data from response (handle both { data: {...} } and direct data formats)
     const data = result.data || result;
 
@@ -76,10 +78,8 @@ export async function executeCreditUsage(options: CreditUsageOptions = {}): Prom
     };
   } catch (error: any) {
     // Handle different error formats
-    const errorMessage = error?.message 
-      || error?.toString() 
-      || 'Unknown error occurred';
-    
+    const errorMessage = error?.message || error?.toString() || 'Unknown error occurred';
+
     return {
       success: false,
       error: errorMessage,
@@ -99,10 +99,10 @@ function formatReadable(data: CreditUsageResult['data']): string {
   };
 
   const lines: string[] = [];
-  
+
   // Main credit info
   lines.push(`Remaining Credits: ${formatNumber(data.remainingCredits)}`);
-  
+
   if (data.planCredits > 0) {
     const usedCredits = data.planCredits - data.remainingCredits;
     const usagePercent = ((usedCredits / data.planCredits) * 100).toFixed(1);
@@ -115,10 +115,10 @@ function formatReadable(data: CreditUsageResult['data']): string {
     const startDate = new Date(data.billingPeriodStart);
     const endDate = new Date(data.billingPeriodEnd);
     const formatDate = (date: Date): string => {
-      return date.toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'short', 
-        day: 'numeric' 
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
       });
     };
     lines.push('');
@@ -133,7 +133,7 @@ function formatReadable(data: CreditUsageResult['data']): string {
  */
 export async function handleCreditUsageCommand(options: CreditUsageOptions = {}): Promise<void> {
   const result = await executeCreditUsage(options);
-  
+
   if (!result.success) {
     console.error('Error:', result.error);
     process.exit(1);
@@ -148,20 +148,20 @@ export async function handleCreditUsageCommand(options: CreditUsageOptions = {})
   // Use JSON format if --json flag is set
   if (options.json) {
     try {
-      outputContent = options.pretty 
+      outputContent = options.pretty
         ? JSON.stringify({ success: true, data: result.data }, null, 2)
         : JSON.stringify({ success: true, data: result.data });
     } catch (error) {
-      outputContent = JSON.stringify({ 
+      outputContent = JSON.stringify({
         error: 'Failed to serialize response',
-        message: error instanceof Error ? error.message : 'Unknown error'
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   } else {
     // Default to human-readable format
     outputContent = formatReadable(result.data);
   }
-  
+
   // Write output
   if (options.output) {
     const dir = path.dirname(options.output);
