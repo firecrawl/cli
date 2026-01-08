@@ -12,9 +12,11 @@ import { configure } from './commands/config';
 import { handleCreditUsageCommand } from './commands/credit-usage';
 import { handleCrawlCommand } from './commands/crawl';
 import { handleMapCommand } from './commands/map';
+import { handleVersionCommand } from './commands/version';
 import { isUrl, normalizeUrl } from './utils/url';
 import { parseScrapeOptions } from './utils/options';
 import { isJobId } from './utils/job';
+import packageJson from '../package.json';
 
 // Initialize global configuration from environment variables
 initializeConfig();
@@ -24,7 +26,7 @@ const program = new Command();
 program
   .name('firecrawl')
   .description('CLI tool for Firecrawl web scraping')
-  .version('1.0.0')
+  .version(packageJson.version)
   .option(
     '-k, --api-key <key>',
     'Firecrawl API key (or set FIRECRAWL_API_KEY env var, or use "firecrawl config")'
@@ -285,6 +287,13 @@ program
   )
   .action(async (options) => {
     await handleCreditUsageCommand(options);
+  });
+
+program
+  .command('version')
+  .description('Display version information')
+  .action(() => {
+    handleVersionCommand();
   });
 
 // Parse arguments
