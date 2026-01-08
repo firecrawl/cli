@@ -11,7 +11,9 @@ import { handleScrapeOutput } from '../utils/output';
 /**
  * Execute the scrape command
  */
-export async function executeScrape(options: ScrapeOptions): Promise<ScrapeResult> {
+export async function executeScrape(
+  options: ScrapeOptions
+): Promise<ScrapeResult> {
   try {
     // Update global config if API key is provided via options
     if (options.apiKey) {
@@ -84,7 +86,9 @@ export async function executeScrape(options: ScrapeOptions): Promise<ScrapeResul
 /**
  * Handle scrape command output
  */
-export async function handleScrapeCommand(options: ScrapeOptions): Promise<void> {
+export async function handleScrapeCommand(
+  options: ScrapeOptions
+): Promise<void> {
   const result = await executeScrape(options);
   handleScrapeOutput(result, options.format, options.output, options.pretty);
 }

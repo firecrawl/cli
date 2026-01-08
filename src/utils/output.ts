@@ -57,7 +57,11 @@ function extractContent(data: any, format?: ScrapeFormat): string | null {
 /**
  * Write output to file or stdout
  */
-export function writeOutput(content: string, outputPath?: string, silent: boolean = false): void {
+export function writeOutput(
+  content: string,
+  outputPath?: string,
+  silent: boolean = false
+): void {
   if (outputPath) {
     const dir = path.dirname(outputPath);
     if (dir && !fs.existsSync(dir)) {
@@ -123,7 +127,9 @@ export function handleScrapeOutput(
   // Always stringify the entire data object to ensure valid JSON
   let jsonContent: string;
   try {
-    jsonContent = pretty ? JSON.stringify(result.data, null, 2) : JSON.stringify(result.data);
+    jsonContent = pretty
+      ? JSON.stringify(result.data, null, 2)
+      : JSON.stringify(result.data);
   } catch (error) {
     // If stringification fails, try to create a minimal error response
     jsonContent = JSON.stringify({

@@ -27,8 +27,14 @@ export function initializeConfig(config: Partial<GlobalConfig> = {}): void {
   const storedCredentials = loadCredentials();
 
   globalConfig = {
-    apiKey: config.apiKey || process.env.FIRECRAWL_API_KEY || storedCredentials?.apiKey,
-    apiUrl: config.apiUrl || process.env.FIRECRAWL_API_URL || storedCredentials?.apiUrl,
+    apiKey:
+      config.apiKey ||
+      process.env.FIRECRAWL_API_KEY ||
+      storedCredentials?.apiKey,
+    apiUrl:
+      config.apiUrl ||
+      process.env.FIRECRAWL_API_URL ||
+      storedCredentials?.apiUrl,
     timeoutMs: config.timeoutMs,
     maxRetries: config.maxRetries,
     backoffFactor: config.backoffFactor,

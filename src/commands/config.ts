@@ -18,7 +18,9 @@ function promptInput(question: string, defaultValue?: string): Promise<string> {
     output: process.stdout,
   });
 
-  const promptText = defaultValue ? `${question} [${defaultValue}]: ` : `${question} `;
+  const promptText = defaultValue
+    ? `${question} [${defaultValue}]: `
+    : `${question} `;
 
   return new Promise((resolve) => {
     rl.question(promptText, (answer) => {

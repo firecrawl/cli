@@ -13,9 +13,13 @@ let clientInstance: Firecrawl | null = null;
  * Get or create the Firecrawl client instance
  * Uses global configuration if available, otherwise creates with provided options
  */
-export function getClient(options?: Partial<FirecrawlClientOptions>): Firecrawl {
+export function getClient(
+  options?: Partial<FirecrawlClientOptions>
+): Firecrawl {
   // Helper to convert null to undefined and ensure we have a string or undefined
-  const normalizeApiKey = (value: string | null | undefined): string | undefined =>
+  const normalizeApiKey = (
+    value: string | null | undefined
+  ): string | undefined =>
     value === null || value === undefined ? undefined : value;
 
   // If options provided, create a new instance (useful for command-specific overrides)

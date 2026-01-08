@@ -21,7 +21,12 @@ function getConfigDir(): string {
 
   switch (platform) {
     case 'darwin': // macOS
-      return path.join(homeDir, 'Library', 'Application Support', 'firecrawl-cli');
+      return path.join(
+        homeDir,
+        'Library',
+        'Application Support',
+        'firecrawl-cli'
+      );
     case 'win32': // Windows
       return path.join(homeDir, 'AppData', 'Roaming', 'firecrawl-cli');
     default: // Linux and others

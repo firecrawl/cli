@@ -59,7 +59,9 @@ export async function executeCreditUsage(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      throw new Error(
+        errorData.error || `HTTP ${response.status}: ${response.statusText}`
+      );
     }
 
     const result = await response.json();
@@ -78,7 +80,8 @@ export async function executeCreditUsage(
     };
   } catch (error: any) {
     // Handle different error formats
-    const errorMessage = error?.message || error?.toString() || 'Unknown error occurred';
+    const errorMessage =
+      error?.message || error?.toString() || 'Unknown error occurred';
 
     return {
       success: false,
@@ -122,7 +125,9 @@ function formatReadable(data: CreditUsageResult['data']): string {
       });
     };
     lines.push('');
-    lines.push(`Billing Period: ${formatDate(startDate)} - ${formatDate(endDate)}`);
+    lines.push(
+      `Billing Period: ${formatDate(startDate)} - ${formatDate(endDate)}`
+    );
   }
 
   return lines.join('\n') + '\n';
@@ -131,7 +136,9 @@ function formatReadable(data: CreditUsageResult['data']): string {
 /**
  * Handle credit usage command output
  */
-export async function handleCreditUsageCommand(options: CreditUsageOptions = {}): Promise<void> {
+export async function handleCreditUsageCommand(
+  options: CreditUsageOptions = {}
+): Promise<void> {
   const result = await executeCreditUsage(options);
 
   if (!result.success) {
