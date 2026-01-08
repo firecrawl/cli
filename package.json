@@ -16,7 +16,9 @@
     "format": "prettier --write \"src/**/*.{ts,json}\" \"*.{json,md}\"",
     "format:check": "prettier --check \"src/**/*.{ts,json}\" \"*.{json,md}\"",
     "type-check": "tsc --noEmit",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test:watch": "vitest",
+    "test": "vitest run",
+    "test:ui": "vitest --ui"
   },
   "lint-staged": {
     "*.{ts,json,md}": [
@@ -53,10 +55,12 @@
   "packageManager": "pnpm@10.12.1",
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@vitest/ui": "^2.0.0",
     "husky": "^9.0.0",
     "lint-staged": "^15.0.0",
     "prettier": "^3.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0"
   },
   "dependencies": {
     "@mendable/firecrawl-js": "^4.10.0",
