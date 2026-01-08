@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import { handleScrapeCommand } from './commands/scrape';
 import { initializeConfig, updateConfig } from './utils/config';
 import { configure } from './commands/config';
+import { handleCreditUsageCommand } from './commands/credit-usage';
 import { isUrl, normalizeUrl } from './utils/url';
 import { parseScrapeOptions } from './utils/options';
 
@@ -75,6 +76,17 @@ program
   .description('Configure API URL and API key (interactive)')
   .action(async () => {
     await configure();
+  });
+
+program
+  .command('credit-usage')
+  .description('Get team credit usage information')
+  .option('-k, --api-key <key>', 'Firecrawl API key (overrides global --api-key)')
+  .option('-o, --output <path>', 'Output file path (default: stdout)')
+  .option('--json', 'Output as JSON format', false)
+  .option('--pretty', 'Pretty print JSON output (only applies with --json)', false)
+  .action(async (options) => {
+    await handleCreditUsageCommand(options);
   });
 
 // Parse arguments
