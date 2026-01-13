@@ -73,6 +73,11 @@ function createScrapeCommand(): Command {
     )
     .option('-o, --output <path>', 'Output file path (default: stdout)')
     .option('--pretty', 'Pretty print JSON output', false)
+    .option(
+      '--timing',
+      'Show request timing and other useful information',
+      false
+    )
     .action(async (positionalUrl, options) => {
       // Use positional URL if provided, otherwise use --url option
       const url = positionalUrl || options.url;

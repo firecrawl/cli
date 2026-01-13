@@ -36,6 +36,8 @@ export interface ScrapeOptions {
   output?: string;
   /** Pretty print JSON output */
   pretty?: boolean;
+  /** Show request timing and other useful information */
+  timing?: boolean;
 }
 
 export interface ScrapeResult {
