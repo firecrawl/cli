@@ -25,14 +25,22 @@ function extractContent(data: any, format?: ScrapeFormat): string | null {
       return data.markdown || data[format] || null;
     }
 
-    // Handle links format
+    // Handle links format (array of URLs -> newline-separated string)
     if (format === 'links') {
-      return data.links || data[format] || null;
+      const links = data.links || data[format];
+      if (Array.isArray(links)) {
+        return links.join('\n');
+      }
+      return links || null;
     }
 
-    // Handle images format
+    // Handle images format (array of URLs -> newline-separated string)
     if (format === 'images') {
-      return data.images || data[format] || null;
+      const images = data.images || data[format];
+      if (Array.isArray(images)) {
+        return images.join('\n');
+      }
+      return images || null;
     }
 
     // Handle summary format
