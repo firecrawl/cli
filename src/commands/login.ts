@@ -72,7 +72,7 @@ export async function handleLoginCommand(
   }
 
   try {
-    let result: { apiKey: string; apiUrl: string };
+    let result: { apiKey: string; apiUrl: string; teamName?: string };
 
     if (options.method === 'manual') {
       result = await manualLogin();
@@ -89,6 +89,9 @@ export async function handleLoginCommand(
     });
 
     console.log('\n✓ Login successful!');
+    if (result.teamName) {
+      console.log(`  Team: ${result.teamName}`);
+    }
 
     updateConfig({
       apiKey: result.apiKey,

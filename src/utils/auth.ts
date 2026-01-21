@@ -93,7 +93,7 @@ async function pollAuthStatus(
   sessionId: string,
   codeVerifier: string,
   webUrl: string
-): Promise<{ apiKey: string; apiUrl?: string } | null> {
+): Promise<{ apiKey: string; apiUrl?: string; teamName?: string } | null> {
   const statusUrl = `${webUrl}/api/auth/cli/status`;
 
   try {
@@ -117,6 +117,7 @@ async function pollAuthStatus(
       return {
         apiKey: data.apiKey,
         apiUrl: data.apiUrl || DEFAULT_API_URL,
+        teamName: data.teamName || undefined,
       };
     }
 
@@ -134,7 +135,7 @@ async function waitForAuth(
   codeVerifier: string,
   webUrl: string,
   timeoutMs: number = AUTH_TIMEOUT_MS
-): Promise<{ apiKey: string; apiUrl?: string }> {
+): Promise<{ apiKey: string; apiUrl?: string; teamName?: string }> {
   const startTime = Date.now();
   let dots = 0;
 
@@ -192,7 +193,7 @@ function getCliMetadata(): {
  */
 async function browserLogin(
   webUrl: string = WEB_URL
-): Promise<{ apiKey: string; apiUrl: string }> {
+): Promise<{ apiKey: string; apiUrl: string; teamName?: string }> {
   const sessionId = generateSessionId();
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = generateCodeChallenge(codeVerifier);
@@ -224,6 +225,7 @@ async function browserLogin(
   return {
     apiKey: result.apiKey,
     apiUrl: result.apiUrl || DEFAULT_API_URL,
+    teamName: result.teamName,
   };
 }
 
@@ -282,7 +284,7 @@ function printBanner(): void {
  */
 async function interactiveLogin(
   webUrl?: string
-): Promise<{ apiKey: string; apiUrl: string }> {
+): Promise<{ apiKey: string; apiUrl: string; teamName?: string }> {
   // First check if env var is set
   const envResult = envVarLogin();
   if (envResult) {
@@ -364,6 +366,9 @@ export async function ensureAuthenticated(): Promise<string> {
     });
 
     console.log('\n✓ Login successful!');
+    if (result.teamName) {
+      console.log(`  Team: ${result.teamName}`);
+    }
 
     return result.apiKey;
   } catch (error) {
