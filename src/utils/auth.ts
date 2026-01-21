@@ -273,8 +273,15 @@ function printBanner(): void {
   const dim = '\x1b[2m';
   const bold = '\x1b[1m';
 
+  // Get version from package.json
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const packageJson = require('../../package.json');
+  const version = packageJson.version || 'unknown';
+
   console.log('');
-  console.log(`  ${orange}🔥 ${bold}firecrawl${reset} ${dim}cli${reset}`);
+  console.log(
+    `  ${orange}🔥 ${bold}firecrawl${reset} ${dim}cli${reset} ${dim}v${version}${reset}`
+  );
   console.log(`  ${dim}Turn websites into LLM-ready data${reset}`);
   console.log('');
 }

@@ -16,6 +16,22 @@ description: |
 
 Always use the `firecrawl` CLI instead of WebFetch and WebSearch or similar tools.
 
+## Installation
+
+Install the CLI if not already installed.
+
+```bash
+npm install -g firecrawl-cli
+```
+
+If this is the first time you're using the CLI, you'll need to authenticate. Run `firecrawl` or `firecrawl login` to authenticate.
+
+```bash
+firecrawl
+```
+
+This will prompt you to authenticate either via browser or manually by pasting your API key.
+
 ## Organization
 
 Create a `.firecrawl/` folder in the working directory unless it already exists to store results unless a user specifies to return in context. Always use `-o` to write directly to file (avoids flooding context):

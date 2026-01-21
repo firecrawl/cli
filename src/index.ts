@@ -9,7 +9,7 @@ import { Command } from 'commander';
 import { handleScrapeCommand } from './commands/scrape';
 import { initializeConfig, updateConfig } from './utils/config';
 import { getClient } from './utils/client';
-import { configure } from './commands/config';
+import { configure, viewConfig } from './commands/config';
 import { handleCreditUsageCommand } from './commands/credit-usage';
 import { handleCrawlCommand } from './commands/crawl';
 import { handleMapCommand } from './commands/map';
@@ -430,14 +430,39 @@ program.addCommand(createSearchCommand());
 
 program
   .command('config')
-  .description('Show current configuration and authentication status')
+  .description('Configure Firecrawl (login if not authenticated)')
+  .option(
+    '-k, --api-key <key>',
+    'Provide API key directly (skips interactive flow)'
+  )
+  .option('--api-url <url>', 'API URL (default: https://api.firecrawl.dev)')
+  .option(
+    '--web-url <url>',
+    'Web URL for browser login (default: https://firecrawl.dev)'
+  )
+  .option(
+    '-m, --method <method>',
+    'Login method: "browser" or "manual" (default: interactive prompt)'
+  )
+  .action(async (options) => {
+    await configure({
+      apiKey: options.apiKey,
+      apiUrl: options.apiUrl,
+      webUrl: options.webUrl,
+      method: options.method,
+    });
+  });
+
+program
+  .command('view-config')
+  .description('View current configuration and authentication status')
   .action(async () => {
-    await configure();
+    await viewConfig();
   });
 
 program
   .command('login')
-  .description('Login to Firecrawl (browser or manual API key)')
+  .description('Login to Firecrawl (alias for config)')
   .option(
     '-k, --api-key <key>',
     'Provide API key directly (skips interactive flow)'

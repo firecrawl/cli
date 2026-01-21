@@ -30,7 +30,6 @@ export async function handleLogoutCommand(): Promise<void> {
     });
 
     console.log('✓ Logged out successfully');
-    console.log(`  Credentials removed from: ${getConfigDirectoryPath()}`);
   } catch (error) {
     console.error(
       'Error logging out:',
