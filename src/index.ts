@@ -70,6 +70,10 @@ function createScrapeCommand(): Command {
   const scrapeCmd = new Command('scrape')
     .description('Scrape a URL using Firecrawl')
     .argument('[url]', 'URL to scrape')
+    .argument(
+      '[formats...]',
+      'Output format(s) as positional args (e.g., markdown screenshot links)'
+    )
     .option(
       '-u, --url <url>',
       'URL to scrape (alternative to positional argument)'
@@ -77,8 +81,7 @@ function createScrapeCommand(): Command {
     .option('-H, --html', 'Output raw HTML (shortcut for --format html)')
     .option(
       '-f, --format <formats>',
-      'Output format(s). Multiple formats can be specified with commas (e.g., "markdown,links,images"). Available: markdown, html, rawHtml, links, images, screenshot, summary, changeTracking, json, attributes, branding. Single format outputs raw content; multiple formats output JSON.',
-      'markdown'
+      'Output format(s). Multiple formats can be specified with commas (e.g., "markdown,links,images"). Available: markdown, html, rawHtml, links, images, screenshot, summary, changeTracking, json, attributes, branding. Single format outputs raw content; multiple formats output JSON.'
     )
     .option('--only-main-content', 'Include only main content', false)
     .option(
@@ -100,7 +103,7 @@ function createScrapeCommand(): Command {
       'Show request timing and other useful information',
       false
     )
-    .action(async (positionalUrl, options) => {
+    .action(async (positionalUrl, positionalFormats, options) => {
       // Use positional URL if provided, otherwise use --url option
       const url = positionalUrl || options.url;
       if (!url) {
@@ -110,8 +113,21 @@ function createScrapeCommand(): Command {
         process.exit(1);
       }
 
-      // Handle --html shortcut flag
-      const format = options.html ? 'html' : options.format;
+      // Merge formats: positional formats take precedence, then --format flag, then default to markdown
+      let format: string;
+      if (positionalFormats && positionalFormats.length > 0) {
+        // Positional formats: join them with commas for parseFormats
+        format = positionalFormats.join(',');
+      } else if (options.html) {
+        // Handle --html shortcut flag
+        format = 'html';
+      } else if (options.format) {
+        // Use --format option
+        format = options.format;
+      } else {
+        // Default to markdown
+        format = 'markdown';
+      }
 
       const scrapeOptions = parseScrapeOptions({ ...options, url, format });
       await handleScrapeCommand(scrapeOptions);
@@ -547,14 +563,33 @@ async function main() {
     // Treat as scrape command with URL - reuse commander's parsing
     const url = normalizeUrl(args[0]);
 
-    // Modify argv to include scrape command with URL as positional argument
+    // Collect any positional format arguments (non-flag arguments after the URL)
+    const remainingArgs = args.slice(1);
+    const positionalFormats: string[] = [];
+    const otherArgs: string[] = [];
+
+    for (const arg of remainingArgs) {
+      // If it starts with a dash, it's a flag (and everything after goes to otherArgs)
+      if (arg.startsWith('-')) {
+        otherArgs.push(arg);
+      } else if (otherArgs.length === 0) {
+        // Only treat as positional format if we haven't hit a flag yet
+        positionalFormats.push(arg);
+      } else {
+        // This is an argument to a flag
+        otherArgs.push(arg);
+      }
+    }
+
+    // Modify argv to include scrape command with URL and formats as positional arguments
     // This allows commander to parse it normally with all hooks and options
     const modifiedArgv = [
       process.argv[0],
       process.argv[1],
       'scrape',
       url,
-      ...args.slice(1),
+      ...positionalFormats,
+      ...otherArgs,
     ];
 
     // Parse using the main program (which includes hooks and global options)

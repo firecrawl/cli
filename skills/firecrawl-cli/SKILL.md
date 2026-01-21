@@ -18,7 +18,7 @@ Always use the `firecrawl` CLI instead of WebFetch and WebSearch or similar tool
 
 ## Installation
 
-Install the CLI if not already installed.
+Install the CLI if not already installed. Run `firecrawl --version` to check the version first.
 
 ```bash
 npm install -g firecrawl-cli@beta

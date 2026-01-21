@@ -19,6 +19,33 @@ const RAW_TEXT_FORMATS: ScrapeFormat[] = [
 ];
 
 /**
+ * Format screenshot output nicely
+ */
+function formatScreenshotOutput(data: any): string {
+  const lines: string[] = [];
+
+  // Screenshot URL
+  if (data.screenshot) {
+    lines.push(`Screenshot: ${data.screenshot}`);
+  }
+
+  // Page info from metadata
+  if (data.metadata) {
+    if (data.metadata.title) {
+      lines.push(`Title: ${data.metadata.title}`);
+    }
+    if (data.metadata.sourceURL || data.metadata.url) {
+      lines.push(`URL: ${data.metadata.sourceURL || data.metadata.url}`);
+    }
+    if (data.metadata.description) {
+      lines.push(`Description: ${data.metadata.description}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
  * Extract content from Firecrawl Document based on format
  */
 function extractContent(data: any, format: ScrapeFormat): string | null {
@@ -156,6 +183,17 @@ export function handleScrapeOutput(
       writeOutput(content, outputPath, !!outputPath);
       return;
     }
+  }
+
+  // Single screenshot format: output nicely formatted
+  if (
+    isSingleFormat &&
+    singleFormat === 'screenshot' &&
+    result.data.screenshot
+  ) {
+    const content = formatScreenshotOutput(result.data);
+    writeOutput(content, outputPath, !!outputPath);
+    return;
   }
 
   // Multiple formats or complex format: output JSON
