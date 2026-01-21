@@ -39,11 +39,21 @@ jobs:
       - name: Build project
         run: pnpm run build
 
-      - name: Check if version already exists
+      - name: Check version and determine publish tag
         id: check-version
         run: |
           VERSION=$(node -p "require('./package.json').version")
           PACKAGE_NAME=$(node -p "require('./package.json').name")
+          
+          # Check if version contains beta
+          if [[ "$VERSION" == *"beta"* ]]; then
+            echo "tag=beta" >> $GITHUB_OUTPUT
+            echo "Version $VERSION contains beta, will publish with beta tag"
+          else
+            echo "tag=latest" >> $GITHUB_OUTPUT
+            echo "Version $VERSION is stable, will publish with latest tag"
+          fi
+          
           if npm view ${PACKAGE_NAME}@${VERSION} version > /dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
             echo "Version $VERSION already exists on npm, skipping publish"
@@ -54,5 +64,5 @@ jobs:
 
       - name: Publish to npm
         if: steps.check-version.outputs.exists == 'false'
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --tag ${{ steps.check-version.outputs.tag }}
         continue-on-error: false
