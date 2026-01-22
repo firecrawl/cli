@@ -38,7 +38,7 @@ If not installed, install first:
 npm install -g firecrawl-cli
 ```
 
-If `authenticated: false`, follow the instructions in [install.md](rules/install.md).
+If `authenticated: false`, follow the instructions in [install.md](rules/install.md). Don't use any other tools as fallback, just use the firecrawl cli and have the user authenticate it. You will most likely need to prompt the user to authenticate.
 
 ## Organization
 
