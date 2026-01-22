@@ -1,3 +1,9 @@
+---
+name: firecrawl-cli-installation
+description: |
+  Install the Firecrawl CLI and handle authentication errors.
+---
+
 # Firecrawl CLI Installation
 
 ## Quick Install
