@@ -51,6 +51,8 @@ If user selects manual API key: Ask for their API key, then run:
 export FIRECRAWL_API_KEY="<their-key>"
 Tell them to add this export to ~/.zshrc or ~/.bashrc for persistence, then retry the original command.
 
+If a user answers that they want to use a browser to authenticate you must run: "echo "1" | firecrawl config" 
+
 ## Organization
 
 Create a `.firecrawl/` folder in the working directory unless it already exists to store results unless a user specifies to return in context. Always use `-o` to write directly to file (avoids flooding context):
