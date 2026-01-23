@@ -17,6 +17,7 @@ import { handleSearchCommand } from './commands/search';
 import { handleVersionCommand } from './commands/version';
 import { handleLoginCommand } from './commands/login';
 import { handleLogoutCommand } from './commands/logout';
+import { handleStatusCommand } from './commands/status';
 import { isUrl, normalizeUrl } from './utils/url';
 import { parseScrapeOptions } from './utils/options';
 import { isJobId } from './utils/job';
@@ -47,6 +48,7 @@ program
     '-k, --api-key <key>',
     'Firecrawl API key (or set FIRECRAWL_API_KEY env var)'
   )
+  .option('--status', 'Show version, auth status, concurrency, and credits')
   .allowUnknownOption() // Allow unknown options when URL is passed directly
   .hook('preAction', async (thisCommand, actionCommand) => {
     // Update global config if API key is provided via global option
@@ -549,6 +551,12 @@ async function main() {
     const { isAuthenticated } = await import('./utils/auth');
     console.log(`version: ${packageJson.version}`);
     console.log(`authenticated: ${isAuthenticated()}`);
+    return;
+  }
+
+  // Handle --status flag
+  if (args.includes('--status')) {
+    await handleStatusCommand();
     return;
   }
 

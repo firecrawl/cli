@@ -369,11 +369,26 @@ firecrawl logout
 
 These options work with any command:
 
-| Option                | Description          |
-| --------------------- | -------------------- |
-| `-k, --api-key <key>` | Use specific API key |
-| `-V, --version`       | Show version         |
-| `-h, --help`          | Show help            |
+| Option                | Description                                  |
+| --------------------- | -------------------------------------------- |
+| `--status`            | Show version, auth, concurrency, and credits |
+| `-k, --api-key <key>` | Use specific API key                         |
+| `-V, --version`       | Show version                                 |
+| `-h, --help`          | Show help                                    |
+
+### Check Status
+
+```bash
+firecrawl --status
+```
+
+```
+  🔥 firecrawl cli v1.0.2
+
+  ● Authenticated via stored credentials
+  Concurrency: 0/100 jobs (parallel scrape limit)
+  Credits: 500,000 / 1,000,000 (50% left this cycle)
+```
 
 ---
 
