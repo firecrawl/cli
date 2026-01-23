@@ -214,7 +214,7 @@ export async function handleStatusCommand(): Promise<void> {
   if (status.concurrency) {
     const { active, max } = status.concurrency;
     console.log(
-      `  ${dim}Concurrency:${reset} ${active}/${max} jobs ${dim}(parallel scrape/crawl limit)${reset}`
+      `  ${dim}Concurrency:${reset} ${active}/${max} jobs ${dim}(parallel scrape limit)${reset}`
     );
   }
 

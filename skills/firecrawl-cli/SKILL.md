@@ -37,7 +37,7 @@ Output when ready:
   🔥 firecrawl cli v1.0.2
 
   ● Authenticated via FIRECRAWL_API_KEY
-  Concurrency: 0/100 jobs (parallel scrape/crawl limit)
+  Concurrency: 0/100 jobs (parallel scrape limit)
   Credits: 500,000 remaining (pay-as-you-go)
 ```
 

@@ -386,7 +386,7 @@ firecrawl --status
   🔥 firecrawl cli v1.0.2
 
   ● Authenticated via stored credentials
-  Concurrency: 0/100 jobs (parallel scrape/crawl limit)
+  Concurrency: 0/100 jobs (parallel scrape limit)
   Credits: 500,000 / 1,000,000 (50% left this cycle)
 ```
 
