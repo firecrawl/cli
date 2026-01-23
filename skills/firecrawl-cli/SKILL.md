@@ -79,6 +79,14 @@ For temporary one-time scripts (batch scraping, data processing), use `.firecraw
 .firecrawl/scratchpad/process-results.sh
 ```
 
+Organize into subdirectories when it makes sense for the task:
+
+```
+.firecrawl/competitor-research/
+.firecrawl/docs/nextjs/
+.firecrawl/news/2024-01/
+```
+
 ## Commands
 
 ### Search - Web search with optional scraping
@@ -246,4 +254,27 @@ firecrawl map https://example.com | wc -l
 
 # Process news results
 jq -r '.data.news[] | "[\(.date)] \(.title)"' .firecrawl/search-news.json
+```
+
+## Parallelization
+
+**ALWAYS run multiple scrapes in parallel, never sequentially.** Check `firecrawl --status` for concurrency limit, then run up to that many jobs using `&` and `wait`:
+
+```bash
+# WRONG - sequential (slow)
+firecrawl scrape https://site1.com -o .firecrawl/1.md
+firecrawl scrape https://site2.com -o .firecrawl/2.md
+firecrawl scrape https://site3.com -o .firecrawl/3.md
+
+# CORRECT - parallel (fast)
+firecrawl scrape https://site1.com -o .firecrawl/1.md &
+firecrawl scrape https://site2.com -o .firecrawl/2.md &
+firecrawl scrape https://site3.com -o .firecrawl/3.md &
+wait
+```
+
+For many URLs, use xargs with `-P` for parallel execution:
+
+```bash
+cat urls.txt | xargs -P 10 -I {} sh -c 'firecrawl scrape "{}" -o ".firecrawl/$(echo {} | md5).md"'
 ```
