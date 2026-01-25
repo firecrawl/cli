@@ -48,6 +48,31 @@ If not installed: `npm install -g firecrawl-cli`
 
 If not authenticated, run `firecrawl login` and prompt the user to select a login method. Always refer to the installation rules in [rules/install.md](rules/install.md) for more information if the user is not logged in.
 
+## Authentication Error Handling
+
+If ANY command returns an authentication error (e.g., "not authenticated", "unauthorized", "API key"), use an ask user question tool if available (such as the AskUserQuestion tool in Claude Code):
+
+**Question:** "How would you like to authenticate with Firecrawl?"
+
+**Options:**
+
+1. **Login with browser (Recommended)** - Opens your browser to authenticate with Firecrawl
+2. **Enter API key manually** - Paste an existing API key from firecrawl.dev
+
+### If user selects browser login:
+
+Tell them to run `firecrawl login` in their terminal and select option 1. Wait for them to confirm, then retry the original command.
+
+### If user selects manual API key:
+
+Ask for their API key, then run:
+
+```bash
+export FIRECRAWL_API_KEY="<their-key>"
+```
+
+Tell them to add this export to `~/.zshrc` or `~/.bashrc` for persistence, then retry the original command.
+
 ## Organization
 
 Create a `.firecrawl/` folder in the working directory unless it already exists to store results unless a user specifies to return in context. Add .firecrawl/ to the .gitignore file if not already there. Always use `-o` to write directly to file (avoids flooding context):
