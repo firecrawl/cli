@@ -30,14 +30,14 @@ Output will show:
 If not authenticated, run:
 
 ```bash
-firecrawl login
+firecrawl login --browser
 ```
 
-This will prompt to authenticate either via browser or manually with an API key. Always select the browser login method automatically (1). And don't tell them to run the commands themselves, unless you fail to do so. Just use the tool and have it prompt the user to authenticate.
+The `--browser` flag automatically opens the browser for authentication without prompting. This is the recommended method for agents. Don't tell users to run the commands themselves - just execute the command and have it prompt them to authenticate in their browser.
 
 ## If you fail to authenticate, use the following error handling instructions:
 
-If ANY command returns an authentication error after you ran firecrawl login and selected the browser login method (e.g., "not authenticated", "unauthorized", "API key"), use an ask user question tool if available (such as the AskUserQuestion tool in Claude Code):
+If ANY command returns an authentication error after you ran `firecrawl login --browser` (e.g., "not authenticated", "unauthorized", "API key"), use an ask user question tool if available (such as the AskUserQuestion tool in Claude Code):
 
 **Question:** "How would you like to authenticate with Firecrawl?"
 
@@ -48,11 +48,17 @@ If ANY command returns an authentication error after you ran firecrawl login and
 
 ### If user selects browser login:
 
-Tell them to run `firecrawl login` in their terminal and select option 1. Wait for them to confirm, then retry the original command.
+Run `firecrawl login --browser` to automatically open the browser. Wait for them to confirm authentication, then retry the original command.
 
 ### If user selects manual API key:
 
 Ask for their API key, then run:
+
+```bash
+firecrawl login --api-key "<their-key>"
+```
+
+Or set the environment variable:
 
 ```bash
 export FIRECRAWL_API_KEY="<their-key>"
@@ -87,4 +93,4 @@ export PATH=~/.npm-global/bin:$PATH
 
 ### Specific Instructions for Codex
 
-When a user selects to authenticate with a browser make sure you run 'echo "1" | firecrawl config' and open the browser + start an interactive shell for auth
+When a user selects to authenticate with a browser, run `firecrawl config --browser` to automatically open the browser for authentication without requiring interactive input.

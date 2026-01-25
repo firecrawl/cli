@@ -463,12 +463,13 @@ program
     '-m, --method <method>',
     'Login method: "browser" or "manual" (default: interactive prompt)'
   )
+  .option('-b, --browser', 'Login via browser (shortcut for --method browser)')
   .action(async (options) => {
     await configure({
       apiKey: options.apiKey,
       apiUrl: options.apiUrl,
       webUrl: options.webUrl,
-      method: options.method,
+      method: options.browser ? 'browser' : options.method,
     });
   });
 
@@ -495,12 +496,13 @@ program
     '-m, --method <method>',
     'Login method: "browser" or "manual" (default: interactive prompt)'
   )
+  .option('-b, --browser', 'Login via browser (shortcut for --method browser)')
   .action(async (options) => {
     await handleLoginCommand({
       apiKey: options.apiKey,
       apiUrl: options.apiUrl,
       webUrl: options.webUrl,
-      method: options.method,
+      method: options.browser ? 'browser' : options.method,
     });
   });
 

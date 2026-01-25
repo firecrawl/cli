@@ -53,10 +53,10 @@ Always refer to the installation rules in [rules/install.md](rules/install.md) f
 If not authenticated, run:
 
 ```bash
-firecrawl login
+firecrawl login --browser
 ```
 
-This will prompt to authenticate either via browser or manually with an API key. Always select the browser login method automatically (1). And don't tell them to run the commands themselves, unless you fail to do so. Just use the tool and have it prompt the user to authenticate.
+The `--browser` flag automatically opens the browser for authentication without prompting. This is the recommended method for agents. Don't tell users to run the commands themselves - just execute the command and have it prompt them to authenticate in their browser.
 
 ## Organization
 
