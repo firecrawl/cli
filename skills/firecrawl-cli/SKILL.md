@@ -95,6 +95,8 @@ Organize into subdirectories when it makes sense for the task:
 .firecrawl/news/2024-01/
 ```
 
+**Always quote URLs** - shell interprets `?` and `&` as special characters.
+
 ## Commands
 
 ### Search - Web search with optional scraping
