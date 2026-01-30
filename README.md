@@ -14,6 +14,22 @@ If you are using in any AI agent like Claude Code, you can install the skill wit
 npx skills add firecrawl/cli
 ```
 
+Or with SkillKit:
+
+```bash
+npx skillkit install firecrawl/cli
+```
+
+SkillKit can also run powerful utilities (like translation) and publish your own skills for recommendations.
+
+```bash
+# Translate one agent skill to another
+npx skillkit translate firecrawl/cli --to cursor,codex,copilot
+
+# Publish your skill to get recommended
+npx skillkit publish
+```
+
 ## Quick Start
 
 Just run a command - the CLI will prompt you to authenticate if needed:
