@@ -32,7 +32,7 @@ function loadSchemaFromFile(filePath: string): Record<string, unknown> {
 }
 
 /**
- * Execute agent status check
+ * Execute agent status check (with optional wait/polling)
  */
 async function checkAgentStatus(
   jobId: string,
@@ -40,18 +40,93 @@ async function checkAgentStatus(
 ): Promise<AgentStatusResult> {
   try {
     const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
-    const status = await app.getAgentStatus(jobId);
 
-    return {
-      success: status.success,
-      data: {
-        id: jobId,
-        status: status.status,
-        data: status.data,
-        creditsUsed: status.creditsUsed,
-        expiresAt: status.expiresAt,
-      },
+    // If not waiting, just return current status
+    if (!options.wait) {
+      const status = await app.getAgentStatus(jobId);
+      return {
+        success: status.success,
+        data: {
+          id: jobId,
+          status: status.status,
+          data: status.data,
+          creditsUsed: status.creditsUsed,
+          expiresAt: status.expiresAt,
+        },
+      };
+    }
+
+    // Wait mode: poll until completion
+    const spinner = createSpinner(`Checking agent status...`);
+    spinner.start();
+
+    // Handle Ctrl+C gracefully
+    const handleInterrupt = () => {
+      spinner.stop();
+      process.stderr.write('\n\nInterrupted. Agent may still be running.\n');
+      process.stderr.write(`Check status with: firecrawl agent ${jobId}\n\n`);
+      process.exit(0);
     };
+    process.on('SIGINT', handleInterrupt);
+
+    const pollMs = options.pollInterval ? options.pollInterval * 1000 : 5000;
+    const startTime = Date.now();
+    const timeoutMs = options.timeout ? options.timeout * 1000 : undefined;
+
+    try {
+      // Check initial status
+      let agentStatus = await app.getAgentStatus(jobId);
+      spinner.update(`Agent ${agentStatus.status}... (Job ID: ${jobId})`);
+
+      while (true) {
+        if (agentStatus.status === 'completed') {
+          process.removeListener('SIGINT', handleInterrupt);
+          spinner.succeed('Agent completed');
+          return {
+            success: agentStatus.success,
+            data: {
+              id: jobId,
+              status: agentStatus.status,
+              data: agentStatus.data,
+              creditsUsed: agentStatus.creditsUsed,
+              expiresAt: agentStatus.expiresAt,
+            },
+          };
+        }
+
+        if (agentStatus.status === 'failed') {
+          process.removeListener('SIGINT', handleInterrupt);
+          spinner.fail('Agent failed');
+          return {
+            success: false,
+            data: {
+              id: jobId,
+              status: agentStatus.status,
+              data: agentStatus.data,
+              creditsUsed: agentStatus.creditsUsed,
+              expiresAt: agentStatus.expiresAt,
+            },
+            error: agentStatus.error,
+          };
+        }
+
+        // Check timeout
+        if (timeoutMs && Date.now() - startTime > timeoutMs) {
+          process.removeListener('SIGINT', handleInterrupt);
+          spinner.fail(`Timeout after ${options.timeout}s`);
+          return {
+            success: false,
+            error: `Timeout after ${options.timeout} seconds. Agent still processing.`,
+          };
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, pollMs));
+        agentStatus = await app.getAgentStatus(jobId);
+        spinner.update(`Agent ${agentStatus.status}... (Job ID: ${jobId})`);
+      }
+    } finally {
+      process.removeListener('SIGINT', handleInterrupt);
+    }
   } catch (error) {
     return {
       success: false,
