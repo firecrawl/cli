@@ -87,7 +87,7 @@ export async function executeAgent(
       prompt: string;
       urls?: string[];
       schema?: Record<string, unknown>;
-      model?: string;
+      model?: 'spark-1-pro' | 'spark-1-mini';
       maxCredits?: number;
       pollInterval?: number;
       timeout?: number;
@@ -102,7 +102,7 @@ export async function executeAgent(
       agentParams.schema = schema;
     }
     if (options.model) {
-      agentParams.model = options.model;
+      agentParams.model = options.model as 'spark-1-pro' | 'spark-1-mini';
     }
     if (options.maxCredits !== undefined) {
       agentParams.maxCredits = options.maxCredits;

@@ -2,14 +2,14 @@
  * Types and interfaces for the agent command
  */
 
-export type AgentModel = 'fire-1' | 'fire-1-mini';
+export type AgentModel = 'spark-1-pro' | 'spark-1-mini';
 
 export type AgentStatus = 'processing' | 'completed' | 'failed';
 
 export interface AgentOptions {
   /** Natural language prompt describing the data to extract */
   prompt: string;
-  /** Model to use: fire-1 (default) or fire-1-mini (faster, cheaper) */
+  /** Model to use: spark-1-mini (default, cheaper) or spark-1-pro (higher accuracy) */
   model?: AgentModel;
   /** Specific URLs to focus extraction on */
   urls?: string[];
