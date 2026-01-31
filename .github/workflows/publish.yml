@@ -64,5 +64,5 @@ jobs:
 
       - name: Publish to npm
         if: steps.check-version.outputs.exists == 'false'
-        run: npm publish --tag ${{ steps.check-version.outputs.tag }}
+        run: npm publish --tag latest
         continue-on-error: false
