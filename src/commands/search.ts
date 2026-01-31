@@ -21,7 +21,7 @@ export async function executeSearch(
   options: SearchOptions
 ): Promise<SearchResult> {
   try {
-    const app = getClient({ apiKey: options.apiKey });
+    const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
 
     // Build search options for the SDK
     const searchParams: Record<string, any> = {

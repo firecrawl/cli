@@ -11,7 +11,7 @@ import { writeOutput } from '../utils/output';
  */
 export async function executeMap(options: MapOptions): Promise<MapResult> {
   try {
-    const app = getClient({ apiKey: options.apiKey });
+    const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
     const { urlOrJobId } = options;
 
     // Build map options

@@ -85,6 +85,7 @@ export function parseScrapeOptions(options: any): ScrapeOptions {
       ? options.excludeTags.split(',').map((t: string) => t.trim())
       : undefined,
     apiKey: options.apiKey,
+    apiUrl: options.apiUrl,
     output: options.output,
     pretty: options.pretty,
     json: options.json,

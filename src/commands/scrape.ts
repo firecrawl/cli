@@ -49,8 +49,8 @@ function outputTiming(
 export async function executeScrape(
   options: ScrapeOptions
 ): Promise<ScrapeResult> {
-  // Get client instance (updates global config if apiKey provided)
-  const app = getClient({ apiKey: options.apiKey });
+  // Get client instance (updates global config if apiKey/apiUrl provided)
+  const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
 
   // Build scrape options
   const formats: FormatOption[] = [];

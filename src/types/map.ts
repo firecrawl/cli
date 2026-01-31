@@ -5,6 +5,8 @@
 export interface MapOptions {
   /** API key for Firecrawl */
   apiKey?: string;
+  /** API URL for Firecrawl */
+  apiUrl?: string;
   /** URL to map or job ID to check status */
   urlOrJobId: string;
   /** Check status of existing map job */

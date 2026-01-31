@@ -21,6 +21,8 @@ export interface CreditUsageResult {
 export interface CreditUsageOptions {
   /** API key for Firecrawl */
   apiKey?: string;
+  /** API URL for Firecrawl */
+  apiUrl?: string;
   /** Output file path */
   output?: string;
   /** Output as JSON format */
@@ -36,9 +38,9 @@ export async function executeCreditUsage(
   options: CreditUsageOptions = {}
 ): Promise<CreditUsageResult> {
   try {
-    // Update config if API key provided (via getClient)
-    if (options.apiKey) {
-      getClient({ apiKey: options.apiKey });
+    // Update config if API key or URL provided (via getClient)
+    if (options.apiKey || options.apiUrl) {
+      getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
     }
 
     // Get config and validate API key
@@ -46,7 +48,8 @@ export async function executeCreditUsage(
     const apiKey = options.apiKey || config.apiKey;
     validateConfig(apiKey);
 
-    const apiUrl = config.apiUrl || 'https://api.firecrawl.dev';
+    const apiUrl =
+      options.apiUrl || config.apiUrl || 'https://api.firecrawl.dev';
 
     // Make the API call to /v2/team/credit-usage
     const url = `${apiUrl.replace(/\/$/, '')}/v2/team/credit-usage`;

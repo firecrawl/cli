@@ -48,20 +48,31 @@ program
     '-k, --api-key <key>',
     'Firecrawl API key (or set FIRECRAWL_API_KEY env var)'
   )
+  .option('--api-url <url>', 'API URL (or set FIRECRAWL_API_URL env var)')
   .option('--status', 'Show version, auth status, concurrency, and credits')
   .allowUnknownOption() // Allow unknown options when URL is passed directly
   .hook('preAction', async (thisCommand, actionCommand) => {
-    // Update global config if API key is provided via global option
+    // Update global config if API key or URL is provided via global option
     const globalOptions = thisCommand.opts();
+    const commandOptions = actionCommand.opts();
     if (globalOptions.apiKey) {
       updateConfig({ apiKey: globalOptions.apiKey });
+    }
+    if (globalOptions.apiUrl) {
+      updateConfig({ apiUrl: globalOptions.apiUrl });
     }
 
     // Check if this command requires authentication
     const commandName = actionCommand.name();
     if (AUTH_REQUIRED_COMMANDS.includes(commandName)) {
-      // Ensure user is authenticated (prompts for login if needed)
-      await ensureAuthenticated();
+      // Skip auth for custom API URLs (e.g., local development)
+      // Check both global and command-level options
+      const { isCustomApiUrl } = await import('./utils/config');
+      const effectiveApiUrl = commandOptions.apiUrl || globalOptions.apiUrl;
+      if (!isCustomApiUrl(effectiveApiUrl)) {
+        // Ensure user is authenticated (prompts for login if needed)
+        await ensureAuthenticated();
+      }
     }
   });
 
@@ -98,6 +109,7 @@ function createScrapeCommand(): Command {
       '-k, --api-key <key>',
       'Firecrawl API key (overrides global --api-key)'
     )
+    .option('--api-url <url>', 'API URL (overrides global --api-url)')
     .option('-o, --output <path>', 'Output file path (default: stdout)')
     .option('--json', 'Output as JSON format', false)
     .option('--pretty', 'Pretty print JSON output', false)
@@ -199,6 +211,7 @@ function createCrawlCommand(): Command {
       '-k, --api-key <key>',
       'Firecrawl API key (overrides global --api-key)'
     )
+    .option('--api-url <url>', 'API URL (overrides global --api-url)')
     .option('-o, --output <path>', 'Output file path (default: stdout)')
     .option('--pretty', 'Pretty print JSON output', false)
     .action(async (positionalUrlOrJobId, options) => {
@@ -224,6 +237,7 @@ function createCrawlCommand(): Command {
         output: options.output,
         pretty: options.pretty,
         apiKey: options.apiKey,
+        apiUrl: options.apiUrl,
         limit: options.limit,
         maxDepth: options.maxDepth,
         excludePaths: options.excludePaths
@@ -273,6 +287,7 @@ function createMapCommand(): Command {
       '-k, --api-key <key>',
       'Firecrawl API key (overrides global --api-key)'
     )
+    .option('--api-url <url>', 'API URL (overrides global --api-url)')
     .option('-o, --output <path>', 'Output file path (default: stdout)')
     .option('--json', 'Output as JSON format', false)
     .option('--pretty', 'Pretty print JSON output', false)
@@ -293,6 +308,7 @@ function createMapCommand(): Command {
         json: options.json,
         pretty: options.pretty,
         apiKey: options.apiKey,
+        apiUrl: options.apiUrl,
         limit: options.limit,
         search: options.search,
         sitemap: options.sitemap,
@@ -363,6 +379,7 @@ function createSearchCommand(): Command {
       '-k, --api-key <key>',
       'Firecrawl API key (overrides global --api-key)'
     )
+    .option('--api-url <url>', 'API URL (overrides global --api-url)')
     .option('-o, --output <path>', 'Output file path (default: stdout)')
     // .option(
     //   '-p, --pretty',
@@ -431,6 +448,7 @@ function createSearchCommand(): Command {
         scrapeFormats,
         onlyMainContent: options.onlyMainContent,
         apiKey: options.apiKey,
+        apiUrl: options.apiUrl,
         output: options.output,
         json: options.json,
         pretty: options.pretty,
@@ -520,6 +538,7 @@ program
     '-k, --api-key <key>',
     'Firecrawl API key (overrides global --api-key)'
   )
+  .option('--api-url <url>', 'API URL (overrides global --api-url)')
   .option('-o, --output <path>', 'Output file path (default: stdout)')
   .option('--json', 'Output as JSON format', false)
   .option(
