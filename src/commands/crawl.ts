@@ -19,7 +19,7 @@ async function checkCrawlStatus(
   options: CrawlOptions
 ): Promise<CrawlStatusResult> {
   try {
-    const app = getClient({ apiKey: options.apiKey });
+    const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
     const status = await app.getCrawlStatus(jobId);
 
     return {
@@ -48,7 +48,7 @@ export async function executeCrawl(
   options: CrawlOptions
 ): Promise<CrawlResult | CrawlStatusResult> {
   try {
-    const app = getClient({ apiKey: options.apiKey });
+    const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
     const { urlOrJobId, status, wait, pollInterval, timeout } = options;
 
     // If status flag is set or input looks like a job ID, check status

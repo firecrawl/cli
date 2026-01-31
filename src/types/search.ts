@@ -12,6 +12,8 @@ export interface SearchOptions {
   query: string;
   /** API key for Firecrawl */
   apiKey?: string;
+  /** API URL for Firecrawl */
+  apiUrl?: string;
   /** Maximum number of results (default: 5, max: 100) */
   limit?: number;
   /** Sources to search: web, images, news (default: web) */

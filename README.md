@@ -59,6 +59,24 @@ export FIRECRAWL_API_KEY=fc-your-api-key
 firecrawl scrape https://example.com --api-key fc-your-api-key
 ```
 
+### Self-hosted / Local Development
+
+For self-hosted Firecrawl instances or local development, use the `--api-url` option:
+
+```bash
+# Use a local Firecrawl instance (no API key required)
+firecrawl --api-url http://localhost:3002 scrape https://example.com
+
+# Or set via environment variable
+export FIRECRAWL_API_URL=http://localhost:3002
+firecrawl scrape https://example.com
+
+# Self-hosted with API key
+firecrawl --api-url https://firecrawl.mycompany.com --api-key fc-xxx scrape https://example.com
+```
+
+When using a custom API URL (anything other than `https://api.firecrawl.dev`), authentication is automatically skipped, allowing you to use local instances without an API key.
+
 ---
 
 ## Commands
@@ -340,10 +358,15 @@ firecrawl credit-usage --json --pretty
 
 ---
 
-### `config` - View configuration
+### `config` - Configure and view settings
 
 ```bash
+# View current configuration
 firecrawl config
+
+# Configure with custom API URL
+firecrawl config --api-url https://firecrawl.mycompany.com
+firecrawl config --api-url http://localhost:3002 --api-key fc-xxx
 ```
 
 Shows authentication status and stored credentials location.
@@ -359,6 +382,10 @@ firecrawl login --method browser
 firecrawl login --method manual
 firecrawl login --api-key fc-xxx
 
+# Login to self-hosted instance
+firecrawl login --api-url https://firecrawl.mycompany.com
+firecrawl login --api-url http://localhost:3002 --api-key fc-xxx
+
 # Logout
 firecrawl logout
 ```
@@ -369,12 +396,13 @@ firecrawl logout
 
 These options work with any command:
 
-| Option                | Description                                  |
-| --------------------- | -------------------------------------------- |
-| `--status`            | Show version, auth, concurrency, and credits |
-| `-k, --api-key <key>` | Use specific API key                         |
-| `-V, --version`       | Show version                                 |
-| `-h, --help`          | Show help                                    |
+| Option                | Description                                            |
+| --------------------- | ------------------------------------------------------ |
+| `--status`            | Show version, auth, concurrency, and credits           |
+| `-k, --api-key <key>` | Use specific API key                                   |
+| `--api-url <url>`     | Use custom API URL (for self-hosted/local development) |
+| `-V, --version`       | Show version                                           |
+| `-h, --help`          | Show help                                              |
 
 ### Check Status
 
@@ -458,6 +486,10 @@ firecrawl https://example.com | grep -i "keyword"
 # Set API key via environment
 export FIRECRAWL_API_KEY=${{ secrets.FIRECRAWL_API_KEY }}
 firecrawl crawl https://docs.example.com --wait -o docs.json
+
+# Use self-hosted instance
+export FIRECRAWL_API_URL=${{ secrets.FIRECRAWL_API_URL }}
+firecrawl scrape https://example.com -o output.md
 ```
 
 ---

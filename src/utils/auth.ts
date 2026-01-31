@@ -494,9 +494,25 @@ async function browserLogin(
 
 /**
  * Perform manual API key login
+ * For custom API URLs (local development), API key is optional
  */
-async function manualLogin(): Promise<{ apiKey: string; apiUrl: string }> {
+async function manualLogin(
+  apiUrl: string = DEFAULT_API_URL
+): Promise<{ apiKey: string; apiUrl: string }> {
+  const isCustomUrl = apiUrl !== DEFAULT_API_URL;
+
   console.log('');
+
+  if (isCustomUrl) {
+    const apiKey = await promptInput(
+      'Enter your API key (press Enter to skip): '
+    );
+    return {
+      apiKey: apiKey.trim(),
+      apiUrl,
+    };
+  }
+
   const apiKey = await promptInput('Enter your Firecrawl API key: ');
 
   if (!apiKey || apiKey.trim().length === 0) {
@@ -509,7 +525,7 @@ async function manualLogin(): Promise<{ apiKey: string; apiUrl: string }> {
 
   return {
     apiKey: apiKey.trim(),
-    apiUrl: DEFAULT_API_URL,
+    apiUrl,
   };
 }
 
@@ -553,8 +569,12 @@ function printBanner(): void {
  * Interactive login flow - prompts user to choose method
  */
 async function interactiveLogin(
-  webUrl?: string
+  webUrl?: string,
+  apiUrl?: string
 ): Promise<{ apiKey: string; apiUrl: string; teamName?: string }> {
+  const effectiveApiUrl = apiUrl || DEFAULT_API_URL;
+  const isCustomUrl = effectiveApiUrl !== DEFAULT_API_URL;
+
   // First check if env var is set
   const envResult = envVarLogin();
   if (envResult) {
@@ -564,6 +584,13 @@ async function interactiveLogin(
   }
 
   printBanner();
+
+  // For custom URLs (local development), skip browser auth option
+  if (isCustomUrl) {
+    console.log(`Configuring CLI for custom API: ${effectiveApiUrl}\n`);
+    return manualLogin(effectiveApiUrl);
+  }
+
   console.log(
     'Welcome! To get started, authenticate with your Firecrawl account.\n'
   );
@@ -578,7 +605,7 @@ async function interactiveLogin(
   const choice = await promptInput('Enter choice [1/2]: ');
 
   if (choice === '2' || choice.toLowerCase() === 'manual') {
-    return manualLogin();
+    return manualLogin(effectiveApiUrl);
   } else {
     return browserLogin(webUrl);
   }

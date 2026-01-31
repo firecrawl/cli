@@ -72,10 +72,26 @@ export function getApiKey(providedKey?: string): string | undefined {
   return storedCredentials?.apiKey;
 }
 
+const DEFAULT_API_URL = 'https://api.firecrawl.dev';
+
+/**
+ * Check if using a custom (non-cloud) API URL
+ */
+export function isCustomApiUrl(apiUrl?: string): boolean {
+  const url = apiUrl || globalConfig.apiUrl;
+  return !!url && url !== DEFAULT_API_URL;
+}
+
 /**
  * Validate that required configuration is present
+ * API key is only required for the cloud API, not for local/custom APIs
  */
 export function validateConfig(apiKey?: string): void {
+  // Skip API key validation for custom API URLs (e.g., local development)
+  if (isCustomApiUrl()) {
+    return;
+  }
+
   const key = getApiKey(apiKey);
   if (!key) {
     throw new Error(

@@ -32,6 +32,8 @@ export interface ScrapeOptions {
   excludeTags?: string[];
   /** API key for Firecrawl */
   apiKey?: string;
+  /** API URL for Firecrawl */
+  apiUrl?: string;
   /** Output file path */
   output?: string;
   /** Pretty print JSON output */

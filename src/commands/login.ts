@@ -30,9 +30,10 @@ export async function handleLoginCommand(
 ): Promise<void> {
   const apiUrl = options.apiUrl?.replace(/\/$/, '') || DEFAULT_API_URL;
   const webUrl = options.webUrl?.replace(/\/$/, '') || WEB_URL;
+  const isCustomUrl = apiUrl !== DEFAULT_API_URL;
 
   // If already authenticated, let them know
-  if (isAuthenticated() && !options.apiKey && !options.method) {
+  if (isAuthenticated() && !options.apiKey && !options.method && !isCustomUrl) {
     console.log('You are already logged in.');
     console.log(`Credentials stored at: ${getConfigDirectoryPath()}`);
     console.log('\nTo login with a different account, run:');
@@ -43,7 +44,8 @@ export async function handleLoginCommand(
 
   // If API key provided directly, save it
   if (options.apiKey) {
-    if (!options.apiKey.startsWith('fc-')) {
+    // Only validate fc- prefix for cloud API
+    if (!isCustomUrl && !options.apiKey.startsWith('fc-')) {
       console.error(
         'Error: Invalid API key format. API keys should start with "fc-"'
       );
@@ -75,11 +77,11 @@ export async function handleLoginCommand(
     let result: { apiKey: string; apiUrl: string; teamName?: string };
 
     if (options.method === 'manual') {
-      result = await manualLogin();
+      result = await manualLogin(apiUrl);
     } else if (options.method === 'browser') {
       result = await browserLogin(webUrl);
     } else {
-      result = await interactiveLogin(webUrl);
+      result = await interactiveLogin(webUrl, apiUrl);
     }
 
     // Save credentials
