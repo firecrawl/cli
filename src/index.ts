@@ -14,6 +14,7 @@ import { handleCreditUsageCommand } from './commands/credit-usage';
 import { handleCrawlCommand } from './commands/crawl';
 import { handleMapCommand } from './commands/map';
 import { handleSearchCommand } from './commands/search';
+import { handleAgentCommand } from './commands/agent';
 import { handleVersionCommand } from './commands/version';
 import { handleLoginCommand } from './commands/login';
 import { handleLogoutCommand } from './commands/logout';
@@ -35,6 +36,7 @@ const AUTH_REQUIRED_COMMANDS = [
   'crawl',
   'map',
   'search',
+  'agent',
   'credit-usage',
 ];
 
@@ -460,10 +462,120 @@ function createSearchCommand(): Command {
   return searchCmd;
 }
 
-// Add crawl, map, and search commands to main program
+/**
+ * Create and configure the agent command
+ */
+function createAgentCommand(): Command {
+  const agentCmd = new Command('agent')
+    .description('Run an AI agent to extract data from the web')
+    .argument(
+      '<prompt-or-job-id>',
+      'Natural language prompt describing data to extract, or job ID to check status'
+    )
+    .option('--urls <urls>', 'Comma-separated URLs to focus extraction on')
+    .option(
+      '--model <model>',
+      'Model to use: spark-1-mini (default, cheaper) or spark-1-pro (higher accuracy)'
+    )
+    .option(
+      '--schema <json>',
+      'JSON schema for structured output (inline JSON string)'
+    )
+    .option(
+      '--schema-file <path>',
+      'Path to JSON schema file for structured output'
+    )
+    .option(
+      '--max-credits <number>',
+      'Maximum credits to spend (job fails if exceeded)',
+      parseInt
+    )
+    .option('--status', 'Check status of existing agent job', false)
+    .option(
+      '--wait',
+      'Wait for agent to complete before returning results',
+      false
+    )
+    .option(
+      '--poll-interval <seconds>',
+      'Polling interval in seconds when waiting (default: 5)',
+      parseFloat
+    )
+    .option(
+      '--timeout <seconds>',
+      'Timeout in seconds when waiting (default: no timeout)',
+      parseFloat
+    )
+    .option(
+      '-k, --api-key <key>',
+      'Firecrawl API key (overrides global --api-key)'
+    )
+    .option('--api-url <url>', 'API URL (overrides global --api-url)')
+    .option('-o, --output <path>', 'Output file path (default: stdout)')
+    .option('--json', 'Output as JSON format', false)
+    .option('--pretty', 'Pretty print JSON output', false)
+    .action(async (promptOrJobId, options) => {
+      // Auto-detect if it's a job ID (UUID format)
+      const isStatusCheck = options.status || isJobId(promptOrJobId);
+
+      // Parse URLs
+      let urls: string[] | undefined;
+      if (options.urls) {
+        urls = options.urls
+          .split(',')
+          .map((u: string) => u.trim())
+          .filter((u: string) => u.length > 0);
+      }
+
+      // Parse inline schema
+      let schema: Record<string, unknown> | undefined;
+      if (options.schema) {
+        try {
+          schema = JSON.parse(options.schema) as Record<string, unknown>;
+        } catch {
+          console.error('Error: Invalid JSON in --schema option');
+          process.exit(1);
+        }
+      }
+
+      // Validate model
+      const validModels = ['spark-1-pro', 'spark-1-mini'];
+      if (options.model && !validModels.includes(options.model)) {
+        console.error(
+          `Error: Invalid model "${options.model}". Valid models: ${validModels.join(', ')}`
+        );
+        process.exit(1);
+      }
+
+      const agentOptions = {
+        prompt: promptOrJobId,
+        urls,
+        schema,
+        schemaFile: options.schemaFile,
+        model: options.model,
+        maxCredits: options.maxCredits,
+        status: isStatusCheck,
+        wait: options.wait,
+        pollInterval: options.pollInterval,
+        timeout: options.timeout,
+        apiKey: options.apiKey,
+        apiUrl: options.apiUrl,
+        output: options.output,
+        json: options.json,
+        pretty: options.pretty,
+      };
+
+      await handleAgentCommand(agentOptions);
+    });
+
+  return agentCmd;
+}
+
+// Add crawl, map, search, and agent commands to main program
 program.addCommand(createCrawlCommand());
 program.addCommand(createMapCommand());
 program.addCommand(createSearchCommand());
+program.addCommand(createAgentCommand());
 
 program
   .command('config')

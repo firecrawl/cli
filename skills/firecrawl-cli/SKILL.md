@@ -288,3 +288,66 @@ For many URLs, use xargs with `-P` for parallel execution:
 ```bash
 cat urls.txt | xargs -P 10 -I {} sh -c 'firecrawl scrape "{}" -o ".firecrawl/$(echo {} | md5).md"'
 ```
+
+### Agent - AI-powered data extraction (use sparingly)
+
+**IMPORTANT:** Only use `agent` for complex multi-site data enrichment tasks. It takes 1-5 minutes to complete. For most tasks, use `scrape`, `search`, or `map` instead.
+
+**When to use agent:**
+
+- Gathering data about entities (companies, products, people) from multiple unknown sources
+- Competitive analysis comparing features/pricing across several websites
+- Research requiring data synthesis from various sources
+- Building lists of entities matching specific criteria
+- Single page with very specific extraction needs (e.g., "find the CEO's email and LinkedIn")
+- Single page discovery requiring navigation (e.g., "find the pricing for enterprise plan" when buried in subpages)
+
+**When NOT to use agent:**
+
+- Basic single page scraping → use `scrape`
+- Known website crawling → use `crawl`
+- URL discovery → use `map`
+- Web search → use `search`
+- Any time-sensitive task
+- Simple content extraction that `scrape` can handle
+
+```bash
+# Multi-site company research
+firecrawl agent "Find Series A fintech startups from YC W24 with funding amounts" --wait -o .firecrawl/yc-fintech.json
+
+# Competitive pricing analysis
+firecrawl agent "Compare pricing plans for Vercel, Netlify, and Cloudflare Pages" --wait -o .firecrawl/pricing.json
+
+# Focused extraction from specific URLs
+firecrawl agent "Extract feature comparison" --urls https://a.com,https://b.com --wait -o .firecrawl/features.json
+
+# Structured output with schema
+firecrawl agent "Find top 10 headless CMS options with pricing" --schema-file schema.json --wait -o .firecrawl/cms.json
+
+# Higher accuracy for complex tasks
+firecrawl agent "Research AI coding assistants market" --model spark-1-pro --wait -o .firecrawl/research.json
+```
+
+**Agent Options:**
+
+- `--wait` - Wait for completion (recommended, otherwise returns job ID)
+- `--urls <urls>` - Comma-separated URLs to focus extraction on
+- `--model <model>` - spark-1-mini (default, faster) or spark-1-pro (higher accuracy)
+- `--schema <json>` - Inline JSON schema for structured output
+- `--schema-file <path>` - Path to JSON schema file
+- `--max-credits <n>` - Maximum credits to spend
+- `--timeout <seconds>` - Timeout when waiting
+- `-o, --output <path>` - Save to file
+
+**Checking job status (if not using --wait):**
+
+```bash
+# Start agent (returns job ID immediately)
+firecrawl agent "Find competitors" -o .firecrawl/job.json
+
+# Check status later
+firecrawl agent <job-id>
+
+# Wait for existing job to complete
+firecrawl agent <job-id> --wait -o .firecrawl/result.json
+```
