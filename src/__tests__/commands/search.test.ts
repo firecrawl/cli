@@ -61,6 +61,37 @@ describe('executeSearch', () => {
       });
     });
 
+    it('should pass apiUrl to getClient when provided', async () => {
+      const mockResponse = { web: [] };
+      mockClient.search.mockResolvedValue(mockResponse);
+
+      await executeSearch({
+        query: 'test query',
+        apiUrl: 'http://localhost:3002',
+      });
+
+      expect(getClient).toHaveBeenCalledWith({
+        apiKey: undefined,
+        apiUrl: 'http://localhost:3002',
+      });
+    });
+
+    it('should pass both apiKey and apiUrl to getClient when provided', async () => {
+      const mockResponse = { web: [] };
+      mockClient.search.mockResolvedValue(mockResponse);
+
+      await executeSearch({
+        query: 'test query',
+        apiKey: 'fc-custom-key',
+        apiUrl: 'http://localhost:3002',
+      });
+
+      expect(getClient).toHaveBeenCalledWith({
+        apiKey: 'fc-custom-key',
+        apiUrl: 'http://localhost:3002',
+      });
+    });
+
     it('should include limit option when provided', async () => {
       const mockResponse = { web: [] };
       mockClient.search.mockResolvedValue(mockResponse);

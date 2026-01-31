@@ -260,6 +260,17 @@ describe('Option Parsing Utilities', () => {
       expect(result.apiKey).toBe('fc-test-api-key');
     });
 
+    it('should parse apiUrl option', () => {
+      const options = {
+        url: 'https://example.com',
+        apiUrl: 'http://localhost:3002',
+      };
+
+      const result = parseScrapeOptions(options);
+
+      expect(result.apiUrl).toBe('http://localhost:3002');
+    });
+
     it('should parse output option', () => {
       const options = {
         url: 'https://example.com',
@@ -313,6 +324,7 @@ describe('Option Parsing Utilities', () => {
         includeTags: 'article,main',
         excludeTags: 'nav,footer',
         apiKey: 'fc-test-key',
+        apiUrl: 'http://localhost:3002',
         output: '.firecrawl/output.json',
         pretty: true,
         timing: true,
@@ -329,6 +341,7 @@ describe('Option Parsing Utilities', () => {
         includeTags: ['article', 'main'],
         excludeTags: ['nav', 'footer'],
         apiKey: 'fc-test-key',
+        apiUrl: 'http://localhost:3002',
         output: '.firecrawl/output.json',
         pretty: true,
         timing: true,

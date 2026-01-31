@@ -60,6 +60,41 @@ describe('executeMap', () => {
       expect(mockClient.map).toHaveBeenCalledWith('https://example.com', {});
     });
 
+    it('should pass apiUrl to getClient when provided', async () => {
+      const mockResponse = {
+        links: [{ url: 'https://example.com/page1' }],
+      };
+      mockClient.map.mockResolvedValue(mockResponse);
+
+      await executeMap({
+        urlOrJobId: 'https://example.com',
+        apiUrl: 'http://localhost:3002',
+      });
+
+      expect(getClient).toHaveBeenCalledWith({
+        apiKey: undefined,
+        apiUrl: 'http://localhost:3002',
+      });
+    });
+
+    it('should pass both apiKey and apiUrl to getClient when provided', async () => {
+      const mockResponse = {
+        links: [{ url: 'https://example.com/page1' }],
+      };
+      mockClient.map.mockResolvedValue(mockResponse);
+
+      await executeMap({
+        urlOrJobId: 'https://example.com',
+        apiKey: 'fc-custom-key',
+        apiUrl: 'http://localhost:3002',
+      });
+
+      expect(getClient).toHaveBeenCalledWith({
+        apiKey: 'fc-custom-key',
+        apiUrl: 'http://localhost:3002',
+      });
+    });
+
     it('should include limit option when provided', async () => {
       const mockResponse = {
         links: [{ url: 'https://example.com/page1' }],

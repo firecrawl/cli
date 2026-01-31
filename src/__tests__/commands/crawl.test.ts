@@ -71,6 +71,43 @@ describe('executeCrawl', () => {
       });
     });
 
+    it('should pass apiUrl to getClient when provided', async () => {
+      const mockResponse = {
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        url: 'https://example.com',
+      };
+      mockClient.startCrawl.mockResolvedValue(mockResponse);
+
+      await executeCrawl({
+        urlOrJobId: 'https://example.com',
+        apiUrl: 'http://localhost:3002',
+      });
+
+      expect(getClient).toHaveBeenCalledWith({
+        apiKey: undefined,
+        apiUrl: 'http://localhost:3002',
+      });
+    });
+
+    it('should pass both apiKey and apiUrl to getClient when provided', async () => {
+      const mockResponse = {
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        url: 'https://example.com',
+      };
+      mockClient.startCrawl.mockResolvedValue(mockResponse);
+
+      await executeCrawl({
+        urlOrJobId: 'https://example.com',
+        apiKey: 'fc-custom-key',
+        apiUrl: 'http://localhost:3002',
+      });
+
+      expect(getClient).toHaveBeenCalledWith({
+        apiKey: 'fc-custom-key',
+        apiUrl: 'http://localhost:3002',
+      });
+    });
+
     it('should include limit option when provided', async () => {
       const mockResponse = {
         id: '550e8400-e29b-41d4-a716-446655440000',

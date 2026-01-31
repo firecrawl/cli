@@ -114,6 +114,51 @@ describe('executeCreditUsage', () => {
         })
       );
     });
+
+    it('should use apiUrl from options when provided', async () => {
+      initializeConfig({
+        apiKey: 'test-api-key',
+        apiUrl: 'https://api.firecrawl.dev',
+      });
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { remainingCredits: 1000 } }),
+      });
+
+      await executeCreditUsage({ apiUrl: 'http://localhost:3002' });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:3002/v2/team/credit-usage',
+        expect.any(Object)
+      );
+    });
+
+    it('should use both apiKey and apiUrl from options when provided', async () => {
+      initializeConfig({
+        apiKey: 'config-api-key',
+        apiUrl: 'https://api.firecrawl.dev',
+      });
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { remainingCredits: 1000 } }),
+      });
+
+      await executeCreditUsage({
+        apiKey: 'option-api-key',
+        apiUrl: 'http://localhost:3002',
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:3002/v2/team/credit-usage',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer option-api-key',
+          }),
+        })
+      );
+    });
   });
 
   describe('Response handling', () => {

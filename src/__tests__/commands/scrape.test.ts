@@ -57,6 +57,37 @@ describe('executeScrape', () => {
       });
     });
 
+    it('should pass apiUrl to getClient when provided', async () => {
+      const mockResponse = { markdown: '# Test Content' };
+      mockClient.scrape.mockResolvedValue(mockResponse);
+
+      await executeScrape({
+        url: 'https://example.com',
+        apiUrl: 'http://localhost:3002',
+      });
+
+      expect(getClient).toHaveBeenCalledWith({
+        apiKey: undefined,
+        apiUrl: 'http://localhost:3002',
+      });
+    });
+
+    it('should pass both apiKey and apiUrl to getClient when provided', async () => {
+      const mockResponse = { markdown: '# Test Content' };
+      mockClient.scrape.mockResolvedValue(mockResponse);
+
+      await executeScrape({
+        url: 'https://example.com',
+        apiKey: 'fc-custom-key',
+        apiUrl: 'http://localhost:3002',
+      });
+
+      expect(getClient).toHaveBeenCalledWith({
+        apiKey: 'fc-custom-key',
+        apiUrl: 'http://localhost:3002',
+      });
+    });
+
     it('should call scrape with specified format', async () => {
       const mockResponse = { html: '<html>...</html>' };
       mockClient.scrape.mockResolvedValue(mockResponse);
