@@ -134,7 +134,6 @@ firecrawl https://example.com --exclude-tags nav,aside,.ad
 
 ---
 
-
 ### `search` - Search the web
 
 Search the web and optionally scrape content from search results.
@@ -328,7 +327,6 @@ firecrawl crawl https://example.com --wait -o crawl-results.json --pretty
 ```
 
 ---
-
 
 ### `credit-usage` - Check your credits
 
