@@ -538,6 +538,15 @@ function createAgentCommand(): Command {
         }
       }
 
+      // Validate model
+      const validModels = ['spark-1-pro', 'spark-1-mini'];
+      if (options.model && !validModels.includes(options.model)) {
+        console.error(
+          `Error: Invalid model "${options.model}". Valid models: ${validModels.join(', ')}`
+        );
+        process.exit(1);
+      }
+
       const agentOptions = {
         prompt: promptOrJobId,
         urls,
