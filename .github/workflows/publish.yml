@@ -7,9 +7,9 @@ on:
   push:
     paths:
       - 'package.json'
+      - .github/workflows/publish.yml
     branches:
       - main
-      - master
 
 jobs:
   publish:
@@ -32,6 +32,9 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 10.12.1
+
+      - name: Update npm to latest version
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
