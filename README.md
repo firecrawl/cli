@@ -514,3 +514,11 @@ export FIRECRAWL_NO_TELEMETRY=1
 ## Documentation
 
 For more details, visit the [Firecrawl Documentation](https://docs.firecrawl.dev).
+
+## Compatible Agents
+
+Firecrawl CLI works with AI coding agents including:
+
+- [Claude Code](https://claude.ai/code) - Anthropic's official CLI
+- [AdaL](https://sylph.ai/adal) - Self-evolving AI coding agent with MCP support
+
