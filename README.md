@@ -358,6 +358,74 @@ firecrawl credit-usage --json --pretty
 
 ---
 
+### `agent` - AI-powered web data extraction
+
+Run an AI agent that autonomously browses and extracts structured data from the web based on natural language prompts.
+
+> **Note:** Agent tasks typically take **2 to 5 minutes** to complete, and sometimes longer for complex extractions. Use sparingly and consider `--max-credits` to limit costs.
+
+```bash
+# Basic usage (returns job ID immediately)
+firecrawl agent "Find the pricing plans for Firecrawl"
+
+# Wait for completion
+firecrawl agent "Extract all product names and prices from this store" --wait
+
+# Focus on specific URLs
+firecrawl agent "Get the main features listed" --urls https://example.com/features
+
+# Use structured output with JSON schema
+firecrawl agent "Extract company info" --schema '{"type":"object","properties":{"name":{"type":"string"},"employees":{"type":"number"}}}'
+
+# Load schema from file
+firecrawl agent "Extract product data" --schema-file ./product-schema.json --wait
+
+# Check status of an existing job
+firecrawl agent <job-id>
+firecrawl agent <job-id> --wait
+```
+
+#### Agent Options
+
+| Option                      | Description                                                   |
+| --------------------------- | ------------------------------------------------------------- |
+| `--urls <urls>`             | Comma-separated URLs to focus extraction on                   |
+| `--model <model>`           | `spark-1-mini` (default, cheaper) or `spark-1-pro` (accurate) |
+| `--schema <json>`           | JSON schema for structured output (inline JSON string)        |
+| `--schema-file <path>`      | Path to JSON schema file for structured output                |
+| `--max-credits <number>`    | Maximum credits to spend (job fails if exceeded)              |
+| `--status`                  | Check status of existing agent job                            |
+| `--wait`                    | Wait for agent to complete before returning results           |
+| `--poll-interval <seconds>` | Polling interval in seconds when waiting (default: 5)         |
+| `--timeout <seconds>`       | Timeout in seconds when waiting (default: no timeout)         |
+| `-o, --output <path>`       | Save output to file                                           |
+| `--json`                    | Output as JSON format                                         |
+| `--pretty`                  | Pretty print JSON output                                      |
+
+#### Examples
+
+```bash
+# Research task with timeout
+firecrawl agent "Find the top 5 competitors of Notion and their pricing" --wait --timeout 300
+
+# Extract data with cost limit
+firecrawl agent "Get all blog post titles and dates" --urls https://blog.example.com --max-credits 100 --wait
+
+# Use higher accuracy model for complex extraction
+firecrawl agent "Extract detailed technical specifications" --model spark-1-pro --wait --pretty
+
+# Save structured results to file
+firecrawl agent "Extract contact information" --schema-file ./contact-schema.json --wait -o contacts.json --pretty
+
+# Check job status without waiting
+firecrawl agent abc123-def456-... --json
+
+# Poll a running job until completion
+firecrawl agent abc123-def456-... --wait --poll-interval 10
+```
+
+---
+
 ### `config` - Configure and view settings
 
 ```bash
