@@ -42,7 +42,7 @@ export interface ScrapeOptions {
   json?: boolean;
   /** Show request timing and other useful information */
   timing?: boolean;
-  /** Maximum age of cached content in seconds (API-level caching) */
+  /** Maximum age of cached content in milliseconds (API-level caching) */
   maxAge?: number;
 }
 
