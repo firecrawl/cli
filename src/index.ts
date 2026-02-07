@@ -121,8 +121,8 @@ function createScrapeCommand(): Command {
       false
     )
     .option(
-      '--max-age <seconds>',
-      'Maximum age of cached content in seconds (API-level caching)',
+      '--max-age <milliseconds>',
+      'Maximum age of cached content in milliseconds (API-level caching)',
       parseInt
     )
     .action(async (positionalUrl, positionalFormats, options) => {
