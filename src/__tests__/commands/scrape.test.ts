@@ -219,6 +219,21 @@ describe('executeScrape', () => {
         excludeTags: ['nav'],
       });
     });
+
+    it('should include maxAge parameter when provided', async () => {
+      const mockResponse = { markdown: '# Test' };
+      mockClient.scrape.mockResolvedValue(mockResponse);
+
+      await executeScrape({
+        url: 'https://example.com',
+        maxAge: 3600,
+      });
+
+      expect(mockClient.scrape).toHaveBeenCalledWith('https://example.com', {
+        formats: ['markdown'],
+        maxAge: 3600,
+      });
+    });
   });
 
   describe('Response handling', () => {

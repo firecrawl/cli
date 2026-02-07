@@ -76,6 +76,7 @@ export async function executeScrape(
     waitFor?: number;
     includeTags?: string[];
     excludeTags?: string[];
+    maxAge?: number;
   } = {
     formats,
   };
@@ -94,6 +95,10 @@ export async function executeScrape(
 
   if (options.excludeTags && options.excludeTags.length > 0) {
     scrapeParams.excludeTags = options.excludeTags;
+  }
+
+  if (options.maxAge !== undefined) {
+    scrapeParams.maxAge = options.maxAge;
   }
 
   // Execute scrape with timing - only wrap the scrape call in try-catch
