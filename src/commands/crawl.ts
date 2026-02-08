@@ -92,6 +92,12 @@ export async function executeCrawl(
     if (options.maxConcurrency !== undefined) {
       crawlOptions.maxConcurrency = options.maxConcurrency;
     }
+    if (options.maxAge !== undefined) {
+      crawlOptions.scrapeOptions = {
+        ...(crawlOptions.scrapeOptions ?? {}),
+        maxAge: options.maxAge,
+      };
+    }
 
     // If wait mode, use the convenience crawl method with polling
     if (wait) {

@@ -215,6 +215,11 @@ function createCrawlCommand(): Command {
       parseInt
     )
     .option(
+      '--max-age <milliseconds>',
+      'Maximum age of cached content in milliseconds',
+      parseInt
+    )
+    .option(
       '-k, --api-key <key>',
       'Firecrawl API key (overrides global --api-key)'
     )
@@ -260,6 +265,7 @@ function createCrawlCommand(): Command {
         allowSubdomains: options.allowSubdomains,
         delay: options.delay,
         maxConcurrency: options.maxConcurrency,
+        maxAge: options.maxAge,
       };
 
       await handleCrawlCommand(crawlOptions);
