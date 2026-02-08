@@ -45,6 +45,8 @@ export interface CrawlOptions {
   delay?: number;
   /** Maximum concurrency */
   maxConcurrency?: number;
+  /** Maximum age of cached content in milliseconds (API-level caching) */
+  maxAge?: number;
 }
 
 export interface CrawlResult {
