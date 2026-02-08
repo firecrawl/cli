@@ -98,6 +98,12 @@ export async function executeCrawl(
         maxAge: options.maxAge,
       };
     }
+    if (options.onlyMainContent !== undefined) {
+      crawlOptions.scrapeOptions = {
+        ...(crawlOptions.scrapeOptions ?? {}),
+        onlyMainContent: options.onlyMainContent,
+      };
+    }
 
     // If wait mode, use the convenience crawl method with polling
     if (wait) {

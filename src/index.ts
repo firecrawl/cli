@@ -219,6 +219,7 @@ function createCrawlCommand(): Command {
       'Maximum age of cached content in milliseconds',
       parseInt
     )
+    .option('--only-main-content', 'Include only main content', false)
     .option(
       '-k, --api-key <key>',
       'Firecrawl API key (overrides global --api-key)'
@@ -266,6 +267,7 @@ function createCrawlCommand(): Command {
         delay: options.delay,
         maxConcurrency: options.maxConcurrency,
         maxAge: options.maxAge,
+        onlyMainContent: options.onlyMainContent,
       };
 
       await handleCrawlCommand(crawlOptions);
