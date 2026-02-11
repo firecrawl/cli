@@ -247,6 +247,50 @@ describe('executeCrawl', () => {
         }
       );
     });
+
+    it('should include scrapeOptions.maxAge when provided', async () => {
+      const mockResponse = {
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        url: 'https://example.com',
+      };
+      mockClient.startCrawl.mockResolvedValue(mockResponse);
+
+      await executeCrawl({
+        urlOrJobId: 'https://example.com',
+        maxAge: 172800000,
+      });
+
+      expect(mockClient.startCrawl).toHaveBeenCalledWith(
+        'https://example.com',
+        {
+          scrapeOptions: {
+            maxAge: 172800000,
+          },
+        }
+      );
+    });
+
+    it('should include scrapeOptions.onlyMainContent when provided', async () => {
+      const mockResponse = {
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        url: 'https://example.com',
+      };
+      mockClient.startCrawl.mockResolvedValue(mockResponse);
+
+      await executeCrawl({
+        urlOrJobId: 'https://example.com',
+        onlyMainContent: true,
+      });
+
+      expect(mockClient.startCrawl).toHaveBeenCalledWith(
+        'https://example.com',
+        {
+          scrapeOptions: {
+            onlyMainContent: true,
+          },
+        }
+      );
+    });
   });
 
   describe('Check crawl status', () => {
