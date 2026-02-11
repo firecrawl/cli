@@ -104,6 +104,7 @@ function createScrapeCommand(): Command {
       'Wait time before scraping in milliseconds',
       parseInt
     )
+    .option('-S, --summary', 'Output summary (shortcut for --format summary)')
     .option('--screenshot', 'Take a screenshot', false)
     .option('--include-tags <tags>', 'Comma-separated list of tags to include')
     .option('--exclude-tags <tags>', 'Comma-separated list of tags to exclude')
@@ -143,6 +144,9 @@ function createScrapeCommand(): Command {
       } else if (options.html) {
         // Handle --html shortcut flag
         format = 'html';
+      } else if (options.summary) {
+        // Handle --summary shortcut flag
+        format = 'summary';
       } else if (options.format) {
         // Use --format option
         format = options.format;

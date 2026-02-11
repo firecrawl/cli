@@ -102,6 +102,20 @@ describe('executeScrape', () => {
       });
     });
 
+    it('should call scrape with summary format when summary option is true', async () => {
+      const mockResponse = { summary: 'This is a summary of the page.' };
+      mockClient.scrape.mockResolvedValue(mockResponse);
+
+      await executeScrape({
+        url: 'https://example.com',
+        formats: ['summary'],
+      });
+
+      expect(mockClient.scrape).toHaveBeenCalledWith('https://example.com', {
+        formats: ['summary'],
+      });
+    });
+
     it('should include screenshot format when screenshot option is true', async () => {
       const mockResponse = {
         markdown: '# Test',
