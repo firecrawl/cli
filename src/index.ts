@@ -51,7 +51,9 @@ const program = new Command();
 
 program
   .name('firecrawl')
-  .description('CLI tool for Firecrawl web scraping')
+  .description(
+    'Firecrawl CLI — scrape, crawl, search, and automate the web. Returns clean markdown, HTML, screenshots, and structured data.'
+  )
   .version(packageJson.version)
   .option(
     '-k, --api-key <key>',
@@ -90,7 +92,9 @@ program
  */
 function createScrapeCommand(): Command {
   const scrapeCmd = new Command('scrape')
-    .description('Scrape a URL using Firecrawl')
+    .description(
+      'Scrape a single URL — returns markdown (default), HTML, links, screenshots, or structured JSON'
+    )
     .argument('[url]', 'URL to scrape')
     .argument(
       '[formats...]',
@@ -177,7 +181,9 @@ program.addCommand(createScrapeCommand());
  */
 function createCrawlCommand(): Command {
   const crawlCmd = new Command('crawl')
-    .description('Crawl a website using Firecrawl')
+    .description(
+      'Crawl an entire website — follows links and returns content for every page'
+    )
     .argument('[url-or-job-id]', 'URL to crawl or job ID to check status')
     .option(
       '-u, --url <url>',
@@ -284,7 +290,9 @@ function createCrawlCommand(): Command {
  */
 function createMapCommand(): Command {
   const mapCmd = new Command('map')
-    .description('Map URLs on a website using Firecrawl')
+    .description(
+      'Discover all URLs on a website quickly — returns a list of URLs without scraping content'
+    )
     .argument('[url]', 'URL to map')
     .option(
       '-u, --url <url>',
@@ -346,7 +354,9 @@ function createMapCommand(): Command {
  */
 function createSearchCommand(): Command {
   const searchCmd = new Command('search')
-    .description('Search the web using Firecrawl')
+    .description(
+      'Search the web — returns ranked results with titles, URLs, and optionally scraped content'
+    )
     .argument('<query>', 'Search query')
     .option(
       '--limit <number>',
@@ -483,7 +493,9 @@ function createSearchCommand(): Command {
  */
 function createAgentCommand(): Command {
   const agentCmd = new Command('agent')
-    .description('Run an AI agent to extract data from the web')
+    .description(
+      'AI agent — give a natural language prompt and it autonomously searches, scrapes, and returns structured data'
+    )
     .argument(
       '<prompt-or-job-id>',
       'Natural language prompt describing data to extract, or job ID to check status'
@@ -592,19 +604,30 @@ function createAgentCommand(): Command {
  */
 function createBrowserCommand(): Command {
   const browserCmd = new Command('browser')
-    .description('Manage cloud browser sessions')
+    .description(
+      'Launch cloud browser sessions and execute Python, JavaScript, or bash code remotely via Playwright'
+    )
     .addHelpText(
       'after',
       `
-Examples:
-  $ firecrawl browser launch                    # Start a session
-  $ firecrawl browser execute 'print(await page.title())'
-  $ firecrawl browser close
+Overview:
+  Each session runs a full Chromium instance in the cloud — no local browser
+  or driver install needed. Code runs server-side with a pre-configured
+  Playwright "page" object ready to use. Supports Python (default), JavaScript,
+  and bash (for agent-browser / CDP tools).
 
 Quick Start:
-  $ firecrawl browser launch --stream
+  $ firecrawl browser launch
   $ firecrawl browser execute 'await page.goto("https://example.com"); print(await page.title())'
   $ firecrawl browser close
+
+Examples:
+  $ firecrawl browser launch --stream            # Launch with live view
+  $ firecrawl browser execute 'print(await page.title())'  # Playwright Python
+  $ firecrawl browser execute --js 'await page.title()'    # Playwright JS
+  $ firecrawl browser execute --bash "agent-browser snapshot"  # bash + CDP
+  $ firecrawl browser list                       # List active sessions
+  $ firecrawl browser close                      # Close active session
 `
     );
 
@@ -655,13 +678,18 @@ Examples:
 
   browserCmd
     .command('execute')
-    .description('Execute code in a browser session')
-    .argument('<code>', 'Code to execute (Playwright async code)')
-    .option('--python', 'Execute as Python (default)', false)
-    .option('--js', 'Execute as JavaScript', false)
+    .description(
+      'Execute Playwright Python/JS code or bash commands in a browser session'
+    )
+    .argument(
+      '<code>',
+      'Playwright code to execute (a "page" object is pre-configured)'
+    )
+    .option('--python', 'Execute as Playwright Python code (default)', false)
+    .option('--js', 'Execute as Playwright JavaScript code', false)
     .option(
       '--bash',
-      'Execute as local bash command (sets CDP_URL and SESSION_ID env vars)',
+      'Execute as local bash command (CDP_URL and SESSION_ID env vars injected, auto-injects --cdp for agent-browser)',
       false
     )
     .option(
