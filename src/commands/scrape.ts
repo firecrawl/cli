@@ -2,7 +2,7 @@
  * Scrape command implementation
  */
 
-import type { FormatOption } from '@mendable/firecrawl-js';
+import type { FormatOption } from 'firecrawl';
 import type {
   ScrapeOptions,
   ScrapeResult,
@@ -135,6 +135,10 @@ export async function executeScrape(
 
   if (options.lockdown) {
     scrapeParams.lockdown = true;
+  }
+
+  if (options.redactPII) {
+    scrapeParams.redactPII = true;
   }
 
   // Execute scrape with timing - only wrap the scrape call in try-catch

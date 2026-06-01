@@ -1,10 +1,11 @@
-name: Sync Firecrawl Skill to Cursor Plugin
+name: Sync Firecrawl Skills to Cursor Plugin
 
 on:
   push:
     branches: [main]
     paths:
-      - 'skills/firecrawl-cli/**'
+      - 'skills/**'
+      - '.github/workflows/sync-skills.yml'
   workflow_dispatch:
 
 jobs:
@@ -25,7 +26,7 @@ jobs:
             git remote add origin https://x-access-token:${TOKEN}@github.com/firecrawl/firecrawl-cursor-plugin.git
           }
 
-      - name: Sync firecrawl skill
+      - name: Sync firecrawl skills
         env:
           GH_TOKEN: ${{ secrets.FIRECRAWL_SKILLS_SYNC }}
         run: |
@@ -33,9 +34,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          rm -rf skills/firecrawl
-          mkdir -p skills/firecrawl
-          cp -R ../cli/skills/firecrawl-cli/. skills/firecrawl/
+          rm -rf skills
+          mkdir -p skills
+          cp -R ../cli/skills/. skills/
 
           git add -A
           if git diff --cached --quiet; then
@@ -48,17 +49,17 @@ jobs:
 
           if ! git rev-parse HEAD >/dev/null 2>&1; then
             git checkout -b main
-            git commit -m "sync firecrawl skill from firecrawl/cli (${SHORT_SHA})"
+            git commit -m "sync firecrawl skills from firecrawl/cli (${SHORT_SHA})"
             git push origin main
           else
-            BRANCH="sync/cursor-skill-${SHORT_SHA}"
+            BRANCH="sync/cursor-skills-${SHORT_SHA}"
             git checkout -b "$BRANCH"
-            git commit -m "sync firecrawl skill from firecrawl/cli (${SHORT_SHA})"
+            git commit -m "sync firecrawl skills from firecrawl/cli (${SHORT_SHA})"
             git push origin "$BRANCH"
             PR_URL=$(gh pr create \
               --repo firecrawl/firecrawl-cursor-plugin \
-              --title "sync firecrawl skill (${SHORT_SHA})" \
-              --body "Automated sync of \`skills/firecrawl-cli\` from [firecrawl/cli@${SHORT_SHA}](${COMMIT_URL}) into \`skills/firecrawl\`." \
+              --title "sync firecrawl skills (${SHORT_SHA})" \
+              --body "Automated sync of \`skills/\` from [firecrawl/cli@${SHORT_SHA}](${COMMIT_URL}) into \`skills/\`." \
               --base main \
               --head "$BRANCH")
             echo "Created PR: $PR_URL"

@@ -8,7 +8,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { FormatOption } from '@mendable/firecrawl-js';
+import type { FormatOption } from 'firecrawl';
 import type { ParseOptions, ParseResult } from '../types/parse';
 import type { ScrapeFormat } from '../types/scrape';
 import { getClient } from '../utils/client';

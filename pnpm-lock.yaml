@@ -11,12 +11,12 @@ importers:
       '@inquirer/prompts':
         specifier: ^8.2.1
         version: 8.2.1(@types/node@20.19.27)
-      '@mendable/firecrawl-js':
-        specifier: 4.24.0
-        version: 4.24.0
       commander:
         specifier: ^14.0.2
         version: 14.0.2
+      firecrawl:
+        specifier: 4.24.0
+        version: 4.24.0
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -331,10 +331,6 @@ packages:
 
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
-
-  '@mendable/firecrawl-js@4.24.0':
-    resolution: {integrity: sha512-VergmApaVrr4zdAVchmJJajQn+o6+m6UjqNnf3E6RlNfISXLDIHrrvfYQSoe1cFGb+gWfHzPTJSXa13jWC7THg==}
-    engines: {node: '>=22.0.0'}
 
   '@rollup/rollup-android-arm-eabi@4.55.1':
     resolution: {integrity: sha512-9R0DM/ykwfGIlNu6+2U09ga0WXeZ9MRC2Ter8jnz8415VbuIykVuc6bhdrbORFZANDmTDvq26mJrEVTl8TdnDg==}
@@ -661,8 +657,8 @@ packages:
     resolution: {integrity: sha512-YsGpe3WHLK8ZYi4tWDg2Jy3ebRz2rXowDxnld4bkQB00cc/1Zw9AWnC0i9ztDJitivtQvaI9KaLyKrc+hBW0yg==}
     engines: {node: '>=8'}
 
-  firecrawl@4.16.0:
-    resolution: {integrity: sha512-7SJ/FWhZBtW2gTCE/BsvU+gbfIpfTq+D9IH82l9MacauLVptaY6EdYAhrK3YSMC9yr5NxvxRcpZKcXG/nqjiiQ==}
+  firecrawl@4.24.0:
+    resolution: {integrity: sha512-kP9E3Up7eF/0Qe8x2tPU/Mcvx0v6Vks397Gkln1+gZKyLAGtIQNEW0+KZcDPS/meRPodGlVi4Z77doQ2Twq74w==}
     engines: {node: '>=22.0.0'}
 
   follow-redirects@1.15.11:
@@ -1260,16 +1256,6 @@ snapshots:
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
 
-  '@mendable/firecrawl-js@4.24.0':
-    dependencies:
-      axios: 1.15.2
-      firecrawl: 4.16.0
-      typescript-event-target: 1.1.2
-      zod: 3.25.76
-      zod-to-json-schema: 3.25.1(zod@3.25.76)
-    transitivePeerDependencies:
-      - debug
-
   '@rollup/rollup-android-arm-eabi@4.55.1':
     optional: true
 
@@ -1561,7 +1547,7 @@ snapshots:
     dependencies:
       to-regex-range: 5.0.1
 
-  firecrawl@4.16.0:
+  firecrawl@4.24.0:
     dependencies:
       axios: 1.15.2
       typescript-event-target: 1.1.2

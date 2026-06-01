@@ -350,6 +350,22 @@ describe('executeScrape', () => {
       });
     });
 
+    it('should include redactPII when provided', async () => {
+      const mockResponse = { markdown: '# Test' };
+      mockClient.scrape.mockResolvedValue(mockResponse);
+
+      await executeScrape({
+        url: 'https://example.com',
+        redactPII: true,
+      });
+
+      expect(mockClient.scrape).toHaveBeenCalledWith('https://example.com', {
+        formats: ['markdown'],
+        integration: 'cli',
+        redactPII: true,
+      });
+    });
+
     it('should not include location parameter when not provided', async () => {
       const mockResponse = { markdown: '# Test' };
       mockClient.scrape.mockResolvedValue(mockResponse);

@@ -122,5 +122,6 @@ export function parseScrapeOptions(options: any): ScrapeOptions {
     query: options.query,
     profile,
     lockdown: options.lockdown,
+    redactPII: options.redactPii ?? options.redactPII,
   };
 }

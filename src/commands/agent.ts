@@ -8,7 +8,7 @@ import type {
   AgentStatus,
   AgentStatusResult,
 } from '../types/agent';
-import type { AgentWebhookConfig } from '@mendable/firecrawl-js';
+import type { AgentWebhookConfig } from 'firecrawl';
 import { getClient } from '../utils/client';
 import { isJobId } from '../utils/job';
 import { writeOutput } from '../utils/output';

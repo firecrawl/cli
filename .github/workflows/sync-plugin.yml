@@ -4,8 +4,9 @@ on:
   push:
     branches: [main]
     paths:
-      - 'skills/firecrawl-cli/**'
+      - 'skills/**'
       - '.claude-plugin/**'
+      - '.github/workflows/sync-plugin.yml'
   workflow_dispatch:
 
 jobs:
@@ -34,9 +35,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          rm -rf skills/firecrawl-cli
-          mkdir -p skills/firecrawl-cli
-          cp -R ../cli/skills/firecrawl-cli/. skills/firecrawl-cli/
+          rm -rf skills
+          mkdir -p skills
+          cp -R ../cli/skills/. skills/
 
           mkdir -p .claude-plugin
           cp ../cli/.claude-plugin/plugin.json .claude-plugin/plugin.json
@@ -53,17 +54,17 @@ jobs:
 
           if ! git rev-parse HEAD >/dev/null 2>&1; then
             git checkout -b main
-            git commit -m "sync Claude plugin from firecrawl/cli (${SHORT_SHA})"
+            git commit -m "sync Claude plugin skills from firecrawl/cli (${SHORT_SHA})"
             git push origin main
           else
             BRANCH="sync/claude-plugin-${SHORT_SHA}"
             git checkout -b "$BRANCH"
-            git commit -m "sync Claude plugin from firecrawl/cli (${SHORT_SHA})"
+            git commit -m "sync Claude plugin skills from firecrawl/cli (${SHORT_SHA})"
             git push origin "$BRANCH"
             PR_URL=$(gh pr create \
               --repo firecrawl/firecrawl-claude-plugin \
-              --title "sync Claude plugin (${SHORT_SHA})" \
-              --body "Automated sync of \`skills/firecrawl-cli\` and \`.claude-plugin\` from [firecrawl/cli@${SHORT_SHA}](${COMMIT_URL})." \
+              --title "sync Claude plugin skills (${SHORT_SHA})" \
+              --body "Automated sync of \`skills/\` and \`.claude-plugin\` from [firecrawl/cli@${SHORT_SHA}](${COMMIT_URL})." \
               --base main \
               --head "$BRANCH")
             echo "Created PR: $PR_URL"

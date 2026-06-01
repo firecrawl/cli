@@ -2,7 +2,7 @@
  * Types and interfaces for the agent command
  */
 
-import type { AgentWebhookConfig } from '@mendable/firecrawl-js';
+import type { AgentWebhookConfig } from 'firecrawl';
 
 export type AgentModel = 'spark-1-pro' | 'spark-1-mini';
 

@@ -55,7 +55,7 @@ import { ensureAuthenticated, printBanner } from './utils/auth';
 import packageJson from '../package.json';
 import type { SearchSource, SearchCategory } from './types/search';
 import type { ScrapeFormat } from './types/scrape';
-import type { AgentWebhookConfig } from '@mendable/firecrawl-js';
+import type { AgentWebhookConfig } from 'firecrawl';
 import { createCreateCommand } from './commands/create';
 
 // Initialize global configuration from environment variables
@@ -372,6 +372,11 @@ function createScrapeCommand(): Command {
       'Load existing profile data without saving changes (default: saves changes)'
     )
     .option('--lockdown', 'Enable lockdown mode for the scrape', false)
+    .option(
+      '--redact-pii',
+      'Redact personally identifiable information from returned content',
+      false
+    )
     .option('--schema <json>', 'JSON schema for structured extraction')
     .option('--schema-file <path>', 'Path to JSON schema file')
     .option('--actions <json>', 'JSON actions array to run during scrape')

@@ -70,6 +70,8 @@ export interface ScrapeOptions {
   };
   /** Enable lockdown mode for the scrape */
   lockdown?: boolean;
+  /** Redact personally identifiable information from returned content */
+  redactPII?: boolean;
 }
 
 export interface ScrapeResult {

@@ -50,6 +50,7 @@ firecrawl scrape "https://example.com/pricing" --query "What is the enterprise p
 | `--wait-for <ms>`        | Wait for JS rendering before scraping                            |
 | `--include-tags <tags>`  | Only include these HTML tags                                     |
 | `--exclude-tags <tags>`  | Exclude these HTML tags                                          |
+| `--redact-pii`           | Redact personally identifiable information from output           |
 | `-o, --output <path>`    | Output file path                                                 |
 
 ## Tips

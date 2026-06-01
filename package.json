@@ -1,6 +1,6 @@
 {
   "name": "firecrawl-cli",
-  "version": "1.18.7",
+  "version": "1.19.0",
   "description": "Command-line interface for Firecrawl. Scrape, crawl, and extract data from any website directly from your terminal.",
   "main": "dist/index.js",
   "bin": {
@@ -72,7 +72,7 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^8.2.1",
-    "@mendable/firecrawl-js": "4.24.0",
+    "firecrawl": "4.24.0",
     "commander": "^14.0.2"
   }
 }

@@ -2,7 +2,7 @@
  * Search command implementation
  */
 
-import type { FormatOption } from '@mendable/firecrawl-js';
+import type { FormatOption } from 'firecrawl';
 import type {
   SearchOptions,
   SearchResult,

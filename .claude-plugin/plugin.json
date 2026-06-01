@@ -1,9 +1,20 @@
 {
-    "name": "firecrawl",
-    "description": "Scrape, search, crawl, and map the web with a single command.",
-    "version": "1.0.8",
-    "author": {
-        "name": "Firecrawl"
-    },
-    "skills": ["./skills/firecrawl-cli"]
+  "name": "firecrawl",
+  "description": "Scrape, search, crawl, and map the web with a single command.",
+  "version": "1.0.9",
+  "author": {
+    "name": "Firecrawl"
+  },
+  "skills": [
+    "./skills/firecrawl-agent",
+    "./skills/firecrawl-cli",
+    "./skills/firecrawl-crawl",
+    "./skills/firecrawl-download",
+    "./skills/firecrawl-interact",
+    "./skills/firecrawl-map",
+    "./skills/firecrawl-monitor",
+    "./skills/firecrawl-parse",
+    "./skills/firecrawl-scrape",
+    "./skills/firecrawl-search"
+  ]
 }

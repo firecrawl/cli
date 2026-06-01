@@ -4,7 +4,7 @@
  * Monitors run recurring scrapes/crawls and diff each result against the last
  * retained snapshot. See features/monitoring in the docs.
  *
- * @mendable/firecrawl-js@4.22.2 exposes monitor methods (createMonitor,
+ * firecrawl@4.22.2 exposes monitor methods (createMonitor,
  * listMonitors, getMonitor, updateMonitor, deleteMonitor, runMonitor,
  * listMonitorChecks, getMonitorCheck), but its HttpClient injects a top-level
  * `origin: js-sdk@<version>` field into every POST/PATCH body and the
@@ -132,11 +132,13 @@ function fail(error: unknown): never {
  * For full control, callers can pass a JSON file path positionally or pipe
  * JSON on stdin instead. The flags cover the common scrape-target shape.
  */
-function buildCreateBody(opts: {
+export function buildCreateBody(opts: {
   name?: string;
+  goal?: string;
   cron?: string;
   scheduleText?: string;
   timezone?: string;
+  page?: string;
   urls?: string[];
   crawlUrl?: string;
   webhookUrl?: string;
@@ -150,7 +152,13 @@ function buildCreateBody(opts: {
   if (!opts.cron && !opts.scheduleText) {
     throw new Error('--cron or --schedule is required');
   }
-  const hasScrape = opts.urls && opts.urls.length > 0;
+  const urls =
+    opts.urls && opts.urls.length > 0
+      ? opts.urls
+      : opts.page
+        ? [opts.page]
+        : undefined;
+  const hasScrape = urls && urls.length > 0;
   const hasCrawl = !!opts.crawlUrl;
   if (!hasScrape && !hasCrawl) {
     throw new Error('Provide --scrape-urls or --crawl-url');
@@ -162,7 +170,7 @@ function buildCreateBody(opts: {
   if (opts.timezone) schedule.timezone = opts.timezone;
 
   const targets: unknown[] = [];
-  if (hasScrape) targets.push({ type: 'scrape', urls: opts.urls });
+  if (hasScrape) targets.push({ type: 'scrape', urls });
   if (hasCrawl) targets.push({ type: 'crawl', url: opts.crawlUrl });
 
   const body: Record<string, unknown> = {
@@ -190,6 +198,7 @@ function buildCreateBody(opts: {
   }
 
   if (opts.retentionDays !== undefined) body.retentionDays = opts.retentionDays;
+  if (opts.goal !== undefined) body.goal = opts.goal;
 
   return body;
 }
@@ -229,9 +238,10 @@ export function createMonitorCommand(): Command {
         'Natural-language schedule (e.g. "every 30 minutes")'
       )
       .option('--timezone <tz>', 'Schedule timezone', 'UTC')
+      .option('--page <url>', 'Single page URL to scrape on each check')
       .option(
         '--scrape-urls <list>',
-        'Comma-separated URLs to scrape on each check',
+        'Comma-separated page URLs to scrape on each check',
         parseCommaList
       )
       .option('--crawl-url <url>', 'Root URL for a crawl target')
@@ -247,6 +257,10 @@ export function createMonitorCommand(): Command {
         parseCommaList
       )
       .option('--retention-days <n>', 'Snapshot retention window', parseInt)
+      .option(
+        '--goal <text>',
+        'Plain-language goal for the AI change judge (auto-enables the judge)'
+      )
   ).action(async (file: string | undefined, options) => {
     try {
       const fromJson = await readJsonPayload(file);
@@ -254,9 +268,11 @@ export function createMonitorCommand(): Command {
         fromJson ??
         buildCreateBody({
           name: options.name,
+          goal: options.goal,
           cron: options.cron,
           scheduleText: options.schedule,
           timezone: options.timezone,
+          page: options.page,
           urls: options.scrapeUrls,
           crawlUrl: options.crawlUrl,
           webhookUrl: options.webhookUrl,
@@ -321,6 +337,7 @@ export function createMonitorCommand(): Command {
         'Path to JSON payload (use "-" or pipe stdin to read from stdin)'
       )
       .option('--name <name>', 'New name')
+      .option('--goal <goal>', 'New monitor goal')
       .option('--cron <expression>', 'New cron schedule')
       .option('--schedule <text>', 'New natural-language schedule')
       .option('--timezone <tz>', 'Schedule timezone')
@@ -335,6 +352,7 @@ export function createMonitorCommand(): Command {
       } else {
         body = {};
         if (options.name) body.name = options.name;
+        if (options.goal) body.goal = options.goal;
         if (options.state) body.status = options.state;
         if (options.retentionDays !== undefined)
           body.retentionDays = options.retentionDays;
@@ -458,8 +476,9 @@ export function createMonitorCommand(): Command {
     `
 Examples:
   $ firecrawl monitor create --name "Blog" \\
+      --goal "Notify me when a new post is published" \\
       --schedule "every 30 minutes" \\
-      --scrape-urls https://example.com/blog \\
+      --page https://example.com/blog \\
       --email alerts@example.com
   $ firecrawl monitor create monitor.json
   $ cat monitor.json | firecrawl monitor create
