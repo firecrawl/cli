@@ -11,7 +11,7 @@ import os from 'os';
 import path from 'path';
 import { compareVersions } from '../../utils/npm-registry';
 import { hasFirecrawlMcpEntry } from '../../utils/agents';
-import { runChecks } from '../../commands/doctor';
+import { runChecks, runSupportAsk } from '../../commands/doctor';
 import { initializeConfig, resetConfig } from '../../utils/config';
 
 const mockFetch = vi.fn();
@@ -285,5 +285,82 @@ describe('runChecks', () => {
     stubFetch({ credits: { remainingCredits: 500, planCredits: 1000 } });
     const { checks } = await runChecks({});
     expect(checkByName(checks, 'API Reachability').status).toBe('warn');
+  });
+
+  it('returns plain messages without ANSI escapes for JSON output', async () => {
+    initializeConfig({
+      apiKey: 'fc-test',
+      apiUrl: 'https://api.firecrawl.dev',
+    });
+    stubFetch({
+      latestVersion: '99.99.99',
+      credits: { remainingCredits: 500, planCredits: 1000 },
+    });
+
+    const { checks } = await runChecks({});
+
+    expect(JSON.stringify({ checks })).not.toMatch(/\u001b\[/);
+    expect(checkByName(checks, 'CLI Version').message).toContain(
+      '(v99.99.99 available)'
+    );
+  });
+});
+
+describe('runSupportAsk', () => {
+  const jobId = '123e4567-e89b-12d3-a456-426614174000';
+
+  beforeEach(() => {
+    resetConfig();
+    mockFetch.mockReset();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    resetConfig();
+  });
+
+  it('posts question and jobId to the support Ask endpoint', async () => {
+    initializeConfig({
+      apiKey: 'fc-test',
+      apiUrl: 'https://api.firecrawl.dev',
+    });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        answer: 'Try increasing waitFor.',
+        fixParameters: { waitFor: 5000 },
+      }),
+    });
+
+    const exitCode = await runSupportAsk({
+      jobId,
+      query: 'why did this scrape return empty markdown?',
+    });
+
+    expect(exitCode).toBe(0);
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.firecrawl.dev/v2/support/ask',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer fc-test',
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({
+          question: 'why did this scrape return empty markdown?',
+          jobId,
+        }),
+      })
+    );
+  });
+
+  it('does not call support Ask without an API key', async () => {
+    const exitCode = await runSupportAsk({ jobId });
+
+    expect(exitCode).toBe(1);
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });

@@ -83,6 +83,10 @@ function trimApiUrl(url: string): string {
   return url.replace(/\/$/, '');
 }
 
+function dimParentheticals(message: string): string {
+  return message.replace(/\(([^)]*)\)/g, `${dim}($1)${reset}`);
+}
+
 interface ApiPing {
   status: number;
   durationMs: number;
@@ -257,7 +261,7 @@ function checkCliVersion(latest: {
     return {
       name: 'CLI Version',
       status: 'warn',
-      message: `v${current} ${dim}(registry unreachable)${reset}`,
+      message: `v${current} (registry unreachable)`,
     };
   }
   const cmp = compareVersions(current, latest.version);
@@ -265,13 +269,13 @@ function checkCliVersion(latest: {
     return {
       name: 'CLI Version',
       status: 'pass',
-      message: `v${current} ${dim}(latest)${reset}`,
+      message: `v${current} (latest)`,
     };
   }
   return {
     name: 'CLI Version',
     status: 'warn',
-    message: `v${current} ${dim}(v${latest.version} available)${reset}`,
+    message: `v${current} (v${latest.version} available)`,
     fix: 'npm install -g firecrawl-cli',
   };
 }
@@ -283,7 +287,7 @@ function checkNodeRuntime(): CheckResult {
     return {
       name: 'Node Runtime',
       status: 'fail',
-      message: `v${version} ${dim}(requires >=${MIN_NODE_MAJOR})${reset}`,
+      message: `v${version} (requires >=${MIN_NODE_MAJOR})`,
       fix: `Upgrade Node to >=${MIN_NODE_MAJOR}`,
     };
   }
@@ -309,7 +313,7 @@ function checkApiKey(
   return {
     name: 'API Key',
     status: 'pass',
-    message: `${maskApiKey(apiKey)} ${dim}(${authSourceLabel(source)})${reset}`,
+    message: `${maskApiKey(apiKey)} (${authSourceLabel(source)})`,
   };
 }
 
@@ -322,14 +326,14 @@ function checkApiReachability(
     return {
       name: 'API Reachability',
       status: 'fail',
-      message: `not checked ${dim}(no API key)${reset}`,
+      message: `not checked (no API key)`,
     };
   }
   if (ping.status === 0) {
     return {
       name: 'API Reachability',
       status: 'fail',
-      message: `${apiUrl} ${dim}(${ping.error || 'unreachable'})${reset}`,
+      message: `${apiUrl} (${ping.error || 'unreachable'})`,
       fix: 'Check network/DNS or firewall',
     };
   }
@@ -337,14 +341,14 @@ function checkApiReachability(
     return {
       name: 'API Reachability',
       status: 'warn',
-      message: `${apiUrl} ${dim}(custom URL, ${ping.durationMs}ms)${reset}`,
+      message: `${apiUrl} (custom URL, ${ping.durationMs}ms)`,
     };
   }
   if (ping.durationMs > REACHABILITY_WARN_MS) {
     return {
       name: 'API Reachability',
       status: 'warn',
-      message: `${ping.durationMs}ms ${dim}(slow)${reset}`,
+      message: `${ping.durationMs}ms (slow)`,
     };
   }
   return {
@@ -366,7 +370,7 @@ function checkApiKeyValidity(ping: ApiPing | null): CheckResult {
     return {
       name: 'API Key Validity',
       status: 'fail',
-      message: `HTTP ${ping.status} ${dim}(invalid or revoked)${reset}`,
+      message: `HTTP ${ping.status} (invalid or revoked)`,
       fix: 'firecrawl login',
     };
   }
@@ -420,7 +424,7 @@ function checkCredits(ping: ApiPing | null): CheckResult {
   if (plan && plan > 0) {
     const pct = (remaining / plan) * 100;
     const pctStr = pct.toFixed(0);
-    const label = `${formatNumber(remaining)} / ${formatNumber(plan)} ${dim}(${pctStr}% left)${reset}`;
+    const label = `${formatNumber(remaining)} / ${formatNumber(plan)} (${pctStr}% left)`;
     if (pct < 10) {
       return { name: 'Credits', status: 'warn', message: label };
     }
@@ -428,7 +432,7 @@ function checkCredits(ping: ApiPing | null): CheckResult {
   }
 
   // Pay-as-you-go: warn under 100.
-  const label = `${formatNumber(remaining)} ${dim}(pay-as-you-go)${reset}`;
+  const label = `${formatNumber(remaining)} (pay-as-you-go)`;
   if (remaining < 100) {
     return { name: 'Credits', status: 'warn', message: label };
   }
@@ -445,7 +449,7 @@ function checkConcurrency(queue: {
     return {
       name: 'Concurrency',
       status: 'fail',
-      message: `queue endpoint error ${dim}(${queue.error || 'unknown'})${reset}`,
+      message: `queue endpoint error (${queue.error || 'unknown'})`,
     };
   }
   const label = `${queue.active}/${queue.max} jobs`;
@@ -453,7 +457,7 @@ function checkConcurrency(queue: {
     return {
       name: 'Concurrency',
       status: 'warn',
-      message: `${label} ${dim}(queueing)${reset}`,
+      message: `${label} (queueing)`,
     };
   }
   return {
@@ -468,14 +472,14 @@ function checkLocalEnv(local: LocalEnv, configuredKey?: string): CheckResult {
     return {
       name: 'Local .env',
       status: 'pass',
-      message: `${dim}not present${reset}`,
+      message: `not present`,
     };
   }
   if (!local.envKey) {
     return {
       name: 'Local .env',
       status: 'pass',
-      message: `${dim}present, FIRECRAWL_API_KEY not set${reset}`,
+      message: `present, FIRECRAWL_API_KEY not set`,
     };
   }
   if (configuredKey && configuredKey !== local.envKey) {
@@ -498,7 +502,7 @@ function checkGitignore(local: LocalEnv): CheckResult {
     return {
       name: '.gitignore',
       status: 'pass',
-      message: `${dim}no .firecrawl/ to ignore${reset}`,
+      message: `no .firecrawl/ to ignore`,
     };
   }
   if (!local.gitignoreExists) {
@@ -546,7 +550,7 @@ function checkMcp(agents: AgentDetection[]): CheckResult {
     return {
       name: 'MCP Server',
       status: 'warn',
-      message: `${dim}no agents detected${reset}`,
+      message: `no agents detected`,
     };
   }
   const registered = detected.filter((a) => a.mcpRegistered);
@@ -635,7 +639,7 @@ function renderChecks(checks: CheckResult[]): void {
 
   for (const check of checks) {
     console.log(
-      `  ${statusIcon(check.status)} ${padName(check.name, width)}${check.message}`
+      `  ${statusIcon(check.status)} ${padName(check.name, width)}${dimParentheticals(check.message)}`
     );
     if (check.fix) {
       console.log(`    ${dim}→ ${check.fix}${reset}`);
@@ -660,7 +664,7 @@ export async function runSupportAsk(options: DoctorOptions): Promise<number> {
   const apiKey = options.apiKey || config.apiKey;
   const apiUrl = options.apiUrl || config.apiUrl || DEFAULT_API_URL;
   const jobId = options.jobId!;
-  const query = options.query || 'why did this run fail?';
+  const question = options.query || 'why did this run fail?';
 
   if (!apiKey) {
     console.error(
@@ -678,7 +682,7 @@ export async function runSupportAsk(options: DoctorOptions): Promise<number> {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ query, runId: jobId }),
+      body: JSON.stringify({ question, jobId }),
     });
   } catch (error) {
     console.error(
