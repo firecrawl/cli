@@ -44,13 +44,25 @@ const DEFAULT_API_URL = 'https://api.firecrawl.dev';
 const REACHABILITY_WARN_MS = 2000;
 const MIN_NODE_MAJOR = 18;
 
-const orange = '\x1b[38;5;208m';
-const reset = '\x1b[0m';
-const dim = '\x1b[2m';
-const bold = '\x1b[1m';
-const green = '\x1b[32m';
-const red = '\x1b[31m';
-const yellow = '\x1b[33m';
+function shouldUseColor(): boolean {
+  if (process.env.FORCE_COLOR !== undefined) {
+    return process.env.FORCE_COLOR !== '0';
+  }
+  if (process.env.NO_COLOR !== undefined) return false;
+  if (process.env.TERM === 'dumb') return false;
+  return Boolean(process.stdout.isTTY);
+}
+
+const colorEnabled = shouldUseColor();
+const color = (code: string): string => (colorEnabled ? code : '');
+
+const orange = color('\x1b[38;5;208m');
+const reset = color('\x1b[0m');
+const dim = color('\x1b[2m');
+const bold = color('\x1b[1m');
+const green = color('\x1b[32m');
+const red = color('\x1b[31m');
+const yellow = color('\x1b[33m');
 
 function statusIcon(status: CheckStatus): string {
   switch (status) {
