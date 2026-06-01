@@ -156,6 +156,7 @@ firecrawl scrape https://firecrawl.dev https://firecrawl.dev/blog https://docs.f
 | `--exclude-tags <tags>`    | Exclude specific HTML tags                              |
 | `--max-age <milliseconds>` | Maximum age of cached content in milliseconds           |
 | `--lockdown`               | Enable lockdown mode for the scrape                     |
+| `--redact-pii`             | Redact personally identifiable information from output  |
 | `--schema <json>`          | JSON schema for structured extraction                   |
 | `--schema-file <path>`     | Path to JSON schema file for structured extraction      |
 | `--actions <json>`         | JSON actions array to run during scrape                 |

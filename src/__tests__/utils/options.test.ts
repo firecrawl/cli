@@ -304,6 +304,17 @@ describe('Option Parsing Utilities', () => {
       expect(result.timing).toBe(true);
     });
 
+    it('should parse redactPii option from the CLI flag', () => {
+      const options = {
+        url: 'https://example.com',
+        redactPii: true,
+      };
+
+      const result = parseScrapeOptions(options);
+
+      expect(result.redactPII).toBe(true);
+    });
+
     it('should handle undefined format', () => {
       const options = {
         url: 'https://example.com',
@@ -328,6 +339,7 @@ describe('Option Parsing Utilities', () => {
         output: '.firecrawl/output.json',
         pretty: true,
         timing: true,
+        redactPii: true,
       };
 
       const result = parseScrapeOptions(options);
@@ -345,6 +357,7 @@ describe('Option Parsing Utilities', () => {
         output: '.firecrawl/output.json',
         pretty: true,
         timing: true,
+        redactPII: true,
       });
     });
 

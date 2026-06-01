@@ -137,6 +137,10 @@ export async function executeScrape(
     scrapeParams.lockdown = true;
   }
 
+  if (options.redactPII) {
+    scrapeParams.redactPII = true;
+  }
+
   // Execute scrape with timing - only wrap the scrape call in try-catch
   const requestStartTime = Date.now();
 
