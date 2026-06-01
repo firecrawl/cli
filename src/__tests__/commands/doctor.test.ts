@@ -218,6 +218,23 @@ describe('runChecks', () => {
     expect(checkByName(checks, 'Credits').status).toBe('warn');
   });
 
+  it('does not render impossible credit percentages above 100%', async () => {
+    initializeConfig({
+      apiKey: 'fc-test',
+      apiUrl: 'https://api.firecrawl.dev',
+    });
+    stubFetch({
+      credits: { remainingCredits: 5000, planCredits: 1000 },
+    });
+
+    const { checks } = await runChecks({});
+
+    expect(checkByName(checks, 'Credits')).toMatchObject({
+      status: 'pass',
+      message: '5,000 / 1,000 (above plan)',
+    });
+  });
+
   it('fails when credits hit zero', async () => {
     initializeConfig({
       apiKey: 'fc-test',

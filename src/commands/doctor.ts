@@ -423,8 +423,8 @@ function checkCredits(ping: ApiPing | null): CheckResult {
 
   if (plan && plan > 0) {
     const pct = (remaining / plan) * 100;
-    const pctStr = pct.toFixed(0);
-    const label = `${formatNumber(remaining)} / ${formatNumber(plan)} (${pctStr}% left)`;
+    const pctStr = pct > 100 ? 'above plan' : `${pct.toFixed(0)}% left`;
+    const label = `${formatNumber(remaining)} / ${formatNumber(plan)} (${pctStr})`;
     if (pct < 10) {
       return { name: 'Credits', status: 'warn', message: label };
     }
