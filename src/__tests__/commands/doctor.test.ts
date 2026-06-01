@@ -186,6 +186,20 @@ describe('runChecks', () => {
     expect(checkByName(checks, 'Concurrency').status).toBe('pass');
   });
 
+  it('labels API keys passed by flag as flag sourced', async () => {
+    initializeConfig({
+      apiKey: 'fc-stored',
+      apiUrl: 'https://api.firecrawl.dev',
+    });
+    stubFetch({
+      credits: { remainingCredits: 500, planCredits: 1000 },
+    });
+
+    const { checks } = await runChecks({ apiKey: 'fc-flag' });
+
+    expect(checkByName(checks, 'API Key').message).toBe('fc-...flag (flag)');
+  });
+
   it('warns on outdated CLI version', async () => {
     initializeConfig({
       apiKey: 'fc-test',
@@ -302,6 +316,18 @@ describe('runChecks', () => {
     stubFetch({ credits: { remainingCredits: 500, planCredits: 1000 } });
     const { checks } = await runChecks({});
     expect(checkByName(checks, 'API Reachability').status).toBe('warn');
+  });
+
+  it('does not warn on the default API URL with a trailing slash', async () => {
+    initializeConfig({
+      apiKey: 'fc-test',
+      apiUrl: 'https://api.firecrawl.dev/',
+    });
+    stubFetch({ credits: { remainingCredits: 500, planCredits: 1000 } });
+
+    const { checks } = await runChecks({});
+
+    expect(checkByName(checks, 'API Reachability').status).toBe('pass');
   });
 
   it('returns plain messages without ANSI escapes for JSON output', async () => {

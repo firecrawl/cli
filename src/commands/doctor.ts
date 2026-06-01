@@ -19,6 +19,7 @@ import { compareVersions, getLatestVersion } from '../utils/npm-registry';
 import { getAuthSource, type AuthSource } from './status';
 
 type CheckStatus = 'pass' | 'warn' | 'fail';
+type DoctorAuthSource = AuthSource | 'flag';
 
 interface CheckResult {
   name: string;
@@ -68,8 +69,10 @@ function maskApiKey(key: string): string {
   return `fc-...${tail}`;
 }
 
-function authSourceLabel(source: AuthSource): string {
+function authSourceLabel(source: DoctorAuthSource): string {
   switch (source) {
+    case 'flag':
+      return 'flag';
     case 'env':
       return 'env';
     case 'stored':
@@ -300,7 +303,7 @@ function checkNodeRuntime(): CheckResult {
 
 function checkApiKey(
   apiKey: string | undefined,
-  source: AuthSource
+  source: DoctorAuthSource
 ): CheckResult {
   if (!apiKey) {
     return {
@@ -579,8 +582,10 @@ export async function runChecks(options: DoctorOptions = {}): Promise<{
   const config = getConfig();
   const apiKey = options.apiKey || config.apiKey;
   const apiUrl = options.apiUrl || config.apiUrl || DEFAULT_API_URL;
-  const isCustomUrl = apiUrl !== DEFAULT_API_URL;
-  const authSource = getAuthSource();
+  const isCustomUrl = trimApiUrl(apiUrl) !== DEFAULT_API_URL;
+  const authSource: DoctorAuthSource = options.apiKey
+    ? 'flag'
+    : getAuthSource();
 
   const [latest, local, agents] = await Promise.all([
     getLatestVersion('firecrawl-cli'),

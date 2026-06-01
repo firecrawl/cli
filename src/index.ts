@@ -1874,6 +1874,7 @@ Exits 1 if any check fails.
 `
   )
   .action(async (positionalJobId: string | undefined, options) => {
+    const globalOptions = program.opts();
     let jobId = options.run || positionalJobId;
     if (jobId && !isJobId(jobId)) {
       console.error(
@@ -1885,8 +1886,8 @@ Exits 1 if any check fails.
     await handleDoctorCommand({
       jobId,
       query: options.query,
-      apiKey: options.apiKey,
-      apiUrl: options.apiUrl,
+      apiKey: options.apiKey ?? globalOptions.apiKey,
+      apiUrl: options.apiUrl ?? globalOptions.apiUrl,
       json: options.json,
     });
   });
