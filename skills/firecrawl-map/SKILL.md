@@ -1,7 +1,9 @@
 ---
 name: firecrawl-map
-description: |
-  Discover and list all URLs on a website, with optional search filtering. Use this skill when the user wants to find a specific page on a large site, list all URLs, see the site structure, find where something is on a domain, or says "map the site", "find the URL for", "what pages are on", or "list all pages". Essential when the user knows which site but not which exact page.
+description: >-
+  This skill should be used when the user asks to "map the site", "find the URL for", "what
+  pages are on", "list all pages", or wants to discover and list all URLs on a website — useful
+  when the user knows the domain but not the exact page location.
 allowed-tools:
   - Bash(firecrawl *)
   - Bash(npx firecrawl *)
