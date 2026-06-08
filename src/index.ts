@@ -1907,11 +1907,12 @@ program
 
 collectTopLevelCommands();
 
-// Parse arguments
-const args = process.argv.slice(2);
-
 // Handle the main entry point
 async function main() {
+  // Parse user arguments explicitly instead of letting Commander infer whether
+  // argv came from node, eval, electron, or another wrapper.
+  const args = process.argv.slice(2);
+
   // Handle --version with --auth-status before Commander processes it
   // Commander's built-in --version handler doesn't support additional flags
   const hasVersion = args.includes('--version') || args.includes('-V');
@@ -1991,20 +1992,13 @@ async function main() {
 
     // Modify argv to include scrape command with URL and formats as positional arguments
     // This allows commander to parse it normally with all hooks and options
-    const modifiedArgv = [
-      process.argv[0],
-      process.argv[1],
-      'scrape',
-      url,
-      ...positionalFormats,
-      ...otherArgs,
-    ];
+    const modifiedArgs = ['scrape', url, ...positionalFormats, ...otherArgs];
 
     // Parse using the main program (which includes hooks and global options)
-    await program.parseAsync(modifiedArgv);
+    await program.parseAsync(modifiedArgs, { from: 'user' });
   } else {
     // Normal command parsing
-    await program.parseAsync();
+    await program.parseAsync(args, { from: 'user' });
   }
 }
 

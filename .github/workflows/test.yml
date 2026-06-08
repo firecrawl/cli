@@ -84,3 +84,45 @@ jobs:
         run: |
           .\${{ matrix.binary }} --version
           .\${{ matrix.binary }} --help
+
+  test-npm-package-windows:
+    if: github.event_name == 'pull_request'
+    runs-on: windows-latest
+    name: npm package smoke test (Windows, Node 24)
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Pack npm package
+        run: npm pack
+
+      - name: Verify npx subcommands
+        shell: pwsh
+        run: |
+          $Package = Get-ChildItem .\firecrawl-cli-*.tgz | Select-Object -First 1
+          if (-not $Package) {
+            throw "Packed package not found"
+          }
+
+          npx -y $($Package.FullName) --version
+          npx -y $($Package.FullName) version
+          npx -y $($Package.FullName) login --help
+          npx -y $($Package.FullName) setup --help
+          npx -y $($Package.FullName) help setup
