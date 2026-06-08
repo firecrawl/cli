@@ -73,6 +73,7 @@
   "dependencies": {
     "@inquirer/prompts": "^8.2.1",
     "firecrawl": "4.24.0",
-    "commander": "^14.0.2"
+    "commander": "^14.0.2",
+    "zod-to-json-schema": "3.24.6"
   }
 }
