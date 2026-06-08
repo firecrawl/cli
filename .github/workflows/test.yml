@@ -127,11 +127,11 @@ jobs:
           fi
 
           PACKAGE_PATH="$PWD/$PACKAGE"
-          npx -y "$PACKAGE_PATH" --version
-          npx -y "$PACKAGE_PATH" version
-          npx -y "$PACKAGE_PATH" login --help
-          npx -y "$PACKAGE_PATH" setup --help
-          npx -y "$PACKAGE_PATH" help setup
+          npx -y --package "$PACKAGE_PATH" firecrawl --version
+          npx -y --package "$PACKAGE_PATH" firecrawl version
+          npx -y --package "$PACKAGE_PATH" firecrawl login --help
+          npx -y --package "$PACKAGE_PATH" firecrawl setup --help
+          npx -y --package "$PACKAGE_PATH" firecrawl help setup
 
       - name: Verify npx subcommands (Windows)
         if: runner.os == 'Windows'
@@ -142,8 +142,8 @@ jobs:
             throw "Packed package not found"
           }
 
-          npx -y $($Package.FullName) --version
-          npx -y $($Package.FullName) version
-          npx -y $($Package.FullName) login --help
-          npx -y $($Package.FullName) setup --help
-          npx -y $($Package.FullName) help setup
+          npx -y --package $($Package.FullName) firecrawl --version
+          npx -y --package $($Package.FullName) firecrawl version
+          npx -y --package $($Package.FullName) firecrawl login --help
+          npx -y --package $($Package.FullName) firecrawl setup --help
+          npx -y --package $($Package.FullName) firecrawl help setup
