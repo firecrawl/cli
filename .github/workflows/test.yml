@@ -85,10 +85,14 @@ jobs:
           .\${{ matrix.binary }} --version
           .\${{ matrix.binary }} --help
 
-  test-npm-package-windows:
+  test-npm-package:
     if: github.event_name == 'pull_request'
-    runs-on: windows-latest
-    name: npm package smoke test (Windows, Node 24)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    name: npm package smoke test (${{ matrix.os }}, Node 24)
 
     steps:
       - name: Checkout repository
@@ -113,7 +117,24 @@ jobs:
       - name: Pack npm package
         run: npm pack
 
-      - name: Verify npx subcommands
+      - name: Verify npx subcommands (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          PACKAGE=$(ls firecrawl-cli-*.tgz | head -n 1)
+          if [ -z "$PACKAGE" ]; then
+            echo "Packed package not found"
+            exit 1
+          fi
+
+          PACKAGE_PATH="$PWD/$PACKAGE"
+          npx -y "$PACKAGE_PATH" --version
+          npx -y "$PACKAGE_PATH" version
+          npx -y "$PACKAGE_PATH" login --help
+          npx -y "$PACKAGE_PATH" setup --help
+          npx -y "$PACKAGE_PATH" help setup
+
+      - name: Verify npx subcommands (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $Package = Get-ChildItem .\firecrawl-cli-*.tgz | Select-Object -First 1
