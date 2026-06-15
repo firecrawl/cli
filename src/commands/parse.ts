@@ -14,6 +14,7 @@ import type { ScrapeFormat } from '../types/scrape';
 import { getClient } from '../utils/client';
 import { getConfig, validateConfig } from '../utils/config';
 import { handleScrapeOutput } from '../utils/output';
+import { getSessionHeaders } from '../utils/session-tracking';
 
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
 
@@ -181,7 +182,10 @@ export async function executeParse(
   try {
     const response = await fetch(`${apiUrl}/v2/parse`, {
       method: 'POST',
-      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
+      headers: {
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        ...getSessionHeaders(),
+      },
       body: form,
     });
 

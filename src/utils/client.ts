@@ -11,8 +11,38 @@ import {
   updateConfig,
   type GlobalConfig,
 } from './config';
+import { getSessionHeaders } from './session-tracking';
 
 let clientInstance: Firecrawl | null = null;
+
+function attachSessionHeaders(client: Firecrawl): Firecrawl {
+  const headers = getSessionHeaders();
+  if (Object.keys(headers).length === 0) return client;
+
+  const httpClient = (
+    client as unknown as {
+      http?: {
+        instance?: {
+          defaults?: {
+            headers?: Record<string, unknown> & {
+              common?: Record<string, unknown>;
+            };
+          };
+        };
+      };
+    }
+  ).http;
+  const defaultHeaders = httpClient?.instance?.defaults?.headers;
+  if (!defaultHeaders) return client;
+
+  if (!defaultHeaders.common) {
+    defaultHeaders.common = {};
+  }
+  for (const [key, value] of Object.entries(headers)) {
+    (defaultHeaders.common as Record<string, unknown>)[key] = value;
+  }
+  return client;
+}
 
 /**
  * Get or create the Firecrawl client instance
@@ -68,7 +98,7 @@ export function getClient(
       backoffFactor: options.backoffFactor ?? config.backoffFactor,
     };
 
-    return new Firecrawl(clientOptions);
+    return attachSessionHeaders(new Firecrawl(clientOptions));
   }
 
   // Return singleton instance or create one
@@ -84,7 +114,7 @@ export function getClient(
       backoffFactor: config.backoffFactor,
     };
 
-    clientInstance = new Firecrawl(clientOptions);
+    clientInstance = attachSessionHeaders(new Firecrawl(clientOptions));
   }
 
   return clientInstance;
