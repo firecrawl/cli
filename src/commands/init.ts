@@ -294,12 +294,20 @@ async function stepAuth(options: InitOptions): Promise<boolean> {
     choices: [
       { name: 'Login via browser (recommended)', value: 'browser' },
       { name: 'Enter API key manually', value: 'manual' },
-      { name: 'Skip for now', value: 'skip' },
+      {
+        name: 'Continue without an API key (limited free tier)',
+        value: 'skip',
+      },
     ],
   });
 
   if (method === 'skip') {
-    console.log(`  ${dim}Skipped. Run "firecrawl login" later.${reset}\n`);
+    console.log(
+      `  ${dim}Continuing without an API key. scrape, search, and interact work on the limited free tier (rate-limited per IP).${reset}`
+    );
+    console.log(
+      `  ${dim}Run "firecrawl login" anytime to unlock every command and higher limits.${reset}\n`
+    );
     return true;
   }
 
