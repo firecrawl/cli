@@ -26,6 +26,11 @@ import {
   parseMissingContentArg,
   type SearchFeedbackRating,
 } from './commands/search-feedback';
+import {
+  handleEndpointFeedbackCommand,
+  parseEndpointFeedbackCliOptions,
+  parseEndpointFeedbackEndpoint,
+} from './commands/feedback';
 import { handleAgentCommand } from './commands/agent';
 import {
   handleBrowserLaunch,
@@ -69,6 +74,7 @@ const AUTH_REQUIRED_COMMANDS = [
   'map',
   'parse',
   'search',
+  'feedback',
   'search-feedback',
   'agent',
   'browser',
@@ -1088,6 +1094,100 @@ function createSearchFeedbackCommand(): Command {
 }
 
 /**
+ * Create the generic feedback command for v2 endpoint jobs.
+ */
+function createFeedbackCommand(): Command {
+  const cmd = new Command('feedback')
+    .description('Send feedback on a Firecrawl endpoint job.')
+    .argument('<endpoint>', 'Endpoint: search | scrape | parse | map')
+    .argument('<jobId>', 'The job id returned by the endpoint')
+    .requiredOption('--rating <rating>', 'Overall rating: good | bad | partial')
+    .option(
+      '--issues <codesOrJson>',
+      'Comma-separated issue codes OR JSON array of issue codes'
+    )
+    .option(
+      '--tags <codesOrJson>',
+      'Comma-separated tags OR JSON array of tags'
+    )
+    .option('--note <text>', 'Short note describing the feedback')
+    .option(
+      '--valuable-sources <urlsOrJson>',
+      'Comma-separated URLs OR JSON array of {url, reason} entries'
+    )
+    .option(
+      '--missing-content <topicsOrJson...>',
+      'Specific pieces of content missing from results. ' +
+        'Accepts: JSON array of {topic, description} objects, ' +
+        'comma-separated topics, or "topic: description" form.'
+    )
+    .option(
+      '--query-suggestions <text>',
+      'How the query or result set could be improved'
+    )
+    .option('--url <url>', 'Relevant URL for scrape/parse feedback')
+    .option(
+      '--page-numbers <numbersOrJson>',
+      'Comma-separated positive page numbers OR JSON array of numbers'
+    )
+    .option('--metadata <json>', 'Additional small JSON object metadata')
+    .option('--metadata-file <path>', 'Path to metadata JSON object')
+    .option(
+      '-k, --api-key <key>',
+      'Firecrawl API key (overrides global --api-key)'
+    )
+    .option('--api-url <url>', 'API URL (overrides global --api-url)')
+    .option('-o, --output <path>', 'Output file path (default: stdout)')
+    .option('--json', 'Output as compact JSON', false)
+    .option('--pretty', 'Pretty print JSON output', false)
+    .option(
+      '--silent',
+      'Suppress output; useful when called in the background by another agent',
+      false
+    )
+    .action(async (endpointArg: string, jobId: string, options: any) => {
+      let endpoint;
+      try {
+        endpoint = parseEndpointFeedbackEndpoint(endpointArg);
+      } catch (error: any) {
+        console.error('Error:', error?.message || 'Invalid endpoint');
+        process.exit(1);
+      }
+
+      let parsed;
+      try {
+        parsed = parseEndpointFeedbackCliOptions(options);
+      } catch (error: any) {
+        console.error('Error:', error?.message || 'Invalid feedback options');
+        process.exit(1);
+      }
+
+      await handleEndpointFeedbackCommand({
+        endpoint,
+        jobId,
+        rating: parsed.rating,
+        issues: parsed.issues,
+        tags: parsed.tags,
+        note: options.note,
+        valuableSources: parsed.valuableSources,
+        missingContent: parsed.missingContent,
+        querySuggestions: options.querySuggestions,
+        url: options.url,
+        pageNumbers: parsed.pageNumbers,
+        metadata: parsed.metadata,
+        apiKey: options.apiKey,
+        apiUrl: options.apiUrl,
+        output: options.output,
+        json: options.json,
+        pretty: options.pretty,
+        silent: options.silent,
+      });
+    });
+
+  return cmd;
+}
+
+/**
  * Create and configure the agent command
  */
 function createAgentCommand(): Command {
@@ -1668,6 +1768,7 @@ program.addCommand(createMapCommand());
 program.addCommand(createParseCommand());
 program.addCommand(createMonitorCommand());
 program.addCommand(createSearchCommand());
+program.addCommand(createFeedbackCommand());
 program.addCommand(createSearchFeedbackCommand());
 program.addCommand(createAgentCommand());
 program.addCommand(createInteractCommand());

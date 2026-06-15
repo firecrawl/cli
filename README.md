@@ -313,6 +313,44 @@ firecrawl search "AI startups funding" --sources news --tbs qdr:w --limit 15
 
 ---
 
+### `feedback` - Send endpoint job feedback
+
+Send concise feedback for a completed v2 `search`, `scrape`, `parse`, or `map`
+job. For search-result quality, `search-feedback` is still the most guided
+command; `feedback` is the generic endpoint/job surface.
+
+```bash
+firecrawl feedback scrape 0193f6c5-1234-7890-abcd-1234567890ab \
+  --rating partial \
+  --issues missing_markdown \
+  --tags docs \
+  --note "The pricing table was missing from the markdown output." \
+  --url https://example.com/pricing \
+  --page-numbers 1
+```
+
+Keep notes and metadata small. Do not send raw scrape or parse outputs as
+feedback.
+
+#### Feedback Options
+
+| Option                           | Description                                  |
+| -------------------------------- | -------------------------------------------- |
+| `--rating <rating>`              | Required: `good`, `partial`, or `bad`        |
+| `--issues <codesOrJson>`         | Comma-separated issue codes or JSON array    |
+| `--tags <codesOrJson>`           | Comma-separated tags or JSON array           |
+| `--note <text>`                  | Short human-readable feedback                |
+| `--valuable-sources <json>`      | JSON array of `{url, reason}` entries        |
+| `--missing-content <json>`       | JSON array of `{topic, description}` entries |
+| `--query-suggestions <text>`     | Search/query improvement notes               |
+| `--url <url>`                    | Relevant URL for scrape or parse feedback    |
+| `--page-numbers <numbersOrJson>` | Comma-separated page numbers or JSON array   |
+| `--metadata <json>`              | Small JSON object with extra context         |
+| `--metadata-file <path>`         | Path to small metadata JSON object           |
+| `--silent`                       | Suppress output for background agent calls   |
+
+---
+
 ### `map` - Discover all URLs on a website
 
 Quickly discover all URLs on a website without scraping content.
