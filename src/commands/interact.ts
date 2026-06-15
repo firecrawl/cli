@@ -3,7 +3,7 @@
  * Execute AI prompts or code against a scraped page in a live browser session
  */
 
-import { getClient } from '../utils/client';
+import { getClient, isKeylessMode } from '../utils/client';
 import { getConfig, validateConfig } from '../utils/config';
 import {
   getScrapeId,
@@ -38,9 +38,28 @@ function resolveApiConfig(options: { apiKey?: string; apiUrl?: string }) {
   }
   const config = getConfig();
   const apiKey = options.apiKey || config.apiKey;
-  validateConfig(apiKey);
+  // Keyless free tier: interact works without an API key against the cloud
+  // (rate-limited per IP). The API only grants this when NO Authorization
+  // header is sent, so skip validation and omit the header below.
+  const keyless = isKeylessMode(options.apiKey, options.apiUrl);
+  if (!keyless) {
+    validateConfig(apiKey);
+  }
   const apiUrl = options.apiUrl || config.apiUrl || 'https://api.firecrawl.dev';
-  return { apiKey: apiKey!, apiUrl: apiUrl.replace(/\/$/, '') };
+  return { apiKey, apiUrl: apiUrl.replace(/\/$/, ''), keyless };
+}
+
+/**
+ * Build request headers, attaching the Bearer token only when not keyless.
+ */
+function buildHeaders(apiKey: string | undefined, keyless: boolean) {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (!keyless && apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+  return headers;
 }
 
 /**
@@ -51,7 +70,7 @@ export async function handleInteractExecute(
 ): Promise<void> {
   try {
     const scrapeId = getScrapeId(options.scrapeId);
-    const { apiKey, apiUrl } = resolveApiConfig(options);
+    const { apiKey, apiUrl, keyless } = resolveApiConfig(options);
 
     const stored = loadInteractSession();
     const storedUrl =
@@ -74,10 +93,7 @@ export async function handleInteractExecute(
     const url = `${apiUrl}/v2/scrape/${scrapeId}/interact`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: buildHeaders(apiKey, keyless),
       body: JSON.stringify(body),
     });
 
@@ -140,15 +156,12 @@ export async function handleInteractStop(
 ): Promise<void> {
   try {
     const scrapeId = getScrapeId(options.scrapeId);
-    const { apiKey, apiUrl } = resolveApiConfig(options);
+    const { apiKey, apiUrl, keyless } = resolveApiConfig(options);
 
     const url = `${apiUrl}/v2/scrape/${scrapeId}/interact`;
     const response = await fetch(url, {
       method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: buildHeaders(apiKey, keyless),
     });
 
     if (!response.ok) {

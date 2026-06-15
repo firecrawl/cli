@@ -79,7 +79,6 @@ const AUTH_REQUIRED_COMMANDS = [
   'search-feedback',
   'agent',
   'browser',
-  'interact',
   'credit-usage',
   'monitor',
 ];
