@@ -31,6 +31,7 @@ const RAW_TEXT_FORMATS: ScrapeFormat[] = [
   'links',
   'images',
   'summary',
+  'video',
 ];
 
 /**
@@ -99,6 +100,18 @@ function extractContent(data: any, format: ScrapeFormat): string | null {
     return data.summary || data[format] || null;
   }
 
+  // Handle video format. `video` is the legacy provider-download URL, while
+  // `videos` is the generic page-level discovery array with metadata.
+  if (format === 'video') {
+    if (Array.isArray(data.videos)) {
+      return data.videos
+        .map((video: any) => video?.url)
+        .filter((url: unknown): url is string => typeof url === 'string')
+        .join('\n');
+    }
+    return data.video || data[format] || null;
+  }
+
   return null;
 }
 
@@ -116,6 +129,11 @@ function extractMultipleFormats(
 
     if (data[key] !== undefined) {
       result[key] = data[key];
+      if (format === 'video' && data.videos !== undefined) {
+        result.videos = data.videos;
+      }
+    } else if (format === 'video' && data.videos !== undefined) {
+      result.videos = data.videos;
     } else if (format === 'html' && data.rawHtml !== undefined) {
       // Fallback for html -> rawHtml
       result[key] = data.rawHtml;

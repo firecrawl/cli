@@ -323,6 +323,24 @@ function urlToNestedPath(url: string, filename: string = 'index.md'): string {
   }
 }
 
+function getVideoUrls(data?: ScrapeResult['data']): string[] {
+  if (!data) return [];
+
+  if (Array.isArray(data.videos)) {
+    return data.videos
+      .map((video) => video?.url)
+      .filter(
+        (url): url is string => typeof url === 'string' && url.length > 0
+      );
+  }
+
+  if (typeof data.video === 'string' && data.video.length > 0) {
+    return [data.video];
+  }
+
+  return [];
+}
+
 /**
  * Map an entire site and scrape all discovered URLs.
  * Organizes results into nested directories based on URL paths.
@@ -395,6 +413,7 @@ async function runWizard(
       { name: 'html', value: 'html' },
       { name: 'links', value: 'links' },
       { name: 'images', value: 'images' },
+      { name: 'video', value: 'video' },
       { name: 'summary', value: 'summary' },
       { name: 'screenshot', value: 'screenshot' },
       { name: 'full page screenshot', value: 'fullPageScreenshot' },
@@ -666,6 +685,22 @@ export async function handleAllScrapeCommand(
         if (Array.isArray(result.data?.images)) {
           const filepath = path.join(dir, 'images.txt');
           fs.writeFileSync(filepath, result.data.images.join('\n'), 'utf-8');
+          savedFiles.push(filepath);
+        }
+      } else if (fmt === 'video') {
+        const videoUrls = getVideoUrls(result.data);
+        if (videoUrls.length > 0) {
+          const filepath = path.join(dir, 'videos.txt');
+          fs.writeFileSync(filepath, videoUrls.join('\n'), 'utf-8');
+          savedFiles.push(filepath);
+        }
+        if (Array.isArray(result.data?.videos)) {
+          const filepath = path.join(dir, 'videos.json');
+          fs.writeFileSync(
+            filepath,
+            JSON.stringify(result.data.videos, null, 2),
+            'utf-8'
+          );
           savedFiles.push(filepath);
         }
       } else if (fmt === 'summary') {

@@ -201,6 +201,53 @@ describe('Output Utilities', () => {
       );
     });
 
+    it('should output newline-separated video URLs for single video format', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+
+      handleScrapeOutput(
+        {
+          success: true,
+          data: {
+            videos: [
+              {
+                url: 'https://cdn.example.com/product.mp4',
+                sourceURL: 'https://example.com/product',
+                source: 'script',
+              },
+              {
+                url: 'https://cdn.example.com/demo.mp4',
+                sourceURL: 'https://example.com/product',
+                source: 'html',
+              },
+            ],
+          },
+        },
+        ['video']
+      );
+
+      expect(stdoutWriteSpy).toHaveBeenCalledWith(
+        'https://cdn.example.com/product.mp4\nhttps://cdn.example.com/demo.mp4\n'
+      );
+    });
+
+    it('should output legacy video URL for single video format', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+
+      handleScrapeOutput(
+        {
+          success: true,
+          data: {
+            video: 'https://storage.example.com/video.mp4',
+          },
+        },
+        ['video']
+      );
+
+      expect(stdoutWriteSpy).toHaveBeenCalledWith(
+        'https://storage.example.com/video.mp4\n'
+      );
+    });
+
     it('should output summary for single summary format', () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
 
@@ -261,6 +308,41 @@ describe('Output Utilities', () => {
       const parsed = JSON.parse(output);
       expect(parsed.markdown).toBe('# Test');
       expect(parsed.links).toEqual(['https://example.com']);
+    });
+
+    it('should include videos in JSON output for multiple formats', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+
+      handleScrapeOutput(
+        {
+          success: true,
+          data: {
+            markdown: '# Test',
+            videos: [
+              {
+                url: 'https://cdn.example.com/product.mp4',
+                sourceURL: 'https://example.com/product',
+                source: 'script',
+                thumbnail: 'https://cdn.example.com/poster.jpg',
+              },
+            ],
+            metadata: { title: 'Test' },
+          },
+        },
+        ['markdown', 'video']
+      );
+
+      const output = stdoutWriteSpy.mock.calls[0][0];
+      const parsed = JSON.parse(output);
+      expect(parsed.markdown).toBe('# Test');
+      expect(parsed.videos).toEqual([
+        {
+          url: 'https://cdn.example.com/product.mp4',
+          sourceURL: 'https://example.com/product',
+          source: 'script',
+          thumbnail: 'https://cdn.example.com/poster.jpg',
+        },
+      ]);
     });
 
     it('should output pretty JSON when pretty flag is true', () => {

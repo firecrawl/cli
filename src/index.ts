@@ -321,7 +321,7 @@ function createScrapeCommand(): Command {
     .option('-H, --html', 'Output raw HTML (shortcut for --format html)')
     .option(
       '-f, --format <formats>',
-      'Output format(s). Multiple formats can be specified with commas (e.g., "markdown,links,images"). Available: markdown, html, rawHtml, links, images, screenshot, summary, changeTracking, json, attributes, branding. Single format outputs raw content; multiple formats output JSON.'
+      'Output format(s). Multiple formats can be specified with commas (e.g., "markdown,links,images"). Available: markdown, html, rawHtml, links, images, screenshot, summary, changeTracking, json, attributes, branding, video. Single format outputs raw content; multiple formats output JSON.'
     )
     .option('--only-main-content', 'Include only main content', false)
     .option(
@@ -502,7 +502,7 @@ function createDownloadCommand(): Command {
     .option('--allow-subdomains', 'Include subdomains', false)
     .option(
       '-f, --format <formats>',
-      'Output format(s), comma-separated (default: markdown). Available: markdown, html, rawHtml, links, images, summary, json'
+      'Output format(s), comma-separated (default: markdown). Available: markdown, html, rawHtml, links, images, summary, json, video'
     )
     .option('-H, --html', 'Download as HTML (shortcut for --format html)')
     .option(
@@ -848,6 +848,12 @@ Max upload size: 50 MB
         url: 'file://' + file,
         format: format ?? 'markdown',
       });
+      if (scrapeOptions.formats?.includes('video')) {
+        console.error(
+          'Error: The video format is not supported for parse. Use scrape with --format video for webpage video discovery.'
+        );
+        process.exit(1);
+      }
 
       await handleParseCommand({
         file,
@@ -914,7 +920,7 @@ function createSearchCommand(): Command {
     .option('--scrape', 'Enable scraping of search results', false)
     .option(
       '--scrape-formats <formats>',
-      'Comma-separated scrape formats when --scrape is enabled: markdown, html, rawHtml, links, etc. (default: markdown)'
+      'Comma-separated scrape formats when --scrape is enabled: markdown, html, rawHtml, links, video, etc. (default: markdown)'
     )
     .option(
       '--only-main-content',

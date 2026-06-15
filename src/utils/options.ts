@@ -23,6 +23,7 @@ const VALID_FORMATS: ScrapeFormat[] = [
   'json',
   'attributes',
   'branding',
+  'video',
 ];
 
 /**

@@ -51,6 +51,10 @@ describe('Option Parsing Utilities', () => {
       it('should parse single attributes format', () => {
         expect(parseFormats('attributes')).toEqual(['attributes']);
       });
+
+      it('should parse single video format', () => {
+        expect(parseFormats('video')).toEqual(['video']);
+      });
     });
 
     describe('Multiple format parsing', () => {
@@ -67,12 +71,15 @@ describe('Option Parsing Utilities', () => {
       });
 
       it('should handle all common formats together', () => {
-        expect(parseFormats('markdown,html,links,images,screenshot')).toEqual([
+        expect(
+          parseFormats('markdown,html,links,images,screenshot,video')
+        ).toEqual([
           'markdown',
           'html',
           'links',
           'images',
           'screenshot',
+          'video',
         ]);
       });
     });

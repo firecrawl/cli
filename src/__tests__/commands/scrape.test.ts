@@ -2,8 +2,11 @@
  * Tests for scrape command
  */
 
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { executeScrape } from '../../commands/scrape';
+import { executeScrape, handleAllScrapeCommand } from '../../commands/scrape';
 import { getClient } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { setupTest, teardownTest } from '../utils/mock-client';
@@ -447,12 +450,9 @@ describe('executeScrape', () => {
 
   describe('Type safety', () => {
     it('should accept valid ScrapeFormat types', async () => {
-      const formatList: Array<'markdown' | 'html' | 'rawHtml' | 'links'> = [
-        'markdown',
-        'html',
-        'rawHtml',
-        'links',
-      ];
+      const formatList: Array<
+        'markdown' | 'html' | 'rawHtml' | 'links' | 'video'
+      > = ['markdown', 'html', 'rawHtml', 'links', 'video'];
 
       for (const format of formatList) {
         mockClient.scrape.mockResolvedValue({ [format]: 'test' });
@@ -481,6 +481,75 @@ describe('executeScrape', () => {
         formats: ['markdown', 'links', 'images'],
         integration: 'cli',
       });
+    });
+  });
+
+  describe('download output', () => {
+    it('should save video URLs and metadata for video format downloads', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'firecrawl-cli-'));
+      const previousCwd = process.cwd();
+      const stderrSpy = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation(() => true);
+
+      const videos = [
+        {
+          url: 'https://cdn.example.com/video-a.mp4',
+          sourceURL: 'https://example.com/product',
+          source: 'script',
+          kind: 'file',
+          provider: 'cdn.example.com',
+          thumbnail: 'https://cdn.example.com/thumb-a.jpg',
+        },
+        {
+          url: 'https://cdn.example.com/video-b.mp4',
+          sourceURL: 'https://example.com/product',
+          source: 'script',
+          kind: 'file',
+          provider: 'cdn.example.com',
+        },
+      ];
+
+      mockClient.map = vi.fn().mockResolvedValue({
+        links: [{ url: 'https://example.com/product' }],
+      });
+      mockClient.scrape.mockResolvedValue({ videos });
+
+      try {
+        process.chdir(tmpDir);
+        initializeConfig({ apiUrl: 'http://localhost:3002' });
+
+        await handleAllScrapeCommand(
+          'https://example.com/product',
+          {
+            url: 'https://example.com/product',
+            apiUrl: 'http://localhost:3002',
+            formats: ['video'],
+          },
+          { yes: true, limit: 1 }
+        );
+
+        const outputDir = path.join(
+          tmpDir,
+          '.firecrawl',
+          'example.com',
+          'product'
+        );
+        const videosTxt = path.join(outputDir, 'videos.txt');
+        const videosJson = path.join(outputDir, 'videos.json');
+
+        expect(fs.readFileSync(videosTxt, 'utf-8')).toBe(
+          'https://cdn.example.com/video-a.mp4\nhttps://cdn.example.com/video-b.mp4'
+        );
+        expect(JSON.parse(fs.readFileSync(videosJson, 'utf-8'))).toEqual(
+          videos
+        );
+        expect(fs.existsSync(path.join(outputDir, 'index.json'))).toBe(false);
+      } finally {
+        process.chdir(previousCwd);
+        stderrSpy.mockRestore();
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
     });
   });
 });

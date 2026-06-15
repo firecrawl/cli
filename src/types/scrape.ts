@@ -13,7 +13,45 @@ export type ScrapeFormat =
   | 'changeTracking'
   | 'json'
   | 'attributes'
-  | 'branding';
+  | 'branding'
+  | 'video';
+
+export interface VideoItem {
+  url: string;
+  sourceURL: string;
+  source: string;
+  kind?: string;
+  provider?: string;
+  title?: string;
+  thumbnail?: string;
+  description?: string;
+  duration?: string;
+  mimeType?: string;
+  width?: number;
+  height?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ScrapeDocument {
+  markdown?: string;
+  html?: string;
+  rawHtml?: string;
+  links?: string[];
+  images?: string[];
+  screenshot?: string;
+  summary?: string;
+  audio?: string;
+  video?: string;
+  videos?: VideoItem[];
+  answer?: string;
+  highlights?: string;
+  warning?: string;
+  actions?: Record<string, unknown>;
+  changeTracking?: Record<string, unknown>;
+  branding?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  [key: string]: unknown;
+}
 
 export interface ScrapeLocation {
   /** ISO 3166-1 alpha-2 country code (e.g., 'US', 'DE', 'BR') */
@@ -76,6 +114,6 @@ export interface ScrapeOptions {
 
 export interface ScrapeResult {
   success: boolean;
-  data?: any;
+  data?: ScrapeDocument;
   error?: string;
 }
