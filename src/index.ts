@@ -66,14 +66,15 @@ import { createCreateCommand } from './commands/create';
 // Initialize global configuration from environment variables
 initializeConfig();
 
-// Commands that require authentication
+// Commands that require authentication.
+// NOTE: `scrape` and `search` are intentionally excluded — they fall back to
+// the keyless free tier (rate-limited per IP) when no API key is configured, so
+// they must not prompt for login. They still use a configured key when present.
 const AUTH_REQUIRED_COMMANDS = [
-  'scrape',
   'download',
   'crawl',
   'map',
   'parse',
-  'search',
   'feedback',
   'search-feedback',
   'agent',

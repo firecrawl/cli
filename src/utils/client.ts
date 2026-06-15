@@ -7,12 +7,46 @@ import { Firecrawl } from 'firecrawl';
 import type { FirecrawlClientOptions } from 'firecrawl';
 import {
   getConfig,
+  getApiKey,
+  isCustomApiUrl,
   validateConfig,
   updateConfig,
   type GlobalConfig,
 } from './config';
 
 let clientInstance: Firecrawl | null = null;
+
+const DEFAULT_API_URL = 'https://api.firecrawl.dev';
+
+/**
+ * Keyless free tier: scrape and search work without an API key against the
+ * Firecrawl cloud (rate-limited per IP). The cloud only grants this when NO
+ * Authorization header is sent, so these requests bypass the SDK — which always
+ * attaches a Bearer header — and post directly. Only applies to the cloud
+ * default URL; a custom/self-hosted URL keeps its existing optional-auth path.
+ */
+export function isKeylessMode(apiKey?: string, apiUrl?: string): boolean {
+  return !getApiKey(apiKey) && !isCustomApiUrl(apiUrl);
+}
+
+export async function keylessRequest(
+  path: string,
+  body: Record<string, unknown>
+): Promise<any> {
+  const apiUrl = (getConfig().apiUrl || DEFAULT_API_URL).replace(/\/$/, '');
+  const response = await fetch(`${apiUrl}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json: any = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      json?.error || `Firecrawl request failed (HTTP ${response.status})`
+    );
+  }
+  return json;
+}
 
 /**
  * Get or create the Firecrawl client instance

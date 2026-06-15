@@ -9,7 +9,7 @@ import type {
   ScrapeFormat,
   ScrapeLocation,
 } from '../types/scrape';
-import { getClient } from '../utils/client';
+import { getClient, isKeylessMode, keylessRequest } from '../utils/client';
 import { handleScrapeOutput, writeOutput } from '../utils/output';
 import {
   saveInteractSession,
@@ -57,9 +57,6 @@ function outputTiming(
 export async function executeScrape(
   options: ScrapeOptions
 ): Promise<ScrapeResult> {
-  // Get client instance (updates global config if apiKey/apiUrl provided)
-  const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
-
   // Build scrape options
   const formats: FormatOption[] = [];
 
@@ -145,7 +142,22 @@ export async function executeScrape(
   const requestStartTime = Date.now();
 
   try {
-    const result = await app.scrape(options.url, scrapeParams);
+    let result: any;
+    if (isKeylessMode(options.apiKey, options.apiUrl)) {
+      // Keyless free tier: header-less request. The API identifies the CLI via
+      // the `integration: 'cli'` field already in scrapeParams.
+      const json = await keylessRequest('/v2/scrape', {
+        url: options.url,
+        ...scrapeParams,
+      });
+      result = json?.data ?? json;
+    } else {
+      const app = getClient({
+        apiKey: options.apiKey,
+        apiUrl: options.apiUrl,
+      });
+      result = await app.scrape(options.url, scrapeParams);
+    }
     const requestEndTime = Date.now();
     outputTiming(options, requestStartTime, requestEndTime);
 

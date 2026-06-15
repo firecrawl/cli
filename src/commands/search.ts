@@ -11,7 +11,7 @@ import type {
   ImageSearchResult,
   NewsSearchResult,
 } from '../types/search';
-import { getClient } from '../utils/client';
+import { getClient, isKeylessMode, keylessRequest } from '../utils/client';
 import { writeOutput } from '../utils/output';
 
 /**
@@ -21,8 +21,6 @@ export async function executeSearch(
   options: SearchOptions
 ): Promise<SearchResult> {
   try {
-    const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
-
     // Build search options for the SDK
     const searchParams: Record<string, any> = {
       limit: options.limit,
@@ -90,15 +88,31 @@ export async function executeSearch(
       searchParams.scrapeOptions = scrapeOptions;
     }
 
+    const searchBody = {
+      query: options.query,
+      ...searchParams,
+    };
+
     // Call /v2/search through the SDK's HTTP layer (auth + retries) instead
     // of `app.search()` so we keep the full response envelope. The high-level
     // `search()` helper drops `id` and `creditsUsed`, which breaks the
     // `firecrawl search-feedback <id>` workflow that consumers rely on.
-    const httpResponse = await (app as any).http.post('/v2/search', {
-      query: options.query,
-      ...searchParams,
-    });
-    const envelope = (httpResponse?.data ?? {}) as Record<string, any>;
+    let envelope: Record<string, any>;
+    if (isKeylessMode(options.apiKey, options.apiUrl)) {
+      // Keyless free tier: header-less request. The API identifies the CLI via
+      // the `integration: 'cli'` field already in searchParams.
+      envelope = (await keylessRequest('/v2/search', searchBody)) as Record<
+        string,
+        any
+      >;
+    } else {
+      const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
+      const httpResponse = await (app as any).http.post(
+        '/v2/search',
+        searchBody
+      );
+      envelope = (httpResponse?.data ?? {}) as Record<string, any>;
+    }
     const payload = (envelope.data ?? {}) as Record<string, any>;
 
     const data: SearchResultData = {};
