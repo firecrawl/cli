@@ -57,9 +57,15 @@ export interface EndpointFeedbackResult {
   errorCode?: EndpointFeedbackErrorCode;
   status?: number;
   disabled?: boolean;
-  disabledSource?: 'team';
+  disabledSource?: 'env' | 'team';
 }
 
+export const ENDPOINT_FEEDBACK_OPT_OUT_ENV_VARS = [
+  'FIRECRAWL_NO_ENDPOINT_FEEDBACK',
+  'FIRECRAWL_DISABLE_ENDPOINT_FEEDBACK',
+] as const;
+
+const TRUTHY = new Set(['1', 'true', 'yes', 'on']);
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
 
 export const ENDPOINT_FEEDBACK_ENDPOINTS: EndpointFeedbackEndpoint[] = [
@@ -182,6 +188,18 @@ export function parseEndpointFeedbackRating(
   return rating as SearchFeedbackRating;
 }
 
+export function isEndpointFeedbackDisabledLocally(
+  env: NodeJS.ProcessEnv = process.env
+): boolean {
+  for (const key of ENDPOINT_FEEDBACK_OPT_OUT_ENV_VARS) {
+    const value = env[key];
+    if (typeof value === 'string' && TRUTHY.has(value.trim().toLowerCase())) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function parseEndpointFeedbackCliOptions(options: {
   issues?: string;
   tags?: string;
@@ -206,6 +224,15 @@ export function parseEndpointFeedbackCliOptions(options: {
 export async function executeEndpointFeedback(
   options: EndpointFeedbackOptions
 ): Promise<EndpointFeedbackResult> {
+  if (isEndpointFeedbackDisabledLocally()) {
+    return {
+      success: true,
+      disabled: true,
+      disabledSource: 'env',
+      creditsRefunded: 0,
+    };
+  }
+
   try {
     if (options.apiKey || options.apiUrl) {
       getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
@@ -349,9 +376,13 @@ export async function handleEndpointFeedbackCommand(
   const result = await executeEndpointFeedback(options);
 
   if (result.disabled) {
-    if (!options.silent) {
-      console.error(result.warning ?? 'Feedback is disabled for this team.');
+    if (result.disabledSource === 'env') {
+      process.exit(0);
     }
+    if (options.silent) {
+      process.exit(0);
+    }
+    console.error(result.warning ?? 'Feedback is disabled for this team.');
     process.exit(0);
   }
 

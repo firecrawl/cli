@@ -332,6 +332,9 @@ firecrawl feedback scrape 0193f6c5-1234-7890-abcd-1234567890ab \
 Keep notes and metadata small. Do not send raw scrape or parse outputs as
 feedback.
 
+Set `FIRECRAWL_NO_ENDPOINT_FEEDBACK=1` to make `firecrawl feedback` skip
+endpoint feedback calls silently.
+
 #### Feedback Options
 
 | Option                           | Description                                  |

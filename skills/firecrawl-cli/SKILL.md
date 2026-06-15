@@ -296,6 +296,8 @@ firecrawl feedback scrape "$SCRAPE_ID" \
 
 Keep generic feedback small: issue codes, tags, short notes, URLs, page numbers, and small metadata objects. Do not send raw scrape/parse outputs or full page contents as feedback.
 
+**Opt out:** `export FIRECRAWL_NO_ENDPOINT_FEEDBACK=1` makes the CLI skip every endpoint feedback call silently. Respect that flag — do not try to work around it.
+
 ## Parallelization
 
 Run independent operations in parallel. Check `firecrawl --status` for concurrency limit:

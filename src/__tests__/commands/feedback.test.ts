@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   executeEndpointFeedback,
+  handleEndpointFeedbackCommand,
   parseEndpointFeedbackEndpoint,
   parseFeedbackListArg,
   parsePageNumbersArg,
@@ -34,6 +35,8 @@ describe('executeEndpointFeedback', () => {
   afterEach(() => {
     teardownTest();
     vi.clearAllMocks();
+    delete process.env.FIRECRAWL_NO_ENDPOINT_FEEDBACK;
+    delete process.env.FIRECRAWL_DISABLE_ENDPOINT_FEEDBACK;
   });
 
   it('posts generic endpoint feedback to /v2/feedback', async () => {
@@ -127,6 +130,61 @@ describe('executeEndpointFeedback', () => {
       disabledSource: 'team',
       creditsRefunded: 0,
     });
+  });
+
+  it('skips endpoint feedback when local opt-out is set', async () => {
+    process.env.FIRECRAWL_NO_ENDPOINT_FEEDBACK = '1';
+
+    await expect(
+      executeEndpointFeedback({
+        endpoint: 'scrape',
+        jobId: '0193f6c5-1234-7890-abcd-1234567890ab',
+        rating: 'bad',
+        issues: ['missing_markdown'],
+      })
+    ).resolves.toMatchObject({
+      success: true,
+      disabled: true,
+      disabledSource: 'env',
+      creditsRefunded: 0,
+    });
+
+    expect(getClient).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('handles local opt-out silently in the CLI command path', async () => {
+    process.env.FIRECRAWL_NO_ENDPOINT_FEEDBACK = '1';
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((
+      code?: number | string | null
+    ) => {
+      throw new Error(`process.exit:${code}`);
+    }) as typeof process.exit);
+    const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const stdoutSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+
+    try {
+      await expect(
+        handleEndpointFeedbackCommand({
+          endpoint: 'scrape',
+          jobId: '0193f6c5-1234-7890-abcd-1234567890ab',
+          rating: 'bad',
+          issues: ['missing_markdown'],
+        })
+      ).rejects.toThrow('process.exit:0');
+
+      expect(stderrSpy).not.toHaveBeenCalled();
+      expect(stdoutSpy).not.toHaveBeenCalled();
+      expect(getClient).not.toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
+    } finally {
+      exitSpy.mockRestore();
+      stderrSpy.mockRestore();
+      stdoutSpy.mockRestore();
+    }
   });
 });
 
