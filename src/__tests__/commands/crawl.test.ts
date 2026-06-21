@@ -343,7 +343,7 @@ describe('executeCrawl', () => {
       expect(mockClient.crawl).toHaveBeenCalledWith(
         'https://example.com',
         expect.objectContaining({
-          pollInterval: 5000, // Default poll interval
+          pollInterval: 5, // Default poll interval
         })
       );
       expect(result).toEqual({
@@ -371,7 +371,7 @@ describe('executeCrawl', () => {
       expect(mockClient.crawl).toHaveBeenCalledWith(
         'https://example.com',
         expect.objectContaining({
-          pollInterval: 10000, // Converted to milliseconds
+          pollInterval: 10, // seconds
         })
       );
     });
@@ -395,7 +395,7 @@ describe('executeCrawl', () => {
       expect(mockClient.crawl).toHaveBeenCalledWith(
         'https://example.com',
         expect.objectContaining({
-          timeout: 300000, // Converted to milliseconds
+          timeout: 300, // seconds
         })
       );
     });
@@ -422,8 +422,8 @@ describe('executeCrawl', () => {
       expect(mockClient.crawl).toHaveBeenCalledWith(
         'https://example.com',
         expect.objectContaining({
-          pollInterval: 5000,
-          timeout: 600000,
+          pollInterval: 5,
+          timeout: 600,
           limit: 50,
           maxDiscoveryDepth: 2,
         })
@@ -443,13 +443,14 @@ describe('executeCrawl', () => {
       vi.restoreAllMocks();
       vi.useRealTimers();
     });
-
     it('should use custom polling with progress when progress flag is set', async () => {
       const jobId = '550e8400-e29b-41d4-a716-446655440000';
+
       const mockStartResponse = {
         id: jobId,
         url: 'https://example.com',
       };
+
       const mockScrapingStatus = {
         id: jobId,
         status: 'scraping',
@@ -457,6 +458,7 @@ describe('executeCrawl', () => {
         completed: 50,
         data: [],
       };
+
       const mockCompletedStatus = {
         id: jobId,
         status: 'completed',
@@ -466,33 +468,68 @@ describe('executeCrawl', () => {
       };
 
       mockClient.startCrawl.mockResolvedValue(mockStartResponse);
-      // First call returns scraping status, second returns completed
+
       mockClient.getCrawlStatus
         .mockResolvedValueOnce(mockScrapingStatus)
         .mockResolvedValueOnce(mockCompletedStatus);
 
-      // Start the async operation
       const crawlPromise = executeCrawl({
         urlOrJobId: 'https://example.com',
         wait: true,
         progress: true,
-        pollInterval: 0.001, // Very short interval for testing (1ms)
+        pollInterval: 1, // seconds
       });
 
-      // Fast-forward timers to resolve the first setTimeout
-      await vi.advanceTimersByTimeAsync(1);
-
-      // Fast-forward again to resolve the second setTimeout
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(1000);
 
       const result = await crawlPromise;
 
       expect(mockClient.startCrawl).toHaveBeenCalledTimes(1);
       expect(mockClient.getCrawlStatus).toHaveBeenCalledTimes(2);
       expect(result.success).toBe(true);
+
       if (result.success && 'data' in result) {
         expect(result.data.status).toBe('completed');
       }
+    });
+
+    it('should timeout correctly in progress mode', async () => {
+      const jobId = '550e8400-e29b-41d4-a716-446655440000';
+      const mockStartResponse = {
+        id: jobId,
+        url: 'https://example.com',
+      };
+      // Always return 'scraping' so crawl never completes (forces timeout)
+      const mockScrapingStatus = {
+        id: jobId,
+        status: 'scraping',
+        total: 100,
+        completed: 50,
+        data: [],
+      };
+
+      mockClient.startCrawl.mockResolvedValue(mockStartResponse);
+      // Always returns scraping (never completes)
+      mockClient.getCrawlStatus.mockResolvedValue(mockScrapingStatus);
+
+      // Start the async operation
+      const crawlPromise = executeCrawl({
+        urlOrJobId: 'https://example.com',
+        wait: true,
+        progress: true,
+        pollInterval: 1, // 1 second
+        timeout: 2, // 2 seconds
+      });
+
+      // Advance time beyond timeout
+      await vi.advanceTimersByTimeAsync(3000);
+      await vi.runAllTimersAsync(); // ensures all async chains resolve
+      await Promise.resolve(); // Flush microtasks explicitly
+
+      const result = await crawlPromise;
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/Timeout/i);
     });
   });
 
