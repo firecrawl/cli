@@ -143,58 +143,59 @@ export async function executeCrawl(
         crawlOptions.timeout = timeout * 1000; // Convert to milliseconds
       }
 
-      // Show progress if requested - use custom polling for better UX
-      if (options.progress) {
-        // Start crawl first
-        const response = await app.startCrawl(urlOrJobId, crawlOptions);
-        const jobId = response.id;
+      // Use manual polling for both --wait and --wait --progress.
+      // app.crawl() (the SDK convenience method) uses an internal mechanism
+      // incompatible with self-hosted instances, causing --wait to hang
+      // indefinitely without --progress. Polling via getCrawlStatus() works
+      // correctly against both cloud and self-hosted deployments.
+      const response = await app.startCrawl(urlOrJobId, crawlOptions);
+      const jobId = response.id;
 
+      if (options.progress) {
         process.stderr.write(`Crawling ${urlOrJobId}...\n`);
         process.stderr.write(`Job ID: ${jobId}\n`);
+      }
 
-        // Poll for status with progress updates
-        const pollMs = crawlOptions.pollInterval || 5000;
-        const startTime = Date.now();
-        const timeoutMs = timeout ? timeout * 1000 : undefined;
+      const pollMs = crawlOptions.pollInterval || 5000;
+      const startTime = Date.now();
+      const timeoutMs = timeout ? timeout * 1000 : undefined;
 
-        while (true) {
-          await new Promise((resolve) => setTimeout(resolve, pollMs));
+      while (true) {
+        await new Promise((resolve) => setTimeout(resolve, pollMs));
 
-          const status = await app.getCrawlStatus(jobId);
+        const status = await app.getCrawlStatus(jobId);
 
+        if (options.progress) {
           // Show progress
           process.stderr.write(
             `\rProgress: ${status.completed}/${status.total} pages (${status.status})`
           );
-
-          if (
-            status.status === 'completed' ||
-            status.status === 'failed' ||
-            status.status === 'cancelled'
-          ) {
-            process.stderr.write('\n');
-            return {
-              success: true,
-              data: status,
-            };
-          }
-
-          // Check timeout
-          if (timeoutMs && Date.now() - startTime > timeoutMs) {
-            process.stderr.write('\n');
-            return {
-              success: false,
-              error: `Timeout after ${timeout} seconds. Crawl still in progress.`,
-            };
-          }
         }
-      } else {
-        // Use SDK's built-in polling (no progress display)
-        const crawlJob = await app.crawl(urlOrJobId, crawlOptions);
-        return {
-          success: true,
-          data: crawlJob,
-        };
+
+        if (
+          status.status === 'completed' ||
+          status.status === 'failed' ||
+          status.status === 'cancelled'
+        ) {
+          if (options.progress) {
+            process.stderr.write('\n');
+          }
+          return {
+            success: true,
+            data: status,
+          };
+        }
+
+        // Check timeout
+        if (timeoutMs && Date.now() - startTime > timeoutMs) {
+          if (options.progress) {
+            process.stderr.write('\n');
+          }
+          return {
+            success: false,
+            error: `Timeout after ${timeout} seconds. Crawl still in progress.`,
+          };
+        }
       }
     }
 
