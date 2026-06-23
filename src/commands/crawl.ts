@@ -84,7 +84,7 @@ export async function executeCrawl(
     }
 
     // Build crawl options
-    const crawlOptions: any = {
+    const crawlOptions: Partial<CrawlOptions> & Record<string, any> = {
       integration: 'cli',
     };
 
@@ -132,15 +132,15 @@ export async function executeCrawl(
 
     // If wait mode, use the convenience crawl method with polling
     if (wait) {
-      // Set polling options
+      // Set polling options (SDK expects seconds, not ms)
       if (pollInterval !== undefined) {
-        crawlOptions.pollInterval = pollInterval * 1000; // Convert to milliseconds
+        crawlOptions.pollInterval = pollInterval; // seconds
       } else {
         // Default poll interval: 5 seconds
-        crawlOptions.pollInterval = 5000;
+        crawlOptions.pollInterval = 5;
       }
       if (timeout !== undefined) {
-        crawlOptions.timeout = timeout * 1000; // Convert to milliseconds
+        crawlOptions.timeout = timeout; // seconds
       }
 
       // Show progress if requested - use custom polling for better UX
@@ -152,13 +152,19 @@ export async function executeCrawl(
         process.stderr.write(`Crawling ${urlOrJobId}...\n`);
         process.stderr.write(`Job ID: ${jobId}\n`);
 
-        // Poll for status with progress updates
-        const pollMs = crawlOptions.pollInterval || 5000;
+        // Converts seconds -> ms Only here
+        const pollMs =
+          crawlOptions.pollInterval !== undefined
+            ? crawlOptions.pollInterval * 1000
+            : 5000;
         const startTime = Date.now();
-        const timeoutMs = timeout ? timeout * 1000 : undefined;
+        const timeoutMs =
+          crawlOptions.timeout !== undefined
+            ? crawlOptions.timeout * 1000
+            : undefined;
 
         while (true) {
-          await new Promise((resolve) => setTimeout(resolve, pollMs));
+          await new Promise<void>((resolve) => setTimeout(resolve, pollMs));
 
           const status = await app.getCrawlStatus(jobId);
 
