@@ -189,12 +189,38 @@ export async function executeCrawl(
           }
         }
       } else {
-        // Use SDK's built-in polling (no progress display)
-        const crawlJob = await app.crawl(urlOrJobId, crawlOptions);
-        return {
-          success: true,
-          data: crawlJob,
-        };
+        // Use custom HTTP polling (compatible with self-hosted instances)
+        const response = await app.startCrawl(urlOrJobId, crawlOptions);
+        const jobId = response.id;
+
+        const pollMs = crawlOptions.pollInterval || 5000;
+        const startTime = Date.now();
+        const timeoutMs = timeout ? timeout * 1000 : undefined;
+
+        while (true) {
+          await new Promise((resolve) => setTimeout(resolve, pollMs));
+
+          const status = await app.getCrawlStatus(jobId);
+
+          if (
+            status.status === 'completed' ||
+            status.status === 'failed' ||
+            status.status === 'cancelled'
+          ) {
+            return {
+              success: true,
+              data: status,
+            };
+          }
+
+          // Check timeout
+          if (timeoutMs && Date.now() - startTime > timeoutMs) {
+            return {
+              success: false,
+              error: `Timeout after ${timeout} seconds. Crawl still in progress.`,
+            };
+          }
+        }
       }
     }
 

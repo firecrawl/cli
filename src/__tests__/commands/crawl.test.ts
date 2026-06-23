@@ -324,93 +324,118 @@ describe('executeCrawl', () => {
   });
 
   describe('Wait mode (synchronous crawl)', () => {
-    it('should use crawl method with wait when wait flag is set', async () => {
-      const mockCrawlJob = {
-        id: '550e8400-e29b-41d4-a716-446655440000',
+    const jobId = '550e8400-e29b-41d4-a716-446655440000';
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('should use startCrawl + HTTP polling when wait flag is set (self-hosted compatible)', async () => {
+      const mockStartResponse = { id: jobId, url: 'https://example.com' };
+      const mockCompletedStatus = {
+        id: jobId,
         status: 'completed',
         total: 100,
         completed: 100,
         data: [{ markdown: '# Page 1' }],
       };
-      mockClient.crawl.mockResolvedValue(mockCrawlJob);
 
-      const result = await executeCrawl({
+      mockClient.startCrawl.mockResolvedValue(mockStartResponse);
+      mockClient.getCrawlStatus.mockResolvedValue(mockCompletedStatus);
+
+      const crawlPromise = executeCrawl({
         urlOrJobId: 'https://example.com',
         wait: true,
+        pollInterval: 0.001,
       });
 
-      expect(mockClient.crawl).toHaveBeenCalledTimes(1);
-      expect(mockClient.crawl).toHaveBeenCalledWith(
+      await vi.advanceTimersByTimeAsync(1);
+      const result = await crawlPromise;
+
+      expect(mockClient.startCrawl).toHaveBeenCalledTimes(1);
+      expect(mockClient.startCrawl).toHaveBeenCalledWith(
         'https://example.com',
-        expect.objectContaining({
-          pollInterval: 5000, // Default poll interval
-        })
+        expect.objectContaining({ pollInterval: 1 })
       );
-      expect(result).toEqual({
-        success: true,
-        data: mockCrawlJob,
-      });
+      expect(mockClient.crawl).not.toHaveBeenCalled();
+      expect(mockClient.getCrawlStatus).toHaveBeenCalledWith(jobId);
+      expect(result).toEqual({ success: true, data: mockCompletedStatus });
     });
 
-    it('should include custom pollInterval when provided', async () => {
-      const mockCrawlJob = {
-        id: '550e8400-e29b-41d4-a716-446655440000',
+    it('should use default poll interval of 5000ms when not specified', async () => {
+      const mockStartResponse = { id: jobId, url: 'https://example.com' };
+      const mockCompletedStatus = {
+        id: jobId,
         status: 'completed',
-        total: 100,
-        completed: 100,
+        total: 10,
+        completed: 10,
         data: [],
       };
-      mockClient.crawl.mockResolvedValue(mockCrawlJob);
 
-      await executeCrawl({
+      mockClient.startCrawl.mockResolvedValue(mockStartResponse);
+      mockClient.getCrawlStatus.mockResolvedValue(mockCompletedStatus);
+
+      const crawlPromise = executeCrawl({
         urlOrJobId: 'https://example.com',
         wait: true,
-        pollInterval: 10,
       });
 
-      expect(mockClient.crawl).toHaveBeenCalledWith(
+      await vi.advanceTimersByTimeAsync(5000);
+      const result = await crawlPromise;
+
+      expect(mockClient.startCrawl).toHaveBeenCalledWith(
         'https://example.com',
-        expect.objectContaining({
-          pollInterval: 10000, // Converted to milliseconds
-        })
+        expect.objectContaining({ pollInterval: 5000 })
       );
+      expect(result.success).toBe(true);
     });
 
-    it('should include timeout when provided', async () => {
-      const mockCrawlJob = {
-        id: '550e8400-e29b-41d4-a716-446655440000',
-        status: 'completed',
+    it('should return timeout error when crawl exceeds timeout', async () => {
+      const mockStartResponse = { id: jobId, url: 'https://example.com' };
+      const mockScrapingStatus = {
+        id: jobId,
+        status: 'scraping',
         total: 100,
-        completed: 100,
+        completed: 10,
         data: [],
       };
-      mockClient.crawl.mockResolvedValue(mockCrawlJob);
 
-      await executeCrawl({
+      mockClient.startCrawl.mockResolvedValue(mockStartResponse);
+      mockClient.getCrawlStatus.mockResolvedValue(mockScrapingStatus);
+
+      const crawlPromise = executeCrawl({
         urlOrJobId: 'https://example.com',
         wait: true,
-        timeout: 300,
+        timeout: 1,
+        pollInterval: 0.001,
       });
 
-      expect(mockClient.crawl).toHaveBeenCalledWith(
-        'https://example.com',
-        expect.objectContaining({
-          timeout: 300000, // Converted to milliseconds
-        })
-      );
+      // Advance past the timeout
+      await vi.advanceTimersByTimeAsync(2000);
+      const result = await crawlPromise;
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/Timeout after 1 seconds/);
     });
 
     it('should combine wait options with crawl options', async () => {
-      const mockCrawlJob = {
-        id: '550e8400-e29b-41d4-a716-446655440000',
+      const mockStartResponse = { id: jobId, url: 'https://example.com' };
+      const mockCompletedStatus = {
+        id: jobId,
         status: 'completed',
         total: 50,
         completed: 50,
         data: [],
       };
-      mockClient.crawl.mockResolvedValue(mockCrawlJob);
 
-      await executeCrawl({
+      mockClient.startCrawl.mockResolvedValue(mockStartResponse);
+      mockClient.getCrawlStatus.mockResolvedValue(mockCompletedStatus);
+
+      const crawlPromise = executeCrawl({
         urlOrJobId: 'https://example.com',
         wait: true,
         pollInterval: 5,
@@ -419,7 +444,10 @@ describe('executeCrawl', () => {
         maxDepth: 2,
       });
 
-      expect(mockClient.crawl).toHaveBeenCalledWith(
+      await vi.advanceTimersByTimeAsync(5000);
+      await crawlPromise;
+
+      expect(mockClient.startCrawl).toHaveBeenCalledWith(
         'https://example.com',
         expect.objectContaining({
           pollInterval: 5000,
@@ -526,9 +554,9 @@ describe('executeCrawl', () => {
       });
     });
 
-    it('should return error result when crawl fails', async () => {
+    it('should return error result when startCrawl fails in wait mode', async () => {
       const errorMessage = 'Crawl timeout';
-      mockClient.crawl.mockRejectedValue(new Error(errorMessage));
+      mockClient.startCrawl.mockRejectedValue(new Error(errorMessage));
 
       const result = await executeCrawl({
         urlOrJobId: 'https://example.com',
