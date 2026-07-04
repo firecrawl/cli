@@ -12,6 +12,7 @@ import {
   ALL_SKILL_REPOS,
   buildSkillsInstallArgs,
   cleanNpmEnv,
+  resolveSkillsTarget,
   SKILL_REPOS,
   WORKFLOW_SKILL_REPOS,
 } from './skills-install';
@@ -134,7 +135,7 @@ async function installSkillRepoQuiet(
   if (hasNpx()) {
     const args = buildSkillsInstallArgs({
       repo,
-      agent: options.agent,
+      ...resolveSkillsTarget(options),
       yes: options.yes || options.all || true,
       global: true,
       includeNpxYes: true,

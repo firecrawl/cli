@@ -13,6 +13,7 @@ import { getApiKey } from '../utils/config';
 import {
   buildSkillsInstallArgs,
   cleanNpmEnv,
+  resolveSkillsTarget,
   SKILL_REPOS,
   WORKFLOW_SKILL_REPOS,
 } from './skills-install';
@@ -323,7 +324,7 @@ async function installSkills(
     if (hasNpx()) {
       const args = buildSkillsInstallArgs({
         repo,
-        agent: options.agent,
+        ...resolveSkillsTarget(options),
         global: true,
         yes: options.yes,
         includeNpxYes: true,

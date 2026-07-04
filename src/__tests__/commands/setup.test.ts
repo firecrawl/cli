@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execSync } from 'child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs';
 import os from 'os';
 import path from 'path';
 import {
@@ -41,17 +41,42 @@ describe('handleSetupCommand', () => {
     vi.restoreAllMocks();
   });
 
-  it('installs core and build skills globally across all detected agents by default', async () => {
-    await handleSetupCommand('skills', {});
+  it('falls back to installing across every known agent when none is detected', async () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-setup-test-'));
+    process.env.HOME = home;
 
-    expect(execSync).toHaveBeenCalledWith(
-      'npx -y skills add firecrawl/cli --full-depth --global --all',
-      expect.objectContaining({ stdio: 'inherit' })
-    );
-    expect(execSync).toHaveBeenCalledWith(
-      'npx -y skills add firecrawl/skills --full-depth --global --all',
-      expect.objectContaining({ stdio: 'inherit' })
-    );
+    try {
+      await handleSetupCommand('skills', {});
+
+      expect(execSync).toHaveBeenCalledWith(
+        'npx -y skills add firecrawl/cli --full-depth --global --all',
+        expect.objectContaining({ stdio: 'inherit' })
+      );
+      expect(execSync).toHaveBeenCalledWith(
+        'npx -y skills add firecrawl/skills --full-depth --global --all',
+        expect.objectContaining({ stdio: 'inherit' })
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('scopes skills install to the detected agents when none is explicitly provided', async () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-setup-test-'));
+    mkdirSync(path.join(home, '.claude'));
+    mkdirSync(path.join(home, '.cursor'));
+    process.env.HOME = home;
+
+    try {
+      await handleSetupCommand('skills', {});
+
+      expect(execSync).toHaveBeenCalledWith(
+        'npx -y skills add firecrawl/cli --full-depth --global --agent claude-code cursor',
+        expect.objectContaining({ stdio: 'inherit' })
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   it('installs core and build skills globally for a specific agent without using --all', async () => {
@@ -68,12 +93,19 @@ describe('handleSetupCommand', () => {
   });
 
   it('installs workflow skills as a separate setup option', async () => {
-    await handleSetupCommand('workflows', {});
+    const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-setup-test-'));
+    process.env.HOME = home;
 
-    expect(execSync).toHaveBeenCalledWith(
-      'npx -y skills add firecrawl/firecrawl-workflows --full-depth --global --all',
-      expect.objectContaining({ stdio: 'inherit' })
-    );
+    try {
+      await handleSetupCommand('workflows', {});
+
+      expect(execSync).toHaveBeenCalledWith(
+        'npx -y skills add firecrawl/firecrawl-workflows --full-depth --global --all',
+        expect.objectContaining({ stdio: 'inherit' })
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   it('installs all skill repos for Codex non-interactively', async () => {
@@ -107,22 +139,29 @@ describe('handleSetupCommand', () => {
   });
 
   it('installs the default setup bundle with --yes', async () => {
-    await handleSetupCommand(undefined, { yes: true });
+    const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-setup-test-'));
+    process.env.HOME = home;
 
-    expect(execSync).toHaveBeenCalledWith(
-      'npx -y skills add firecrawl/cli --full-depth --global --all --yes',
-      expect.objectContaining({ stdio: 'inherit' })
-    );
-    expect(execSync).toHaveBeenCalledWith(
-      'npx -y skills add firecrawl/skills --full-depth --global --all --yes',
-      expect.objectContaining({ stdio: 'inherit' })
-    );
-    expect(execSync).toHaveBeenCalledWith(
-      'npx -y add-mcp "https://mcp.firecrawl.dev/fc-test-key/v2/mcp" --name firecrawl --transport http --global --yes',
-      expect.objectContaining({
-        stdio: 'inherit',
-      })
-    );
+    try {
+      await handleSetupCommand(undefined, { yes: true });
+
+      expect(execSync).toHaveBeenCalledWith(
+        'npx -y skills add firecrawl/cli --full-depth --global --all --yes',
+        expect.objectContaining({ stdio: 'inherit' })
+      );
+      expect(execSync).toHaveBeenCalledWith(
+        'npx -y skills add firecrawl/skills --full-depth --global --all --yes',
+        expect.objectContaining({ stdio: 'inherit' })
+      );
+      expect(execSync).toHaveBeenCalledWith(
+        'npx -y add-mcp "https://mcp.firecrawl.dev/fc-test-key/v2/mcp" --name firecrawl --transport http --global --yes',
+        expect.objectContaining({
+          stdio: 'inherit',
+        })
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   it('requires a subcommand for bare setup in non-interactive mode', async () => {

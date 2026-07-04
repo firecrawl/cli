@@ -12,6 +12,8 @@
  * installs core/build skills, and `firecrawl setup workflows` installs workflow
  * skills.
  */
+import { detectInstalledAgentNames } from './skills-native';
+
 export const SKILL_REPOS = ['firecrawl/cli', 'firecrawl/skills'] as const;
 
 export const WORKFLOW_SKILL_REPOS = ['firecrawl/firecrawl-workflows'] as const;
@@ -22,13 +24,34 @@ export const ALL_SKILL_REPOS = [
 ] as const;
 
 export interface SkillsInstallCommandOptions {
-  agent?: string;
+  agent?: string | string[];
   all?: boolean;
   yes?: boolean;
   global?: boolean;
   includeNpxYes?: boolean;
   /** Repo to install from (defaults to firecrawl/cli) */
   repo?: string;
+}
+
+/**
+ * Resolve which agent(s) to install into.
+ *
+ * An explicit `--agent` or `--all` wins. Otherwise, install only into agents
+ * actually detected on this machine — installing into every agent the
+ * `skills` package knows about (most of which the user has never heard of)
+ * is surprising and litters $HOME with dozens of unused directories. Falls
+ * back to `--all` only if detection finds nothing, so non-interactive runs
+ * never end up with no target at all.
+ */
+export function resolveSkillsTarget(options: {
+  agent?: string;
+  all?: boolean;
+}): Pick<SkillsInstallCommandOptions, 'agent' | 'all'> {
+  if (options.agent) return { agent: options.agent };
+  if (options.all) return { all: true };
+
+  const detected = detectInstalledAgentNames();
+  return detected.length > 0 ? { agent: detected } : { all: true };
 }
 
 export function buildSkillsInstallArgs(
@@ -46,8 +69,7 @@ export function buildSkillsInstallArgs(
     args.push('--global');
   }
 
-  const installToAllAgents = options.agent ? false : (options.all ?? true);
-  if (installToAllAgents) {
+  if (options.all) {
     args.push('--all');
   }
 
@@ -55,8 +77,13 @@ export function buildSkillsInstallArgs(
     args.push('--yes');
   }
 
-  if (options.agent) {
-    args.push('--agent', options.agent);
+  const agents = options.agent
+    ? Array.isArray(options.agent)
+      ? options.agent
+      : [options.agent]
+    : [];
+  if (agents.length > 0) {
+    args.push('--agent', ...agents);
   }
 
   return args;
