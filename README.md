@@ -81,29 +81,6 @@ To install the Firecrawl MCP server into your editors (Cursor, Claude Code, VS C
 firecrawl setup mcp
 ```
 
-To co-deliver concise routing guidance into a project's harness-native context,
-select one agent and opt in to the router card:
-
-```bash
-firecrawl setup mcp --agent claude-code --router-card --project ./my-project
-firecrawl setup mcp --agent codex --router-card --project ./my-project
-```
-
-The CLI writes an auth-neutral, versioned managed block to `CLAUDE.md` for
-Claude Code, `AGENTS.md` for Codex/OpenCode/Hermes/OpenClaw, or
-`.cursor/rules/firecrawl.mdc` for Cursor/VS Code. Existing project guidance is
-preserved. The card is written only after MCP configuration succeeds; the MCP
-server itself never writes project files.
-
-`firecrawl launch <agent>` co-delivers the router card by default after MCP is
-configured and launches the agent in the selected project. Opt out explicitly
-when needed:
-
-```bash
-firecrawl launch codex --project ./my-project
-firecrawl launch claude --project ./my-project --no-router-card
-```
-
 To make Firecrawl the default web provider for supported AI agents:
 
 ```bash

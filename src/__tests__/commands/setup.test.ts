@@ -186,47 +186,6 @@ describe('handleSetupCommand', () => {
     );
   });
 
-  it('co-delivers an auth-neutral router card when explicitly requested', async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-router-setup-'));
-    try {
-      await handleSetupCommand('mcp', {
-        agent: 'claude-code',
-        global: true,
-        yes: true,
-        routerCard: true,
-        project: root,
-      });
-
-      const card = readFileSync(path.join(root, 'CLAUDE.md'), 'utf8');
-      expect(card).toContain('firecrawl-router-card:version=1');
-      expect(card).not.toContain('fc-test-key');
-      expect(card).not.toContain('mcp.firecrawl.dev');
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it('requires a single selected harness for MCP router-card delivery', async () => {
-    await expect(
-      handleSetupCommand('mcp', { routerCard: true, project: process.cwd() })
-    ).rejects.toThrow('requires one explicit --agent');
-    await expect(
-      handleSetupCommand('mcp', {
-        agent: 'all',
-        routerCard: true,
-        project: process.cwd(),
-      })
-    ).rejects.toThrow('requires one explicit --agent');
-    await expect(
-      handleSetupCommand('mcp', {
-        agent: 'unknown-harness',
-        routerCard: true,
-        project: process.cwd(),
-      })
-    ).rejects.toThrow('not supported');
-    expect(execSync).not.toHaveBeenCalled();
-  });
-
   it('normalizes launch aliases when reinstalling MCP after auth changes', async () => {
     await handleSetupCommand('mcp', {
       agent: 'codex-app',

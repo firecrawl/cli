@@ -2191,14 +2191,6 @@ program
     '--undo',
     'Undo setup defaults by re-enabling native web tools where supported'
   )
-  .option(
-    '--router-card',
-    'Write versioned Firecrawl routing guidance to the selected agent project context'
-  )
-  .option(
-    '--project <path>',
-    'Project directory for the router card (default: current directory)'
-  )
   .action(async (subcommand: SetupSubcommand, options) => {
     await handleSetupCommand(subcommand, options);
   });
@@ -2238,14 +2230,6 @@ program
   .option('--config', 'Alias for --install')
   .option('--skip-mcp', 'Launch without installing or updating Firecrawl MCP')
   .option('--skip-skills', 'Launch without installing Firecrawl skills')
-  .option(
-    '--no-router-card',
-    'Launch without writing Firecrawl routing guidance to the project context'
-  )
-  .option(
-    '--project <path>',
-    'Project directory for router guidance and launched-agent working directory'
-  )
   .option(
     '-g, --global',
     'Install Firecrawl MCP globally for the selected agent',

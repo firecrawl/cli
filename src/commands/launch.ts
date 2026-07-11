@@ -10,7 +10,6 @@ import {
   installSkillsForAgent,
 } from './setup';
 import { ALL_SKILL_REPOS } from './skills-install';
-import { installRouterCard } from '../utils/router-card';
 
 export interface LaunchOptions {
   config?: boolean;
@@ -20,8 +19,6 @@ export interface LaunchOptions {
   yes?: boolean;
   skipMcp?: boolean;
   skipSkills?: boolean;
-  routerCard?: boolean;
-  project?: string;
 }
 
 interface LaunchTarget {
@@ -33,10 +30,7 @@ interface LaunchTarget {
   command: string;
   args?: string[];
   supportsExtraArgs?: boolean;
-  fallbackCommand?: (
-    project: string
-  ) => { command: string; args: string[] } | null;
-  routerCardAgent: string;
+  fallbackCommand?: () => { command: string; args: string[] } | null;
 }
 
 type LaunchSetupMode = 'both' | 'mcp' | 'skills';
@@ -44,7 +38,6 @@ type LaunchSetupMode = 'both' | 'mcp' | 'skills';
 const TARGETS: LaunchTarget[] = [
   {
     aliases: ['claude', 'claude-code'],
-    routerCardAgent: 'claude',
     displayName: 'Claude Code',
     mcpAgent: 'claude-code',
     skillsAgent: 'claude-code',
@@ -58,22 +51,20 @@ const TARGETS: LaunchTarget[] = [
   },
   {
     aliases: ['code', 'vscode', 'vs-code'],
-    routerCardAgent: 'vscode',
     displayName: 'VS Code',
     mcpAgent: 'vscode',
     command: 'code',
     args: ['.'],
-    fallbackCommand: (project) => {
+    fallbackCommand: () => {
       if (process.platform !== 'darwin') return null;
       return {
         command: 'open',
-        args: ['-a', 'Visual Studio Code', project],
+        args: ['-a', 'Visual Studio Code', process.cwd()],
       };
     },
   },
   {
     aliases: ['codex'],
-    routerCardAgent: 'codex',
     displayName: 'Codex',
     mcpAgent: 'codex',
     skillsAgent: 'codex',
@@ -81,7 +72,6 @@ const TARGETS: LaunchTarget[] = [
   },
   {
     aliases: ['codex-app', 'codex-desktop', 'codex-gui'],
-    routerCardAgent: 'codex',
     displayName: 'Codex App',
     mcpAgent: 'codex',
     skillsAgent: 'codex',
@@ -98,7 +88,6 @@ const TARGETS: LaunchTarget[] = [
   },
   {
     aliases: ['opencode', 'open-code'],
-    routerCardAgent: 'opencode',
     displayName: 'OpenCode',
     mcpAgent: 'opencode',
     skillsAgent: 'opencode',
@@ -106,7 +95,6 @@ const TARGETS: LaunchTarget[] = [
   },
   {
     aliases: ['hermes', 'hermes-agent'],
-    routerCardAgent: 'hermes',
     displayName: 'Hermes Agent',
     mcpInstaller: installHermesMcp,
     skillsAgent: 'hermes-agent',
@@ -114,7 +102,6 @@ const TARGETS: LaunchTarget[] = [
   },
   {
     aliases: ['openclaw'],
-    routerCardAgent: 'openclaw',
     displayName: 'OpenClaw',
     mcpInstaller: installOpenClawMcp,
     skillsAgent: 'openclaw',
@@ -214,8 +201,7 @@ function commandExists(command: string): boolean {
 
 function resolveLaunchCommand(
   target: LaunchTarget,
-  extraArgs: string[],
-  project: string
+  extraArgs: string[]
 ): { command: string; args: string[] } {
   if (extraArgs.length > 0 && target.supportsExtraArgs === false) {
     throw new Error(`${target.displayName} does not accept extra arguments.`);
@@ -228,7 +214,7 @@ function resolveLaunchCommand(
     };
   }
 
-  const fallback = target.fallbackCommand?.(project);
+  const fallback = target.fallbackCommand?.();
   if (fallback) {
     return {
       command: fallback.command,
@@ -261,7 +247,6 @@ export async function handleLaunchCommand(
 
   const targetSupportsMcp = Boolean(target.mcpInstaller || target.mcpAgent);
   const targetSupportsSkills = Boolean(target.skillsAgent);
-  const project = path.resolve(options.project ?? process.cwd());
   let installMcpForTarget = targetSupportsMcp && !options.skipMcp;
   let installSkillsForTarget = targetSupportsSkills && !options.skipSkills;
 
@@ -287,12 +272,6 @@ export async function handleLaunchCommand(
         quiet: true,
       });
     }
-    if (options.routerCard !== false) {
-      const result = installRouterCard(target.routerCardAgent, project);
-      console.log(
-        `Firecrawl router card ${result.changed ? 'installed' : 'already current'} at ${result.path} (sha256:${result.sha256}).`
-      );
-    }
   }
 
   if (target.skillsAgent && installSkillsForTarget) {
@@ -314,11 +293,10 @@ export async function handleLaunchCommand(
     return;
   }
 
-  const launch = resolveLaunchCommand(target, extraArgs, project);
+  const launch = resolveLaunchCommand(target, extraArgs);
   const result = spawnSync(launch.command, launch.args, {
     stdio: 'inherit',
     env: process.env,
-    cwd: project,
   });
 
   if (result.error) {
