@@ -22,6 +22,10 @@ import {
   WEB_AGENTS,
   type WebAgent,
 } from '../utils/web-defaults';
+import {
+  installRouterCard,
+  resolveRouterCardContext,
+} from '../utils/router-card';
 
 export type SetupSubcommand = 'skills' | 'workflows' | 'mcp' | 'defaults';
 
@@ -43,6 +47,10 @@ export interface SetupOptions {
   nativeSkills?: boolean;
   /** Render compact skill install output. */
   quiet?: boolean;
+  /** Co-deliver project routing guidance with the MCP configuration. */
+  routerCard?: boolean;
+  /** Project directory that receives harness-native routing guidance. */
+  project?: string;
 }
 
 const green = '\x1b[32m';
@@ -366,12 +374,25 @@ export async function installSkillsForAgent(
 
 export async function installMcp(options: SetupOptions): Promise<void> {
   const resolvedAgent = resolveMcpAgent(options.agent);
+  if (
+    options.routerCard &&
+    (!options.agent || resolvedAgent.kind === 'all-launchers')
+  ) {
+    throw new Error(
+      '--router-card requires one explicit --agent so the CLI can select the harness-native project context file.'
+    );
+  }
+  if (options.routerCard && options.agent) {
+    resolveRouterCardContext(options.agent);
+  }
   if (resolvedAgent.kind === 'hermes') {
     await installHermesMcp();
+    installRequestedRouterCard(options);
     return;
   }
   if (resolvedAgent.kind === 'openclaw') {
     await installOpenClawMcp();
+    installRequestedRouterCard(options);
     return;
   }
   if (resolvedAgent.kind === 'all-launchers') {
@@ -385,6 +406,15 @@ export async function installMcp(options: SetupOptions): Promise<void> {
   }
 
   await installAddMcp(options, resolvedAgent);
+  installRequestedRouterCard(options);
+}
+
+function installRequestedRouterCard(options: SetupOptions): void {
+  if (!options.routerCard || !options.agent) return;
+  const result = installRouterCard(options.agent, options.project);
+  console.log(
+    `  ${green}✓${reset} Firecrawl router card ${result.changed ? 'installed' : 'already current'} at ${result.path} (sha256:${result.sha256})`
+  );
 }
 
 async function installAddMcp(

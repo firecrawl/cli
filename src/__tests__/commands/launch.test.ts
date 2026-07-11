@@ -9,6 +9,7 @@ import {
   installSkillsForAgent,
 } from '../../commands/setup';
 import { ALL_SKILL_REPOS } from '../../commands/skills-install';
+import { installRouterCard } from '../../utils/router-card';
 
 vi.mock('child_process', () => ({
   spawnSync: vi.fn(),
@@ -23,6 +24,15 @@ vi.mock('../../commands/setup', () => ({
   installMcp: vi.fn(async () => undefined),
   installOpenClawMcp: vi.fn(async () => undefined),
   installSkillsForAgent: vi.fn(async () => undefined),
+}));
+
+vi.mock('../../utils/router-card', () => ({
+  installRouterCard: vi.fn(() => ({
+    path: '/project/AGENTS.md',
+    changed: true,
+    version: 1,
+    sha256: 'df867193a6fe011342fce14b770e497cf667ca755e396bb16bbb52c513627951',
+  })),
 }));
 
 describe('handleLaunchCommand', () => {
@@ -78,6 +88,7 @@ describe('handleLaunchCommand', () => {
       ALL_SKILL_REPOS
     );
     expect(spawnSync).not.toHaveBeenCalled();
+    expect(installRouterCard).toHaveBeenCalledWith('claude', process.cwd());
   });
 
   it('supports setup and config as install-mode aliases', async () => {
@@ -226,6 +237,7 @@ describe('handleLaunchCommand', () => {
     await handleLaunchCommand('opencode', { skipMcp: true });
 
     expect(installMcp).not.toHaveBeenCalled();
+    expect(installRouterCard).not.toHaveBeenCalled();
     expect(installSkillsForAgent).toHaveBeenCalledWith(
       'opencode',
       {
@@ -241,11 +253,45 @@ describe('handleLaunchCommand', () => {
     });
   });
 
+  it('writes the harness-native router card by default in a selected project', async () => {
+    await handleLaunchCommand('opencode', {
+      project: '/tmp/example-project',
+    });
+
+    expect(installRouterCard).toHaveBeenCalledWith(
+      'opencode',
+      '/tmp/example-project'
+    );
+    expect(spawnSync).toHaveBeenNthCalledWith(
+      2,
+      'opencode',
+      [],
+      expect.objectContaining({ cwd: '/tmp/example-project' })
+    );
+  });
+
+  it('supports explicitly disabling router-card delivery', async () => {
+    await handleLaunchCommand('codex', { routerCard: false });
+
+    expect(installRouterCard).not.toHaveBeenCalled();
+  });
+
+  it('never writes a router card when MCP configuration fails', async () => {
+    vi.mocked(installMcp).mockRejectedValueOnce(new Error('MCP failed'));
+
+    await expect(handleLaunchCommand('codex')).rejects.toThrow('MCP failed');
+
+    expect(installRouterCard).not.toHaveBeenCalled();
+    expect(installSkillsForAgent).not.toHaveBeenCalled();
+    expect(spawnSync).not.toHaveBeenCalled();
+  });
+
   it('can skip skills for a launch target that normally supports them', async () => {
     await handleLaunchCommand('opencode', { skipMcp: true, skipSkills: true });
 
     expect(installMcp).not.toHaveBeenCalled();
     expect(installSkillsForAgent).not.toHaveBeenCalled();
+    expect(installRouterCard).not.toHaveBeenCalled();
   });
 
   it('configures Hermes MCP and skills, then launches Hermes Agent', async () => {
