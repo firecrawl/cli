@@ -51,7 +51,17 @@ firecrawl scrape "https://example.com/pricing" --query "What is the enterprise p
 | `--include-tags <tags>`  | Only include these HTML tags                                     |
 | `--exclude-tags <tags>`  | Exclude these HTML tags                                          |
 | `--redact-pii`           | Redact personally identifiable information from output           |
+| `--max-age <milliseconds>` | Maximum age of cached content. Use `0` for final freshness checks |
+| `--json`                  | Emit JSON so metadata such as `metadata.cache` can be inspected  |
 | `-o, --output <path>`    | Output file path                                                 |
+
+
+## Freshness and cache provenance
+
+- Use `--max-age 0` when the scrape is a final verification before an action that depends on current state. It bypasses Firecrawl cache and is slower/more failure-prone than allowing cache.
+- Use `--json` when you need to inspect metadata. An attested Firecrawl-index cache hit includes `metadata.cache.source = "firecrawl-index"` and `metadata.cache.cachedAt`.
+- If `metadata.cache` is absent, do not infer miss, fresh scrape, bypass, or source-page liveness. It only means cache provenance was not attested.
+- For job postings, event pages, inventory, and other stateful records, verify the business object itself before acting: prefer an ATS/source API when available, or check for active apply buttons, closed labels, canonical IDs, and redirects in the fresh content. HTTP 200 and rendered HTML are not enough.
 
 ## Tips
 
