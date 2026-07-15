@@ -7,6 +7,10 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import {
+  addRouterGuidanceToSkillDescription,
+  removeRouterGuidanceFromSkillDescription,
+} from '../utils/router-card';
 
 const green = '\x1b[32m';
 const dim = '\x1b[2m';
@@ -29,6 +33,8 @@ export interface NativeSkillsInstallOptions {
   agent?: string;
   /** Suppress per-repo status lines; caller will render its own summary. */
   quiet?: boolean;
+  /** Add the tested router prefix to installed Firecrawl skill descriptions. */
+  routerGuidance?: boolean;
 }
 
 export interface NativeSkillsInstallResult {
@@ -431,6 +437,15 @@ export async function installSkillsNative(
         fs.rmSync(destDir, { recursive: true, force: true });
       }
       copyDir(skill.srcDir, destDir);
+      if (options.routerGuidance) {
+        const skillFile = path.join(destDir, 'SKILL.md');
+        const content = fs.readFileSync(skillFile, 'utf8');
+        fs.writeFileSync(
+          skillFile,
+          addRouterGuidanceToSkillDescription(content),
+          'utf8'
+        );
+      }
     }
 
     // Detect installed agents and create symlinks
@@ -539,6 +554,64 @@ export async function installSkillsNative(
       // Best effort cleanup
     }
   }
+}
+
+/** Remove only Firecrawl's exact router prefix from installed skill files. */
+export function removeInstalledRouterGuidance(agent: string): number {
+  const home = os.homedir();
+  const canonicalRoot = path.join(home, CANONICAL_DIR);
+  const roots = [canonicalRoot];
+  const agentConfig = resolveAgentConfig(agent);
+  if (agentConfig) roots.push(path.join(home, agentConfig.globalSkillsDir));
+
+  const visited = new Set<string>();
+  const changedCanonicalSkills = new Set<string>();
+  let changed = 0;
+  for (const root of roots) {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(root, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.name.startsWith('firecrawl-')) continue;
+      const skillFile = path.join(root, entry.name, 'SKILL.md');
+      let identity: string;
+      try {
+        identity = fs.realpathSync(skillFile);
+      } catch {
+        continue;
+      }
+      if (visited.has(identity)) continue;
+      visited.add(identity);
+      const content = fs.readFileSync(skillFile, 'utf8');
+      const updated = removeRouterGuidanceFromSkillDescription(content);
+      if (updated === content) continue;
+      fs.writeFileSync(skillFile, updated, 'utf8');
+      if (root === canonicalRoot) changedCanonicalSkills.add(entry.name);
+      changed += 1;
+    }
+  }
+
+  if (changedCanonicalSkills.size > 0) {
+    const lockFilePath = path.join(home, LOCK_FILE);
+    try {
+      const lock: LockFile = JSON.parse(fs.readFileSync(lockFilePath, 'utf8'));
+      const now = new Date().toISOString();
+      for (const skillName of changedCanonicalSkills) {
+        const entry = lock.skills?.[skillName];
+        const skillDir = path.join(canonicalRoot, skillName);
+        if (!entry || !fs.existsSync(skillDir)) continue;
+        entry.skillFolderHash = hashDir(skillDir);
+        entry.updatedAt = now;
+      }
+      fs.writeFileSync(lockFilePath, JSON.stringify(lock, null, 2) + '\n');
+    } catch {
+      // A missing or malformed third-party lock file must not block removal.
+    }
+  }
+  return changed;
 }
 
 /** Check if npx is available */

@@ -2231,6 +2231,18 @@ program
   .option('--skip-mcp', 'Launch without installing or updating Firecrawl MCP')
   .option('--skip-skills', 'Launch without installing Firecrawl skills')
   .option(
+    '--no-router-card',
+    'Do not add or update Firecrawl routing guidance during setup'
+  )
+  .option(
+    '--remove-router-card',
+    'Remove the managed project card and Firecrawl skill routing prefixes, then exit'
+  )
+  .option(
+    '--project <path>',
+    'Project directory for router guidance and launched-agent working directory'
+  )
+  .option(
     '-g, --global',
     'Install Firecrawl MCP globally for the selected agent',
     true

@@ -49,6 +49,8 @@ export interface SetupOptions {
   nativeSkills?: boolean;
   /** Render compact skill install output. */
   quiet?: boolean;
+  /** Add tested router guidance to installed skill descriptions. */
+  routerGuidance?: boolean;
 }
 
 const green = '\x1b[32m';
@@ -321,6 +323,7 @@ async function installSkills(
         const result = await installSkillsNative(repo, {
           agent: options.agent,
           quiet: options.quiet,
+          routerGuidance: options.routerGuidance,
         });
         if (options.quiet) {
           console.log(
