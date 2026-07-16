@@ -274,7 +274,7 @@ export async function handleLaunchCommand(
     const routerProject = resolveRouterCardProject(options.project);
     const result = removeRouterCard(target.routerCardAgent, routerProject);
     const removedSkillDescriptions = target.skillsAgent
-      ? removeInstalledRouterGuidance(target.skillsAgent)
+      ? removeInstalledRouterGuidance(target.skillsAgent, routerProject)
       : 0;
     console.log(
       `Firecrawl routing ${result.changed || removedSkillDescriptions > 0 ? 'removed' : 'not present'}: card ${result.changed ? 'removed' : 'not present'} at ${result.path}; restored ${removedSkillDescriptions} skill description(s).`
@@ -328,7 +328,7 @@ export async function handleLaunchCommand(
         yes: true,
         nativeSkills: true,
         quiet: true,
-        routerGuidance: installRoutingState,
+        routerGuidanceProject: installRoutingState ? routerProject : undefined,
       },
       ALL_SKILL_REPOS
     );

@@ -103,7 +103,7 @@ describe('handleLaunchCommand', () => {
         yes: true,
         nativeSkills: true,
         quiet: true,
-        routerGuidance: true,
+        routerGuidanceProject: process.cwd(),
       },
       ALL_SKILL_REPOS
     );
@@ -157,7 +157,7 @@ describe('handleLaunchCommand', () => {
         yes: true,
         nativeSkills: true,
         quiet: true,
-        routerGuidance: true,
+        routerGuidanceProject: process.cwd(),
       },
       ALL_SKILL_REPOS
     );
@@ -212,7 +212,7 @@ describe('handleLaunchCommand', () => {
         yes: true,
         nativeSkills: true,
         quiet: true,
-        routerGuidance: false,
+        routerGuidanceProject: undefined,
       },
       ALL_SKILL_REPOS
     );
@@ -235,7 +235,7 @@ describe('handleLaunchCommand', () => {
         yes: true,
         nativeSkills: true,
         quiet: true,
-        routerGuidance: true,
+        routerGuidanceProject: process.cwd(),
       },
       ALL_SKILL_REPOS
     );
@@ -268,7 +268,7 @@ describe('handleLaunchCommand', () => {
         yes: true,
         nativeSkills: true,
         quiet: true,
-        routerGuidance: false,
+        routerGuidanceProject: undefined,
       },
       ALL_SKILL_REPOS
     );
@@ -302,7 +302,7 @@ describe('handleLaunchCommand', () => {
     expect(installRouterCard).not.toHaveBeenCalled();
     expect(installSkillsForAgent).toHaveBeenCalledWith(
       'codex',
-      expect.objectContaining({ routerGuidance: false }),
+      expect.objectContaining({ routerGuidanceProject: undefined }),
       ALL_SKILL_REPOS
     );
   });
@@ -313,7 +313,7 @@ describe('handleLaunchCommand', () => {
     expect(installRouterCard).not.toHaveBeenCalled();
     expect(installSkillsForAgent).toHaveBeenCalledWith(
       'opencode',
-      expect.objectContaining({ routerGuidance: false }),
+      expect.objectContaining({ routerGuidanceProject: undefined }),
       ALL_SKILL_REPOS
     );
   });
@@ -341,7 +341,10 @@ describe('handleLaunchCommand', () => {
       'codex',
       '/tmp/example-project'
     );
-    expect(removeInstalledRouterGuidance).toHaveBeenCalledWith('codex');
+    expect(removeInstalledRouterGuidance).toHaveBeenCalledWith(
+      'codex',
+      '/tmp/example-project'
+    );
     expect(installMcp).not.toHaveBeenCalled();
     expect(installSkillsForAgent).not.toHaveBeenCalled();
     expect(spawnSync).not.toHaveBeenCalled();
@@ -376,7 +379,7 @@ describe('handleLaunchCommand', () => {
         yes: true,
         nativeSkills: true,
         quiet: true,
-        routerGuidance: false,
+        routerGuidanceProject: undefined,
       },
       ALL_SKILL_REPOS
     );
@@ -402,7 +405,7 @@ describe('handleLaunchCommand', () => {
         yes: true,
         nativeSkills: true,
         quiet: true,
-        routerGuidance: false,
+        routerGuidanceProject: undefined,
       },
       ALL_SKILL_REPOS
     );

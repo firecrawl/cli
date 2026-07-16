@@ -9,7 +9,10 @@ import {
 import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { removeInstalledRouterGuidance } from '../../commands/skills-native';
+import {
+  installProjectRouterGuidance,
+  removeInstalledRouterGuidance,
+} from '../../commands/skills-native';
 import {
   addRouterGuidanceToSkillDescription,
   ROUTER_SKILL_DESCRIPTION_PREFIX,
@@ -23,53 +26,64 @@ afterEach(() => {
   home = undefined;
 });
 
-describe('installed router guidance removal', () => {
-  it('restores canonical skill descriptions once across agent symlinks', () => {
+describe('project-scoped router skill guidance', () => {
+  it('creates a routed project copy without changing canonical global skills', () => {
     home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-router-home-'));
     vi.stubEnv('HOME', home);
     const canonical = path.join(home, '.agents', 'skills', 'firecrawl-example');
-    const codex = path.join(home, '.codex', 'skills');
+    const project = path.join(home, 'project');
     mkdirSync(canonical, { recursive: true });
-    mkdirSync(codex, { recursive: true });
     const original = `---\nname: firecrawl-example\ndescription: Original.\n---\nBody\n`;
-    writeFileSync(
-      path.join(canonical, 'SKILL.md'),
-      addRouterGuidanceToSkillDescription(original)
+    writeFileSync(path.join(canonical, 'SKILL.md'), original);
+
+    expect(installProjectRouterGuidance('codex', project)).toBe(1);
+    expect(readFileSync(path.join(canonical, 'SKILL.md'), 'utf8')).toBe(
+      original
     );
-    const lockPath = path.join(home, '.agents', '.skill-lock.json');
-    writeFileSync(
-      lockPath,
-      JSON.stringify({
-        version: 3,
-        skills: {
-          'firecrawl-example': {
-            source: 'firecrawl/cli',
-            sourceType: 'github',
-            sourceUrl: 'https://github.com/firecrawl/cli.git',
-            skillPath: 'skills/firecrawl-example/SKILL.md',
-            skillFolderHash: 'before-removal',
-            installedAt: '2026-01-01T00:00:00.000Z',
-            updatedAt: '2026-01-01T00:00:00.000Z',
-          },
-        },
-      }) + '\n'
+    const projectSkill = path.join(
+      project,
+      '.agents',
+      'skills',
+      'firecrawl-example',
+      'SKILL.md'
     );
-    symlinkSync(
-      path.relative(codex, canonical),
-      path.join(codex, 'firecrawl-example')
+    expect(readFileSync(projectSkill, 'utf8')).toContain(
+      ROUTER_SKILL_DESCRIPTION_PREFIX
+    );
+    expect(installProjectRouterGuidance('codex', project)).toBe(0);
+
+    expect(removeInstalledRouterGuidance('codex', project)).toBe(1);
+    expect(() => readFileSync(projectSkill, 'utf8')).toThrow();
+    expect(readFileSync(path.join(canonical, 'SKILL.md'), 'utf8')).toBe(
+      original
+    );
+    expect(removeInstalledRouterGuidance('codex', project)).toBe(0);
+  });
+
+  it('only removes the exact prefix from an existing project-owned skill', () => {
+    home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-router-home-'));
+    vi.stubEnv('HOME', home);
+    const projectSkill = path.join(
+      home,
+      'project',
+      '.claude',
+      'skills',
+      'firecrawl-example',
+      'SKILL.md'
+    );
+    mkdirSync(path.dirname(projectSkill), { recursive: true });
+    const original = `---\nname: firecrawl-example\ndescription: User project skill.\n---\nBody\n`;
+    writeFileSync(
+      projectSkill,
+      addRouterGuidanceToSkillDescription(original),
+      'utf8'
     );
 
-    expect(removeInstalledRouterGuidance('codex')).toBe(1);
-    const restored = readFileSync(path.join(canonical, 'SKILL.md'), 'utf8');
-    expect(restored).not.toContain(ROUTER_SKILL_DESCRIPTION_PREFIX);
-    expect(restored).toContain('description: "Original."');
-    const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
-    expect(lock.skills['firecrawl-example'].skillFolderHash).not.toBe(
-      'before-removal'
+    expect(
+      removeInstalledRouterGuidance('claude-code', path.join(home, 'project'))
+    ).toBe(1);
+    expect(readFileSync(projectSkill, 'utf8')).toContain(
+      'description: "User project skill."'
     );
-    expect(lock.skills['firecrawl-example'].installedAt).toBe(
-      '2026-01-01T00:00:00.000Z'
-    );
-    expect(removeInstalledRouterGuidance('codex')).toBe(0);
   });
 });
