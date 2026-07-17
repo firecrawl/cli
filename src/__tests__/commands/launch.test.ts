@@ -10,6 +10,7 @@ import {
 } from '../../commands/setup';
 import { ALL_SKILL_REPOS } from '../../commands/skills-install';
 import { getApiKey } from '../../utils/config';
+import { resolveRouterCardProject } from '../../utils/router-card';
 import {
   installFullProjectRouterState,
   removeFullProjectRouterState,
@@ -132,7 +133,6 @@ vi.mock('../../utils/project-router-state', () => ({
     },
     preference: {
       path: `${project}/.firecrawl/router-card.json`,
-      enabled: true,
       changed: false,
     },
   })),
@@ -543,6 +543,34 @@ describe('handleLaunchCommand', () => {
     expect(installSkillsForAgent).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['ordinary', {}],
+    ['default-on', { install: true }],
+    ['keyless', { install: true }],
+  ])(
+    'rejects an invalid supplied project before %s installer side effects',
+    async (_case, launchOptions) => {
+      if (_case === 'keyless') {
+        vi.mocked(getApiKey).mockReturnValue(undefined);
+      }
+      vi.mocked(resolveRouterCardProject).mockImplementationOnce(() => {
+        throw new Error('Router card project is not a directory');
+      });
+
+      await expect(
+        handleLaunchCommand('codex', {
+          ...launchOptions,
+          project: '/missing/project',
+        })
+      ).rejects.toThrow('project is not a directory');
+
+      expect(installMcp).not.toHaveBeenCalled();
+      expect(installSkillsForAgent).not.toHaveBeenCalled();
+      expect(installFullProjectRouterState).not.toHaveBeenCalled();
+      expect(spawnSync).not.toHaveBeenCalled();
+    }
+  );
+
   it('warns and continues ordinary launch when implicit router delivery is unsafe', async () => {
     vi.mocked(installFullProjectRouterState).mockImplementationOnce(() => {
       throw new Error('user-owned router skill collision');
@@ -556,6 +584,7 @@ describe('handleLaunchCommand', () => {
       artifactsConfigured: false,
       warning: 'user-owned router skill collision',
     });
+    expect(receipt?.preference).not.toHaveProperty('enabled');
     expect(warning).toHaveBeenCalledWith(
       expect.stringContaining('Ordinary Codex setup will continue')
     );

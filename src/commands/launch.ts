@@ -264,7 +264,11 @@ export async function handleLaunchCommand(
 
   const targetSupportsMcp = Boolean(target.mcpInstaller || target.mcpAgent);
   const targetSupportsSkills = Boolean(target.skillsAgent);
-  const launchProject = path.resolve(options.project ?? process.cwd());
+  const suppliedProject =
+    options.project !== undefined
+      ? resolveRouterCardProject(options.project)
+      : undefined;
+  const launchProject = suppliedProject ?? path.resolve(process.cwd());
   let routerReceipt: FullProjectRouterStateReceipt | undefined;
   const explicitlyEnableRouter = options.routerCard === true;
   const hasRouterOption =
@@ -288,7 +292,7 @@ export async function handleLaunchCommand(
     );
   }
   const explicitRouterProject = hasRouterOption
-    ? resolveRouterCardProject(options.project)
+    ? (suppliedProject ?? resolveRouterCardProject())
     : undefined;
   if (options.removeRouterCard || options.routerCard === false) {
     const receipt = removeFullProjectRouterState(

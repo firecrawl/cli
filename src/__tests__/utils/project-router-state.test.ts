@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   installFullProjectRouterState,
   removeFullProjectRouterState,
+  skippedFullProjectRouterState,
 } from '../../utils/project-router-state';
 import {
   ROUTER_CARD_SHA256,
@@ -451,6 +452,37 @@ describe('full project router state', () => {
     expect(readFileSync(removed.preference.path, 'utf8')).toContain(
       '"enabled": false'
     );
+  });
+
+  it('preflights a malformed preference before removing card or skill state', () => {
+    const installed = install();
+    const cardPath = path.join(project, 'AGENTS.md');
+    mkdirSync(path.dirname(installed.preference.path), { recursive: true });
+    writeFileSync(installed.preference.path, '{malformed');
+
+    expect(() => removeFullProjectRouterState('codex', project)).toThrow(
+      'preference is malformed'
+    );
+
+    expect(readFileSync(cardPath, 'utf8')).toContain('Firecrawl web routing');
+    for (const skill of installed.skills.installed) {
+      expect(existsSync(skill.path)).toBe(true);
+    }
+    expect(readFileSync(installed.preference.path, 'utf8')).toBe('{malformed');
+  });
+
+  it('omits unknown preference state from a skipped receipt', () => {
+    const receipt = skippedFullProjectRouterState(
+      'codex',
+      project,
+      'malformed preference'
+    );
+
+    expect(receipt.preference).toEqual({
+      path: path.join(project, '.firecrawl', 'router-card.json'),
+      changed: false,
+    });
+    expect(receipt.preference).not.toHaveProperty('enabled');
   });
 
   it('fails closed unless all accepted-state prerequisites are true', () => {

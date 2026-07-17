@@ -82,8 +82,12 @@ export interface ProjectSkillsReceipt {
 
 export interface RouterPreferenceReceipt {
   path: string;
-  enabled: boolean;
+  enabled?: boolean;
   changed: boolean;
+}
+
+interface ResolvedRouterPreferenceReceipt extends RouterPreferenceReceipt {
+  enabled: boolean;
 }
 
 export interface FullProjectRouterStateReceipt {
@@ -147,7 +151,7 @@ function projectSkillsRoot(agent: RouterCardAgent, project: string): string {
   return path.join(project, PROJECT_SKILLS_DIRS[agent]);
 }
 
-function readPreference(project: string): RouterPreferenceReceipt {
+function readPreference(project: string): ResolvedRouterPreferenceReceipt {
   const destination = preferencePath(project);
   assertSafeProjectPath(project, destination);
   if (!fs.existsSync(destination)) {
@@ -175,8 +179,10 @@ function readPreference(project: string): RouterPreferenceReceipt {
   };
 }
 
-function disablePreference(project: string): RouterPreferenceReceipt {
-  const current = readPreference(project);
+function disablePreference(
+  project: string,
+  current = readPreference(project)
+): ResolvedRouterPreferenceReceipt {
   if (!current.enabled) return current;
   atomicWriteFile(
     current.path,
@@ -186,7 +192,7 @@ function disablePreference(project: string): RouterPreferenceReceipt {
   return { ...current, enabled: false, changed: true };
 }
 
-function enablePreference(project: string): RouterPreferenceReceipt {
+function enablePreference(project: string): ResolvedRouterPreferenceReceipt {
   const current = readPreference(project);
   if (current.enabled) return current;
   fs.rmSync(current.path);
@@ -791,6 +797,7 @@ export function removeFullProjectRouterState(
   projectPath: string
 ): FullProjectRouterStateReceipt {
   const project = path.resolve(projectPath);
+  const currentPreference = readPreference(project);
   const skills = removeManagedProjectSkills(agent, project);
   let card: RouterCardResult | undefined;
   let preservedCard: FullProjectRouterStateReceipt['preservedCard'];
@@ -803,7 +810,7 @@ export function removeFullProjectRouterState(
         error instanceof Error ? error.message : 'unsafe managed router card',
     };
   }
-  const preference = disablePreference(project);
+  const preference = disablePreference(project, currentPreference);
   const preserved = skills.preserved.length > 0 || Boolean(preservedCard);
   return {
     operation: 'remove',
@@ -838,7 +845,6 @@ export function skippedFullProjectRouterState(
     skills: emptySkillsReceipt(projectSkillsRoot(agent, project)),
     preference: {
       path: preferencePath(project),
-      enabled: true,
       changed: false,
     },
   };
