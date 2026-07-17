@@ -316,6 +316,11 @@ function detectInstalledAgents(): AgentConfig[] {
   });
 }
 
+/** Names of agents whose config directory already exists in $HOME. */
+export function detectInstalledAgentNames(): string[] {
+  return detectInstalledAgents().map((agent) => agent.name);
+}
+
 /** Check if git is available */
 function hasGit(): boolean {
   try {
