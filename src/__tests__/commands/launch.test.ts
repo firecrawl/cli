@@ -51,7 +51,9 @@ vi.mock('../../utils/project-router-state', () => ({
     status: 'installed',
     agent: options.agent,
     project: options.project,
-    complete: true,
+    operationComplete: true,
+    artifactsConfigured: true,
+    nativeDiscovery: { status: 'pending', verified: false },
     card: {
       path: `${options.project}/AGENTS.md`,
       changed: true,
@@ -81,7 +83,9 @@ vi.mock('../../utils/project-router-state', () => ({
     status: 'removed',
     agent,
     project,
-    complete: true,
+    operationComplete: true,
+    artifactsConfigured: false,
+    nativeDiscovery: { status: 'unverified', verified: false },
     card: {
       path: `${project}/AGENTS.md`,
       changed: true,
@@ -104,6 +108,32 @@ vi.mock('../../utils/project-router-state', () => ({
       path: `${project}/.firecrawl/router-card.json`,
       enabled: false,
       changed: true,
+    },
+  })),
+  skippedFullProjectRouterState: vi.fn((agent, project, warning) => ({
+    operation: 'install',
+    status: 'skipped-safe',
+    agent,
+    project,
+    operationComplete: false,
+    artifactsConfigured: false,
+    nativeDiscovery: { status: 'unverified', verified: false },
+    warning,
+    skills: {
+      root: `${project}/.agents/skills`,
+      changed: false,
+      sourceCount: 0,
+      installed: [],
+      refreshed: [],
+      current: [],
+      pruned: [],
+      removed: [],
+      preserved: [],
+    },
+    preference: {
+      path: `${project}/.firecrawl/router-card.json`,
+      enabled: true,
+      changed: false,
     },
   })),
 }));
@@ -143,7 +173,7 @@ describe('handleLaunchCommand', () => {
   }
 
   it('installs Claude Code MCP without launching in install mode', async () => {
-    await handleLaunchCommand('claude', { install: true });
+    const receipt = await handleLaunchCommand('claude', { install: true });
 
     expect(installMcp).toHaveBeenCalledWith({
       agent: 'claude-code',
@@ -169,6 +199,10 @@ describe('handleLaunchCommand', () => {
       mcpInstalled: true,
       skillsInstalled: true,
       forceEnable: false,
+    });
+    expect(receipt).toMatchObject({
+      artifactsConfigured: true,
+      nativeDiscovery: { status: 'pending', verified: false },
     });
   });
 
@@ -477,6 +511,72 @@ describe('handleLaunchCommand', () => {
     expect(installFullProjectRouterState).toHaveBeenCalledWith(
       expect.objectContaining({ forceEnable: true })
     );
+  });
+
+  it('rejects contradictory or incomplete explicit router flags before installers run', async () => {
+    await expect(
+      handleLaunchCommand('codex', {
+        routerCard: true,
+        removeRouterCard: true,
+      })
+    ).rejects.toThrow('Cannot combine');
+    await expect(
+      handleLaunchCommand('codex', { routerCard: true, skipMcp: true })
+    ).rejects.toThrow('requires MCP and skills');
+    await expect(
+      handleLaunchCommand('codex', { routerCard: true, skipSkills: true })
+    ).rejects.toThrow('requires MCP and skills');
+
+    expect(installMcp).not.toHaveBeenCalled();
+    expect(installSkillsForAgent).not.toHaveBeenCalled();
+    expect(installFullProjectRouterState).not.toHaveBeenCalled();
+  });
+
+  it('rejects explicit router setup without auth before installer side effects', async () => {
+    vi.mocked(getApiKey).mockReturnValue(undefined);
+
+    await expect(
+      handleLaunchCommand('claude', { routerCard: true })
+    ).rejects.toThrow('requires an API key');
+
+    expect(installMcp).not.toHaveBeenCalled();
+    expect(installSkillsForAgent).not.toHaveBeenCalled();
+  });
+
+  it('warns and continues ordinary launch when implicit router delivery is unsafe', async () => {
+    vi.mocked(installFullProjectRouterState).mockImplementationOnce(() => {
+      throw new Error('user-owned router skill collision');
+    });
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const receipt = await handleLaunchCommand('codex');
+
+    expect(receipt).toMatchObject({
+      status: 'skipped-safe',
+      artifactsConfigured: false,
+      warning: 'user-owned router skill collision',
+    });
+    expect(warning).toHaveBeenCalledWith(
+      expect.stringContaining('Ordinary Codex setup will continue')
+    );
+    expect(spawnSync).toHaveBeenCalledWith(
+      'codex',
+      [],
+      expect.objectContaining({ stdio: 'inherit' })
+    );
+    warning.mockRestore();
+  });
+
+  it('fails hard when explicitly requested router delivery is unsafe', async () => {
+    vi.mocked(installFullProjectRouterState).mockImplementationOnce(() => {
+      throw new Error('user-owned router skill collision');
+    });
+
+    await expect(
+      handleLaunchCommand('codex', { routerCard: true })
+    ).rejects.toThrow('user-owned router skill collision');
+
+    expect(spawnSync).not.toHaveBeenCalled();
   });
 
   it('rejects router flags for Codex App and other unvalidated targets', async () => {

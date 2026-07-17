@@ -108,9 +108,13 @@ export function resolveRouterCardProject(
     throw new Error(`Router card project is not a directory: ${requested}`);
   }
 
-  const project = explicitProject
-    ? requested
-    : (containingGitRoot(requested) ?? requested);
+  const gitRoot = explicitProject ? null : containingGitRoot(requested);
+  if (!explicitProject && !gitRoot) {
+    throw new Error(
+      'Implicit router-card delivery requires a Git project. Pass --project <path> to configure an explicit non-Git project.'
+    );
+  }
+  const project = explicitProject ? requested : gitRoot!;
   if (isFilesystemRoot(project) || isHomeDirectory(project)) {
     throw new Error(
       'Refusing to write a router card outside a project. Pass --project <path> from a project directory.'

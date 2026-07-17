@@ -14,6 +14,7 @@ import { getApiKey } from '../utils/config';
 import {
   installFullProjectRouterState,
   removeFullProjectRouterState,
+  skippedFullProjectRouterState,
   type FullProjectRouterStateReceipt,
 } from '../utils/project-router-state';
 import {
@@ -265,22 +266,38 @@ export async function handleLaunchCommand(
   const targetSupportsSkills = Boolean(target.skillsAgent);
   const launchProject = path.resolve(options.project ?? process.cwd());
   let routerReceipt: FullProjectRouterStateReceipt | undefined;
+  const explicitlyEnableRouter = options.routerCard === true;
   const hasRouterOption =
     options.routerCard !== undefined || options.removeRouterCard;
+  if (explicitlyEnableRouter && options.removeRouterCard) {
+    throw new Error('Cannot combine --router-card with --remove-router-card.');
+  }
+  if (explicitlyEnableRouter && (options.skipMcp || options.skipSkills)) {
+    throw new Error(
+      '--router-card requires MCP and skills; remove --skip-mcp and --skip-skills.'
+    );
+  }
   if (hasRouterOption && !target.routerCardAgent) {
     throw new Error(
       'Project router state is currently supported for Claude and the Codex CLI.'
     );
   }
+  if (explicitlyEnableRouter && !getApiKey()) {
+    throw new Error(
+      'Router state requires an API key plus successful MCP and skills setup.'
+    );
+  }
+  const explicitRouterProject = hasRouterOption
+    ? resolveRouterCardProject(options.project)
+    : undefined;
   if (options.removeRouterCard || options.routerCard === false) {
-    const routerProject = resolveRouterCardProject(options.project);
     const receipt = removeFullProjectRouterState(
       target.routerCardAgent!,
-      routerProject
+      explicitRouterProject!
     );
     routerReceipt = receipt;
     console.log(
-      `Firecrawl project routing disabled at ${receipt.project}; removed ${receipt.skills.removed.length} managed skill(s)${receipt.card?.changed ? ' and the router card' : ''}${receipt.skills.preserved.length > 0 ? `; preserved ${receipt.skills.preserved.length} modified or unsafe skill path(s)` : ''}. Re-enable with \`firecrawl launch ${target.aliases[0]} --router-card --project ${receipt.project}\`.`
+      `Firecrawl project routing disabled at ${receipt.project}; removed ${receipt.skills.removed.length} managed skill(s)${receipt.card?.changed ? ' and the router card' : ''}${receipt.skills.preserved.length > 0 ? `; preserved ${receipt.skills.preserved.length} modified or unsafe skill path(s)` : ''}${receipt.preservedCard ? '; preserved malformed or unsafe router-card content' : ''}. Re-enable with \`firecrawl launch ${target.aliases[0]} --router-card --project ${receipt.project}\`.`
     );
     if (options.removeRouterCard) return receipt;
   }
@@ -290,6 +307,7 @@ export async function handleLaunchCommand(
   if (
     installMcpForTarget &&
     installSkillsForTarget &&
+    !explicitlyEnableRouter &&
     !options.yes &&
     process.stdin.isTTY
   ) {
@@ -338,21 +356,39 @@ export async function handleLaunchCommand(
     );
   }
   if (canInstallRouterState) {
-    const routerProject = resolveRouterCardProject(options.project);
-    const receipt = installFullProjectRouterState({
-      agent: target.routerCardAgent!,
-      project: routerProject,
-      authenticated: true,
-      mcpInstalled: true,
-      skillsInstalled: true,
-      forceEnable: options.routerCard === true,
-    });
+    let receipt: FullProjectRouterStateReceipt;
+    try {
+      const routerProject =
+        explicitRouterProject ?? resolveRouterCardProject(options.project);
+      receipt = installFullProjectRouterState({
+        agent: target.routerCardAgent!,
+        project: routerProject,
+        authenticated: true,
+        mcpInstalled: true,
+        skillsInstalled: true,
+        forceEnable: explicitlyEnableRouter,
+      });
+    } catch (error) {
+      if (explicitlyEnableRouter) throw error;
+      const warning =
+        error instanceof Error
+          ? error.message
+          : 'unknown router delivery error';
+      receipt = skippedFullProjectRouterState(
+        target.routerCardAgent!,
+        options.project ?? process.cwd(),
+        warning
+      );
+      console.warn(
+        `Firecrawl project routing skipped safely: ${warning} Ordinary ${target.displayName} setup will continue.`
+      );
+    }
     routerReceipt = receipt;
     if (receipt.status === 'disabled') {
       console.log(
         `Firecrawl project routing remains disabled at ${receipt.project}. Re-enable with \`firecrawl launch ${target.aliases[0]} --router-card --project ${receipt.project}\`.`
       );
-    } else {
+    } else if (receipt.status !== 'skipped-safe') {
       console.log(
         `Firecrawl project routing ${receipt.status === 'current' ? 'is already current' : 'installed'} at ${receipt.project} (card sha256:${receipt.card!.sha256}; ${receipt.skills.sourceCount} routed skills).`
       );

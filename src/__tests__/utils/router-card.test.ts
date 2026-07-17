@@ -131,6 +131,15 @@ describe('router card', () => {
     expect(resolveRouterCardProject(undefined, nested)).toBe(root);
   });
 
+  it('requires detected Git ownership for implicit delivery but allows explicit projects', () => {
+    const root = project();
+
+    expect(() => resolveRouterCardProject(undefined, root)).toThrow(
+      'requires a Git project'
+    );
+    expect(resolveRouterCardProject(root, os.tmpdir())).toBe(root);
+  });
+
   it('adds the exact prefix without replacing the original description', () => {
     const source =
       '---\nname: firecrawl-test\ndescription: Original.\n---\nBody\n';
