@@ -68,6 +68,7 @@ vi.mock('../../utils/project-router-state', () => ({
       current: [],
       pruned: [],
       removed: [],
+      preserved: [],
     },
     preference: {
       path: `${options.project}/.firecrawl/router-card.json`,
@@ -97,6 +98,7 @@ vi.mock('../../utils/project-router-state', () => ({
       current: [],
       pruned: [],
       removed: [{ skillName: 'firecrawl-test' }],
+      preserved: [],
     },
     preference: {
       path: `${project}/.firecrawl/router-card.json`,

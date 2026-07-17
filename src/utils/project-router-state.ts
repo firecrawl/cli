@@ -39,6 +39,15 @@ export interface ManagedSkillReceipt extends ManagedSkillMarker {
   status: 'installed' | 'refreshed' | 'current' | 'pruned' | 'removed';
 }
 
+export interface PreservedSkillReceipt {
+  path: string;
+  skillName: string;
+  reason: string;
+  sourceSha256?: string;
+  routedSha256?: string;
+  routerPrefixSha256?: string;
+}
+
 export interface ProjectSkillsReceipt {
   root: string;
   changed: boolean;
@@ -48,6 +57,7 @@ export interface ProjectSkillsReceipt {
   current: ManagedSkillReceipt[];
   pruned: ManagedSkillReceipt[];
   removed: ManagedSkillReceipt[];
+  preserved: PreservedSkillReceipt[];
 }
 
 export interface RouterPreferenceReceipt {
@@ -58,7 +68,12 @@ export interface RouterPreferenceReceipt {
 
 export interface FullProjectRouterStateReceipt {
   operation: 'install' | 'remove';
-  status: 'installed' | 'current' | 'disabled' | 'removed';
+  status:
+    | 'installed'
+    | 'current'
+    | 'disabled'
+    | 'removed'
+    | 'removed-with-preserved-content';
   agent: RouterCardAgent;
   project: string;
   complete: boolean;
@@ -89,6 +104,7 @@ function emptySkillsReceipt(root: string): ProjectSkillsReceipt {
     current: [],
     pruned: [],
     removed: [],
+    preserved: [],
   };
 }
 
@@ -441,8 +457,20 @@ export function removeManagedProjectSkills(
 ): ProjectSkillsReceipt {
   const project = path.resolve(projectPath);
   const root = projectSkillsRoot(agent, project);
-  assertSafeProjectPath(project, root);
   const receipt = emptySkillsReceipt(root);
+  try {
+    assertSafeProjectPath(project, root);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('symlink')) {
+      receipt.preserved.push({
+        path: root,
+        skillName: '*',
+        reason: error.message,
+      });
+      return receipt;
+    }
+    throw error;
+  }
   if (!fs.existsSync(root)) return receipt;
 
   const owned: Array<{ path: string; marker: ManagedSkillMarker }> = [];
@@ -451,10 +479,27 @@ export function removeManagedProjectSkills(
     const skillPath = path.join(root, entry.name);
     const markerPath = path.join(skillPath, MANAGED_SKILL_MARKER);
     if (!fs.existsSync(markerPath)) continue;
-    owned.push({
-      path: skillPath,
-      marker: inspectOwnedSkill(skillPath, entry.name),
-    });
+    try {
+      owned.push({
+        path: skillPath,
+        marker: inspectOwnedSkill(skillPath, entry.name),
+      });
+    } catch (error) {
+      let marker: Partial<ManagedSkillMarker> = {};
+      try {
+        marker = JSON.parse(fs.readFileSync(markerPath, 'utf8'));
+      } catch {
+        // The preservation receipt still records the path and reason.
+      }
+      receipt.preserved.push({
+        path: skillPath,
+        skillName: entry.name,
+        reason: error instanceof Error ? error.message : 'unsafe managed skill',
+        sourceSha256: marker.sourceSha256,
+        routedSha256: marker.routedSha256,
+        routerPrefixSha256: marker.routerPrefixSha256,
+      });
+    }
   }
 
   for (const item of owned) {
@@ -524,12 +569,13 @@ export function removeFullProjectRouterState(
   const skills = removeManagedProjectSkills(agent, project);
   const card = removeRouterCard(agent, project);
   const preference = disablePreference(project);
+  const preserved = skills.preserved.length > 0;
   return {
     operation: 'remove',
-    status: 'removed',
+    status: preserved ? 'removed-with-preserved-content' : 'removed',
     agent,
     project,
-    complete: true,
+    complete: !preserved,
     card,
     skills,
     preference,

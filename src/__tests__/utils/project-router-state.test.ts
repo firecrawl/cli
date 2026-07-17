@@ -196,19 +196,58 @@ describe('full project router state', () => {
     expect(existsSync(path.join(project, 'AGENTS.md'))).toBe(false);
   });
 
-  it('never refreshes or removes a modified managed skill', () => {
+  it('never refreshes or deletes a modified managed skill while still opting out', () => {
     const receipt = install();
     const managed = receipt.skills.installed[0].path;
     writeFileSync(path.join(managed, 'user-note.txt'), 'keep me\n');
 
     expect(() => install()).toThrow('modified router skill');
-    expect(() => removeFullProjectRouterState('codex', project)).toThrow(
-      'modified router skill'
-    );
+    const removed = removeFullProjectRouterState('codex', project);
+    expect(removed.status).toBe('removed-with-preserved-content');
+    expect(removed.complete).toBe(false);
+    expect(removed.skills.preserved).toEqual([
+      expect.objectContaining({
+        path: managed,
+        skillName: path.basename(managed),
+        reason: expect.stringContaining('modified router skill'),
+      }),
+    ]);
     expect(readFileSync(path.join(managed, 'user-note.txt'), 'utf8')).toBe(
       'keep me\n'
     );
     expect(existsSync(path.join(project, 'AGENTS.md'))).toBe(true);
+    expect(readFileSync(path.join(project, 'AGENTS.md'), 'utf8')).toBe('');
+    expect(readFileSync(removed.preference.path, 'utf8')).toContain(
+      '"enabled": false'
+    );
+  });
+
+  it('preserves a symlinked managed skill while still removing the card', () => {
+    const receipt = install();
+    const managed = receipt.skills.installed[0].path;
+    const referent = path.join(home, 'preserved-router-skill');
+    rmSync(managed, { recursive: true });
+    mkdirSync(referent);
+    writeFileSync(path.join(referent, 'SKILL.md'), 'user content\n');
+    writeFileSync(
+      path.join(referent, '.firecrawl-router-skill.json'),
+      JSON.stringify(receipt.skills.installed[0])
+    );
+    symlinkSync(referent, managed);
+
+    const removed = removeFullProjectRouterState('codex', project);
+
+    expect(removed.status).toBe('removed-with-preserved-content');
+    expect(removed.skills.preserved).toEqual([
+      expect.objectContaining({
+        path: managed,
+        reason: expect.stringContaining('symlink'),
+      }),
+    ]);
+    expect(readFileSync(path.join(referent, 'SKILL.md'), 'utf8')).toBe(
+      'user content\n'
+    );
+    expect(readFileSync(path.join(project, 'AGENTS.md'), 'utf8')).toBe('');
   });
 
   it('persists removal as an opt-out until explicitly re-enabled', () => {

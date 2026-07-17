@@ -280,7 +280,7 @@ export async function handleLaunchCommand(
     );
     routerReceipt = receipt;
     console.log(
-      `Firecrawl project routing disabled at ${receipt.project}; removed ${receipt.skills.removed.length} managed skill(s)${receipt.card?.changed ? ' and the router card' : ''}. Re-enable with \`firecrawl launch ${target.aliases[0]} --router-card --project ${receipt.project}\`.`
+      `Firecrawl project routing disabled at ${receipt.project}; removed ${receipt.skills.removed.length} managed skill(s)${receipt.card?.changed ? ' and the router card' : ''}${receipt.skills.preserved.length > 0 ? `; preserved ${receipt.skills.preserved.length} modified or unsafe skill path(s)` : ''}. Re-enable with \`firecrawl launch ${target.aliases[0]} --router-card --project ${receipt.project}\`.`
     );
     if (options.removeRouterCard) return receipt;
   }
