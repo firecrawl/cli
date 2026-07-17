@@ -2231,6 +2231,22 @@ program
   .option('--skip-mcp', 'Launch without installing or updating Firecrawl MCP')
   .option('--skip-skills', 'Launch without installing Firecrawl skills')
   .option(
+    '--router-card',
+    'Enable or re-enable the tested project router state for Claude or Codex CLI'
+  )
+  .option(
+    '--no-router-card',
+    'Permanently disable and remove managed project router state'
+  )
+  .option(
+    '--remove-router-card',
+    'Permanently disable and remove managed project router state, then exit'
+  )
+  .option(
+    '--project <path>',
+    'Project directory for router state and the launched agent'
+  )
+  .option(
     '-g, --global',
     'Install Firecrawl MCP globally for the selected agent',
     true

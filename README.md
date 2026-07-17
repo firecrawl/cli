@@ -81,6 +81,36 @@ To install the Firecrawl MCP server into your editors (Cursor, Claude Code, VS C
 firecrawl setup mcp
 ```
 
+### Project routing for Claude Code and Codex CLI
+
+An authenticated `firecrawl launch` that successfully configures both MCP and
+skills also installs the tested Firecrawl routing state for Claude Code or the
+Codex CLI. It adds an exact, versioned managed block to the project's
+`CLAUDE.md` or `AGENTS.md` and creates project-local routed copies of the
+installed Firecrawl skills. Existing user-owned skills are never overwritten.
+
+```bash
+# Configure the current project without starting the agent
+firecrawl launch claude --install --yes
+firecrawl launch codex --install --yes
+
+# Configure and launch from an explicit project
+firecrawl launch codex --project ./my-project
+
+# Permanently opt out, or re-enable later
+firecrawl launch claude --no-router-card --project ./my-project
+firecrawl launch claude --router-card --project ./my-project
+
+# Remove managed routing and exit (also persists the opt-out)
+firecrawl launch codex --remove-router-card --project ./my-project
+```
+
+The state is project-scoped: Claude uses `CLAUDE.md` and `.claude/skills`;
+Codex CLI uses `AGENTS.md` and `.agents/skills`. The CLI refuses home-folder,
+filesystem-root, symlink, modified-managed-skill, and user-owned-skill writes.
+Package installation, MCP-only setup, skills-only setup, keyless setup,
+unsupported agents, and Codex App do not install project router state.
+
 To make Firecrawl the default web provider for supported AI agents:
 
 ```bash
