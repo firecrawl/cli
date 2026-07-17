@@ -10,6 +10,16 @@ import {
   installSkillsForAgent,
 } from './setup';
 import { ALL_SKILL_REPOS } from './skills-install';
+import { getApiKey } from '../utils/config';
+import {
+  installFullProjectRouterState,
+  removeFullProjectRouterState,
+  type FullProjectRouterStateReceipt,
+} from '../utils/project-router-state';
+import {
+  resolveRouterCardProject,
+  type RouterCardAgent,
+} from '../utils/router-card';
 
 export interface LaunchOptions {
   config?: boolean;
@@ -19,6 +29,9 @@ export interface LaunchOptions {
   yes?: boolean;
   skipMcp?: boolean;
   skipSkills?: boolean;
+  routerCard?: boolean;
+  removeRouterCard?: boolean;
+  project?: string;
 }
 
 interface LaunchTarget {
@@ -31,6 +44,7 @@ interface LaunchTarget {
   args?: string[];
   supportsExtraArgs?: boolean;
   fallbackCommand?: () => { command: string; args: string[] } | null;
+  routerCardAgent?: RouterCardAgent;
 }
 
 type LaunchSetupMode = 'both' | 'mcp' | 'skills';
@@ -38,6 +52,7 @@ type LaunchSetupMode = 'both' | 'mcp' | 'skills';
 const TARGETS: LaunchTarget[] = [
   {
     aliases: ['claude', 'claude-code'],
+    routerCardAgent: 'claude',
     displayName: 'Claude Code',
     mcpAgent: 'claude-code',
     skillsAgent: 'claude-code',
@@ -65,6 +80,7 @@ const TARGETS: LaunchTarget[] = [
   },
   {
     aliases: ['codex'],
+    routerCardAgent: 'codex',
     displayName: 'Codex',
     mcpAgent: 'codex',
     skillsAgent: 'codex',
@@ -231,7 +247,7 @@ export async function handleLaunchCommand(
   targetName?: string,
   options: LaunchOptions = {},
   extraArgs: string[] = []
-): Promise<void> {
+): Promise<FullProjectRouterStateReceipt | undefined> {
   if (!targetName && extraArgs.length > 0) {
     throw new Error(
       'Extra launch arguments require an explicit launch target.'
@@ -247,6 +263,27 @@ export async function handleLaunchCommand(
 
   const targetSupportsMcp = Boolean(target.mcpInstaller || target.mcpAgent);
   const targetSupportsSkills = Boolean(target.skillsAgent);
+  const launchProject = path.resolve(options.project ?? process.cwd());
+  let routerReceipt: FullProjectRouterStateReceipt | undefined;
+  const hasRouterOption =
+    options.routerCard !== undefined || options.removeRouterCard;
+  if (hasRouterOption && !target.routerCardAgent) {
+    throw new Error(
+      'Project router state is currently supported for Claude and the Codex CLI.'
+    );
+  }
+  if (options.removeRouterCard || options.routerCard === false) {
+    const routerProject = resolveRouterCardProject(options.project);
+    const receipt = removeFullProjectRouterState(
+      target.routerCardAgent!,
+      routerProject
+    );
+    routerReceipt = receipt;
+    console.log(
+      `Firecrawl project routing disabled at ${receipt.project}; removed ${receipt.skills.removed.length} managed skill(s)${receipt.card?.changed ? ' and the router card' : ''}. Re-enable with \`firecrawl launch ${target.aliases[0]} --router-card --project ${receipt.project}\`.`
+    );
+    if (options.removeRouterCard) return receipt;
+  }
   let installMcpForTarget = targetSupportsMcp && !options.skipMcp;
   let installSkillsForTarget = targetSupportsSkills && !options.skipSkills;
 
@@ -288,15 +325,50 @@ export async function handleLaunchCommand(
     );
   }
 
+  const canInstallRouterState = Boolean(
+    target.routerCardAgent &&
+    options.routerCard !== false &&
+    installMcpForTarget &&
+    installSkillsForTarget &&
+    getApiKey()
+  );
+  if (options.routerCard === true && !canInstallRouterState) {
+    throw new Error(
+      'Router state requires an API key plus successful MCP and skills setup.'
+    );
+  }
+  if (canInstallRouterState) {
+    const routerProject = resolveRouterCardProject(options.project);
+    const receipt = installFullProjectRouterState({
+      agent: target.routerCardAgent!,
+      project: routerProject,
+      authenticated: true,
+      mcpInstalled: true,
+      skillsInstalled: true,
+      forceEnable: options.routerCard === true,
+    });
+    routerReceipt = receipt;
+    if (receipt.status === 'disabled') {
+      console.log(
+        `Firecrawl project routing remains disabled at ${receipt.project}. Re-enable with \`firecrawl launch ${target.aliases[0]} --router-card --project ${receipt.project}\`.`
+      );
+    } else {
+      console.log(
+        `Firecrawl project routing ${receipt.status === 'current' ? 'is already current' : 'installed'} at ${receipt.project} (card sha256:${receipt.card!.sha256}; ${receipt.skills.sourceCount} routed skills).`
+      );
+    }
+  }
+
   if (options.config || options.install || options.setup) {
     console.log(`${target.displayName} is configured with Firecrawl MCP.`);
-    return;
+    return routerReceipt;
   }
 
   const launch = resolveLaunchCommand(target, extraArgs);
   const result = spawnSync(launch.command, launch.args, {
     stdio: 'inherit',
     env: process.env,
+    cwd: launchProject,
   });
 
   if (result.error) {
@@ -305,4 +377,5 @@ export async function handleLaunchCommand(
   if (typeof result.status === 'number' && result.status !== 0) {
     process.exit(result.status);
   }
+  return routerReceipt;
 }

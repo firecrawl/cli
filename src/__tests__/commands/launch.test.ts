@@ -9,6 +9,11 @@ import {
   installSkillsForAgent,
 } from '../../commands/setup';
 import { ALL_SKILL_REPOS } from '../../commands/skills-install';
+import { getApiKey } from '../../utils/config';
+import {
+  installFullProjectRouterState,
+  removeFullProjectRouterState,
+} from '../../utils/project-router-state';
 
 vi.mock('child_process', () => ({
   spawnSync: vi.fn(),
@@ -25,12 +30,89 @@ vi.mock('../../commands/setup', () => ({
   installSkillsForAgent: vi.fn(async () => undefined),
 }));
 
+vi.mock('../../utils/config', () => ({
+  getApiKey: vi.fn(() => 'fc-test-key'),
+}));
+
+vi.mock('../../utils/router-card', async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import('../../utils/router-card')>();
+  return {
+    ...original,
+    resolveRouterCardProject: vi.fn(
+      (project?: string) => project ?? process.cwd()
+    ),
+  };
+});
+
+vi.mock('../../utils/project-router-state', () => ({
+  installFullProjectRouterState: vi.fn((options) => ({
+    operation: 'install',
+    status: 'installed',
+    agent: options.agent,
+    project: options.project,
+    complete: true,
+    card: {
+      path: `${options.project}/AGENTS.md`,
+      changed: true,
+      version: 1,
+      sha256:
+        'df867193a6fe011342fce14b770e497cf667ca755e396bb16bbb52c513627951',
+    },
+    skills: {
+      root: `${options.project}/.agents/skills`,
+      changed: true,
+      sourceCount: 32,
+      installed: [],
+      refreshed: [],
+      current: [],
+      pruned: [],
+      removed: [],
+    },
+    preference: {
+      path: `${options.project}/.firecrawl/router-card.json`,
+      enabled: true,
+      changed: false,
+    },
+  })),
+  removeFullProjectRouterState: vi.fn((agent, project) => ({
+    operation: 'remove',
+    status: 'removed',
+    agent,
+    project,
+    complete: true,
+    card: {
+      path: `${project}/AGENTS.md`,
+      changed: true,
+      version: 1,
+      sha256:
+        'df867193a6fe011342fce14b770e497cf667ca755e396bb16bbb52c513627951',
+    },
+    skills: {
+      root: `${project}/.agents/skills`,
+      changed: true,
+      sourceCount: 0,
+      installed: [],
+      refreshed: [],
+      current: [],
+      pruned: [],
+      removed: [{ skillName: 'firecrawl-test' }],
+    },
+    preference: {
+      path: `${project}/.firecrawl/router-card.json`,
+      enabled: false,
+      changed: true,
+    },
+  })),
+}));
+
 describe('handleLaunchCommand', () => {
   const originalIsTty = process.stdin.isTTY;
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(spawnSync).mockReturnValue({ status: 0 } as never);
+    vi.mocked(getApiKey).mockReturnValue('fc-test-key');
     Object.defineProperty(process.stdin, 'isTTY', {
       configurable: true,
       value: false,
@@ -78,6 +160,14 @@ describe('handleLaunchCommand', () => {
       ALL_SKILL_REPOS
     );
     expect(spawnSync).not.toHaveBeenCalled();
+    expect(installFullProjectRouterState).toHaveBeenCalledWith({
+      agent: 'claude',
+      project: process.cwd(),
+      authenticated: true,
+      mcpInstalled: true,
+      skillsInstalled: true,
+      forceEnable: false,
+    });
   });
 
   it('supports setup and config as install-mode aliases', async () => {
@@ -214,6 +304,7 @@ describe('handleLaunchCommand', () => {
       ['-b', 'com.openai.codex'],
       expect.objectContaining({ stdio: 'inherit' })
     );
+    expect(installFullProjectRouterState).not.toHaveBeenCalled();
   });
 
   it('does not pass extra arguments to Codex App', async () => {
@@ -303,6 +394,115 @@ describe('handleLaunchCommand', () => {
 
     expect(installHermesMcp).toHaveBeenCalled();
     expect(installSkillsForAgent).not.toHaveBeenCalled();
+  });
+
+  it('installs the accepted state only after Claude and Codex CLI full setup', async () => {
+    await handleLaunchCommand('codex', {
+      project: '/tmp/project',
+      install: true,
+    });
+
+    expect(installMcp).toHaveBeenCalledBefore(vi.mocked(installSkillsForAgent));
+    expect(installSkillsForAgent).toHaveBeenCalledBefore(
+      vi.mocked(installFullProjectRouterState)
+    );
+    expect(installFullProjectRouterState).toHaveBeenCalledWith({
+      agent: 'codex',
+      project: '/tmp/project',
+      authenticated: true,
+      mcpInstalled: true,
+      skillsInstalled: true,
+      forceEnable: false,
+    });
+  });
+
+  it('does not install project routing for keyless, MCP-only, or skills-only states', async () => {
+    vi.mocked(getApiKey).mockReturnValueOnce(undefined);
+    await handleLaunchCommand('codex', { install: true });
+
+    const restoreStdin = setStdinTty(true);
+    vi.mocked(select)
+      .mockResolvedValueOnce('mcp')
+      .mockResolvedValueOnce('skills');
+    try {
+      await handleLaunchCommand('claude', { install: true });
+      await handleLaunchCommand('claude', { install: true });
+    } finally {
+      restoreStdin();
+    }
+
+    expect(installFullProjectRouterState).not.toHaveBeenCalled();
+  });
+
+  it('persists opt-out and continues ordinary setup without reinstalling routing', async () => {
+    await handleLaunchCommand('codex', {
+      project: '/tmp/project',
+      install: true,
+      routerCard: false,
+    });
+
+    expect(removeFullProjectRouterState).toHaveBeenCalledWith(
+      'codex',
+      '/tmp/project'
+    );
+    expect(installMcp).toHaveBeenCalled();
+    expect(installSkillsForAgent).toHaveBeenCalled();
+    expect(installFullProjectRouterState).not.toHaveBeenCalled();
+  });
+
+  it('removes project routing and exits before setup or launch', async () => {
+    await handleLaunchCommand('claude', {
+      project: '/tmp/project',
+      removeRouterCard: true,
+    });
+
+    expect(removeFullProjectRouterState).toHaveBeenCalledWith(
+      'claude',
+      '/tmp/project'
+    );
+    expect(installMcp).not.toHaveBeenCalled();
+    expect(installSkillsForAgent).not.toHaveBeenCalled();
+    expect(spawnSync).not.toHaveBeenCalled();
+  });
+
+  it('explicitly re-enables a persisted opt-out', async () => {
+    await handleLaunchCommand('codex', {
+      project: '/tmp/project',
+      install: true,
+      routerCard: true,
+    });
+
+    expect(installFullProjectRouterState).toHaveBeenCalledWith(
+      expect.objectContaining({ forceEnable: true })
+    );
+  });
+
+  it('rejects router flags for Codex App and other unvalidated targets', async () => {
+    await expect(
+      handleLaunchCommand('codex-app', { routerCard: true })
+    ).rejects.toThrow('Claude and the Codex CLI');
+    await expect(
+      handleLaunchCommand('opencode', { removeRouterCard: true })
+    ).rejects.toThrow('Claude and the Codex CLI');
+  });
+
+  it('does not create project routing after MCP failure', async () => {
+    vi.mocked(installMcp).mockRejectedValueOnce(new Error('MCP failed'));
+
+    await expect(handleLaunchCommand('codex')).rejects.toThrow('MCP failed');
+    expect(installSkillsForAgent).not.toHaveBeenCalled();
+    expect(installFullProjectRouterState).not.toHaveBeenCalled();
+  });
+
+  it('does not create project routing after skills setup fails', async () => {
+    vi.mocked(installSkillsForAgent).mockRejectedValueOnce(
+      new Error('Skills failed')
+    );
+
+    await expect(handleLaunchCommand('claude')).rejects.toThrow(
+      'Skills failed'
+    );
+    expect(installFullProjectRouterState).not.toHaveBeenCalled();
   });
 
   it('requires an explicit target in non-interactive mode', async () => {
