@@ -14,6 +14,9 @@ import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   addRouterGuidanceToSkillDescription,
+  CLI_ROUTER_CARD,
+  CLI_ROUTER_CARD_SHA256,
+  installCliRouterCard,
   installRouterCard,
   removeRouterCard,
   resolveRouterCardProject,
@@ -49,6 +52,29 @@ describe('router card', () => {
     expect(ROUTER_CARD).toContain('firecrawl_search');
     expect(ROUTER_CARD).toContain('firecrawl_scrape');
     expect(ROUTER_CARD).not.toMatch(/api[_ -]?key|fc-[a-z0-9]|mcp\.firecrawl/i);
+  });
+
+  it('keeps the CLI-only card capability-honest and distinct', () => {
+    expect(CLI_ROUTER_CARD_SHA256).toBe(
+      'f781e09b71c0d7f5a60f5bbf37a0c656cf30ade2876212a5f0dcde6bebaad995'
+    );
+    expect(CLI_ROUTER_CARD).toContain('firecrawl search');
+    expect(CLI_ROUTER_CARD).toContain('firecrawl scrape');
+    expect(CLI_ROUTER_CARD).not.toMatch(
+      /firecrawl_search|firecrawl_scrape|MCP/
+    );
+  });
+
+  it('replaces the managed full-bundle card with the CLI-only card', () => {
+    const root = project();
+    installRouterCard('codex', root);
+    const receipt = installCliRouterCard('codex', root);
+
+    expect(receipt.changed).toBe(true);
+    expect(receipt.sha256).toBe(CLI_ROUTER_CARD_SHA256);
+    expect(readFileSync(path.join(root, 'AGENTS.md'), 'utf8')).toBe(
+      `${CLI_ROUTER_CARD}\n`
+    );
   });
 
   it('does not treat Codex App as the validated Codex CLI surface', () => {

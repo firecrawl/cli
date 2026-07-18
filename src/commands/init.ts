@@ -25,6 +25,11 @@ import {
   WEB_AGENTS,
   type WebAgent,
 } from '../utils/web-defaults';
+import {
+  installCliRouterCard,
+  resolveRouterCardProject,
+  type RouterCardAgent,
+} from '../utils/router-card';
 
 export interface InitOptions {
   global?: boolean;
@@ -37,6 +42,8 @@ export interface InitOptions {
   apiKey?: string;
   browser?: boolean;
   template?: string;
+  routerCard?: boolean;
+  project?: string;
 }
 
 const orange = '\x1b[38;5;208m';
@@ -960,10 +967,20 @@ export async function handleInitCommand(
 }
 
 async function runNonInteractive(options: InitOptions): Promise<void> {
+  if (options.routerCard && options.skipSkills) {
+    throw new Error('--router-card requires skills; remove --skip-skills.');
+  }
+  if (options.routerCard && !options.agent) {
+    throw new Error('--router-card requires --agent claude or --agent codex.');
+  }
+  if (options.routerCard && !options.project) {
+    throw new Error('--router-card requires an explicit --project <path>.');
+  }
   const steps: string[] = [];
   if (!options.skipAuth) steps.push('auth');
   if (!options.skipInstall) steps.push('install');
   if (!options.skipSkills) steps.push('skills');
+  if (options.routerCard) steps.push('router');
   const total = steps.length;
   let current = 0;
 
@@ -1048,6 +1065,31 @@ async function runNonInteractive(options: InitOptions): Promise<void> {
         process.exit(1);
       }
     }
+  }
+
+  if (options.routerCard) {
+    if (!isAuthenticated()) {
+      throw new Error(
+        'Router-card setup requires an authenticated Firecrawl CLI.'
+      );
+    }
+    const normalized = options.agent!.trim().toLowerCase();
+    const agent: RouterCardAgent =
+      normalized === 'claude' || normalized === 'claude-code'
+        ? 'claude'
+        : normalized === 'codex'
+          ? 'codex'
+          : (() => {
+              throw new Error(
+                '--router-card currently supports --agent claude or --agent codex.'
+              );
+            })();
+    const project = resolveRouterCardProject(options.project);
+    console.log(`${stepLabel()} Configuring project web routing...`);
+    const receipt = installCliRouterCard(agent, project);
+    console.log(
+      `${green}✓${reset} ${receipt.changed ? 'Installed' : 'Verified'} Firecrawl CLI router card in ${receipt.path}\n`
+    );
   }
 
   printNextSteps(skillCount);

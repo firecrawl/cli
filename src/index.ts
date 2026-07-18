@@ -2153,6 +2153,11 @@ program
   .option('--skip-install', 'Skip global CLI installation')
   .option('--skip-auth', 'Skip authentication')
   .option('--skip-skills', 'Skip skills installation')
+  .option(
+    '--router-card',
+    'Install the candidate project-local CLI router card (requires --agent and --project)'
+  )
+  .option('--project <path>', 'Project directory for the candidate router card')
   .action(async (template, options) => {
     const globalOptions = program.opts();
     await handleInitCommand({
@@ -2166,6 +2171,8 @@ program
       skipInstall: options.skipInstall,
       skipAuth: options.skipAuth,
       skipSkills: options.skipSkills,
+      routerCard: options.routerCard,
+      project: options.project,
     });
   });
 
