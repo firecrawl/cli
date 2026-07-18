@@ -24,6 +24,13 @@ vi.mock('../../utils/router-card', async (importOriginal) => {
       sha256:
         'f781e09b71c0d7f5a60f5bbf37a0c656cf30ade2876212a5f0dcde6bebaad995',
     })),
+    removeRouterCard: vi.fn(() => ({
+      path: '/workspace/AGENTS.md',
+      changed: true,
+      version: 2,
+      sha256:
+        'f781e09b71c0d7f5a60f5bbf37a0c656cf30ade2876212a5f0dcde6bebaad995',
+    })),
     resolveRouterCardProject: vi.fn((project: string) => project),
   };
 });
@@ -105,6 +112,19 @@ describe('handleInitCommand', () => {
     });
 
     expect(installCliRouterCard).not.toHaveBeenCalled();
+  });
+
+  it('removes managed project routing without running onboarding again', async () => {
+    const { removeRouterCard } = await import('../../utils/router-card');
+
+    await handleInitCommand({
+      agent: 'codex',
+      project: '/workspace',
+      removeRouterCard: true,
+    });
+
+    expect(removeRouterCard).toHaveBeenCalledWith('codex', '/workspace');
+    expect(execSync).not.toHaveBeenCalled();
   });
 
   it('does not write routing outside an explicit supported project state', async () => {

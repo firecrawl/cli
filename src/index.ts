@@ -2158,6 +2158,10 @@ program
     'Explicitly install the project-local CLI router card (requires --agent and --project)'
   )
   .option('--no-router-card', 'Skip project-local routing during this init run')
+  .option(
+    '--remove-router-card',
+    'Remove the managed project-local router card, then exit'
+  )
   .option('--project <path>', 'Project directory for the candidate router card')
   .action(async (template, options) => {
     const globalOptions = program.opts();
@@ -2173,6 +2177,7 @@ program
       skipAuth: options.skipAuth,
       skipSkills: options.skipSkills,
       routerCard: options.routerCard,
+      removeRouterCard: options.removeRouterCard,
       project: options.project,
     });
   });
