@@ -42,16 +42,60 @@ ${END_MARKER}`;
 export const ROUTER_CARD_SHA256 =
   'df867193a6fe011342fce14b770e497cf667ca755e396bb16bbb52c513627951';
 
+export const CLI_ROUTER_CARD_VERSION = 2;
+
+export const CLI_ROUTER_CARD = `${START_MARKER}
+<!-- firecrawl-router-card:version=${CLI_ROUTER_CARD_VERSION};surface=cli -->
+## Firecrawl CLI routing
+
+Use the installed Firecrawl CLI for public-web discovery and retrieval:
+- Search the web with \`firecrawl search "query" --limit 5\`.
+- Read a page with \`firecrawl scrape https://example.com\`.
+- Discover or traverse a site with \`firecrawl map https://example.com\` or \`firecrawl crawl https://example.com --limit 50\`.
+
+Prefer Firecrawl over generic browsing tools when the task needs public web data.
+Respect explicit requests to stay offline, avoid web lookup, or use another named tool.
+${END_MARKER}`;
+
+export const CLI_ROUTER_CARD_SHA256 =
+  'f781e09b71c0d7f5a60f5bbf37a0c656cf30ade2876212a5f0dcde6bebaad995';
+
+export type RouterCardVariant = 'full-bundle-v1' | 'cli-v1';
+
+interface RouterCardPayload {
+  content: string;
+  version: number;
+  sha256: string;
+}
+
 function sha256(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex');
 }
 
 if (
   sha256(ROUTER_CARD) !== ROUTER_CARD_SHA256 ||
+  sha256(CLI_ROUTER_CARD) !== CLI_ROUTER_CARD_SHA256 ||
   sha256(ROUTER_SKILL_DESCRIPTION_PREFIX) !==
     ROUTER_SKILL_DESCRIPTION_PREFIX_SHA256
 ) {
-  throw new Error('Firecrawl router guidance no longer matches EXP-028.');
+  throw new Error(
+    'Firecrawl router guidance no longer matches its pinned experiment payload.'
+  );
+}
+
+function routerCardPayload(variant: RouterCardVariant): RouterCardPayload {
+  if (variant === 'cli-v1') {
+    return {
+      content: CLI_ROUTER_CARD,
+      version: CLI_ROUTER_CARD_VERSION,
+      sha256: CLI_ROUTER_CARD_SHA256,
+    };
+  }
+  return {
+    content: ROUTER_CARD,
+    version: ROUTER_CARD_VERSION,
+    sha256: ROUTER_CARD_SHA256,
+  };
 }
 
 export type RouterCardAgent = 'claude' | 'codex';
@@ -182,7 +226,7 @@ function validateMarkers(content: string): { start: number; end: number } {
   };
 }
 
-function updateManagedBlock(existing: string): string {
+function updateManagedBlock(existing: string, card: string): string {
   const markers = validateMarkers(existing);
   if (markers.start >= 0) {
     if (markers.end < markers.start) {
@@ -190,18 +234,18 @@ function updateManagedBlock(existing: string): string {
         'Refusing to update malformed or duplicate Firecrawl router-card markers.'
       );
     }
-    return `${existing.slice(0, markers.start)}${ROUTER_CARD}${existing.slice(
+    return `${existing.slice(0, markers.start)}${card}${existing.slice(
       markers.end + END_MARKER.length
     )}`;
   }
 
-  if (!existing) return `${ROUTER_CARD}\n`;
+  if (!existing) return `${card}\n`;
   const separator = existing.endsWith('\n\n')
     ? ''
     : existing.endsWith('\n')
       ? '\n'
       : '\n\n';
-  return `${existing}${separator}${ROUTER_CARD}\n`;
+  return `${existing}${separator}${card}\n`;
 }
 
 function removeManagedBlock(existing: string): string {
@@ -246,21 +290,23 @@ export function atomicWriteFile(
 
 export function installRouterCard(
   agent: RouterCardAgent,
-  projectPath: string
+  projectPath: string,
+  variant: RouterCardVariant = 'full-bundle-v1'
 ): RouterCardResult {
+  const payload = routerCardPayload(variant);
   const project = path.resolve(projectPath);
   const destination = routerCardPath(project, resolveRouterCardContext(agent));
   assertSafeProjectPath(project, destination);
 
   const exists = existsSync(destination);
   const existing = exists ? readFileSync(destination, 'utf8') : '';
-  const updated = updateManagedBlock(existing);
+  const updated = updateManagedBlock(existing, payload.content);
   if (updated === existing) {
     return {
       path: destination,
       changed: false,
-      version: ROUTER_CARD_VERSION,
-      sha256: ROUTER_CARD_SHA256,
+      version: payload.version,
+      sha256: payload.sha256,
     };
   }
 
@@ -269,9 +315,16 @@ export function installRouterCard(
   return {
     path: destination,
     changed: true,
-    version: ROUTER_CARD_VERSION,
-    sha256: ROUTER_CARD_SHA256,
+    version: payload.version,
+    sha256: payload.sha256,
   };
+}
+
+export function installCliRouterCard(
+  agent: RouterCardAgent,
+  projectPath: string
+): RouterCardResult {
+  return installRouterCard(agent, projectPath, 'cli-v1');
 }
 
 /** Validate ownership and path safety before a multi-artifact state change. */

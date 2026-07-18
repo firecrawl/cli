@@ -25,6 +25,12 @@ import {
   WEB_AGENTS,
   type WebAgent,
 } from '../utils/web-defaults';
+import {
+  installCliRouterCard,
+  removeRouterCard,
+  resolveRouterCardProject,
+  type RouterCardAgent,
+} from '../utils/router-card';
 
 export interface InitOptions {
   global?: boolean;
@@ -37,6 +43,9 @@ export interface InitOptions {
   apiKey?: string;
   browser?: boolean;
   template?: string;
+  routerCard?: boolean;
+  removeRouterCard?: boolean;
+  project?: string;
 }
 
 const orange = '\x1b[38;5;208m';
@@ -925,8 +934,9 @@ export async function handleInitCommand(
   console.log(`  ${orange}🔥 ${bold}firecrawl${reset} ${dim}init${reset}`);
   console.log('');
 
-  // Non-interactive mode (--yes or --all skips all prompts)
-  if (options.yes || options.all) {
+  // Non-interactive mode (--yes or --all skips all prompts). Removal is a
+  // bounded project-state operation and never enters onboarding prompts.
+  if (options.yes || options.all || options.removeRouterCard) {
     await runNonInteractive(options);
     return;
   }
@@ -960,10 +970,55 @@ export async function handleInitCommand(
 }
 
 async function runNonInteractive(options: InitOptions): Promise<void> {
+  const normalizedAgent = options.agent?.trim().toLowerCase();
+  const routerAgent: RouterCardAgent | undefined =
+    normalizedAgent === 'claude' || normalizedAgent === 'claude-code'
+      ? 'claude'
+      : normalizedAgent === 'codex'
+        ? 'codex'
+        : undefined;
+  const explicitlyEnableRouter = options.routerCard === true;
+  if (explicitlyEnableRouter && options.removeRouterCard) {
+    throw new Error('Cannot combine --router-card with --remove-router-card.');
+  }
+  if (options.removeRouterCard) {
+    if (!routerAgent || !options.project) {
+      throw new Error(
+        '--remove-router-card requires --agent claude or --agent codex and an explicit --project <path>.'
+      );
+    }
+    const project = resolveRouterCardProject(options.project);
+    const receipt = removeRouterCard(routerAgent, project);
+    console.log(
+      `${green}✓${reset} ${receipt.changed ? 'Removed' : 'No managed'} Firecrawl CLI router card in ${receipt.path}\n`
+    );
+    return;
+  }
+  if (explicitlyEnableRouter && options.skipSkills) {
+    throw new Error('--router-card requires skills; remove --skip-skills.');
+  }
+  if (explicitlyEnableRouter && !options.agent) {
+    throw new Error('--router-card requires --agent claude or --agent codex.');
+  }
+  if (explicitlyEnableRouter && !routerAgent) {
+    throw new Error(
+      '--router-card currently supports --agent claude or --agent codex.'
+    );
+  }
+  if (explicitlyEnableRouter && !options.project) {
+    throw new Error('--router-card requires an explicit --project <path>.');
+  }
+  const routerEligible = Boolean(
+    options.routerCard !== false &&
+    routerAgent &&
+    options.project &&
+    !options.skipSkills
+  );
   const steps: string[] = [];
   if (!options.skipAuth) steps.push('auth');
   if (!options.skipInstall) steps.push('install');
   if (!options.skipSkills) steps.push('skills');
+  if (routerEligible) steps.push('router');
   const total = steps.length;
   let current = 0;
 
@@ -1048,6 +1103,26 @@ async function runNonInteractive(options: InitOptions): Promise<void> {
         process.exit(1);
       }
     }
+  }
+
+  if (explicitlyEnableRouter && !isAuthenticated()) {
+    throw new Error(
+      'Router-card setup requires an authenticated Firecrawl CLI.'
+    );
+  }
+
+  if (routerEligible && isAuthenticated()) {
+    if (!routerAgent) {
+      throw new Error(
+        'Router-card setup requires --agent claude or --agent codex.'
+      );
+    }
+    const project = resolveRouterCardProject(options.project);
+    console.log(`${stepLabel()} Configuring project web routing...`);
+    const receipt = installCliRouterCard(routerAgent, project);
+    console.log(
+      `${green}✓${reset} ${receipt.changed ? 'Installed' : 'Verified'} Firecrawl CLI router card in ${receipt.path}\n`
+    );
   }
 
   printNextSteps(skillCount);
