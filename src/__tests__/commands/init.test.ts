@@ -82,17 +82,47 @@ describe('handleInitCommand', () => {
     );
   });
 
-  it('installs the CLI-only router card after the selected agent skills', async () => {
+  it('installs the CLI-only router card by default after eligible project skills setup', async () => {
     await handleInitCommand({
       yes: true,
       skipInstall: true,
       skipAuth: true,
       agent: 'codex',
       project: '/workspace',
-      routerCard: true,
     });
 
     expect(installCliRouterCard).toHaveBeenCalledWith('codex', '/workspace');
+  });
+
+  it('honors the per-run router-card opt-out', async () => {
+    await handleInitCommand({
+      yes: true,
+      skipInstall: true,
+      skipAuth: true,
+      agent: 'codex',
+      project: '/workspace',
+      routerCard: false,
+    });
+
+    expect(installCliRouterCard).not.toHaveBeenCalled();
+  });
+
+  it('does not write routing outside an explicit supported project state', async () => {
+    await handleInitCommand({
+      yes: true,
+      skipInstall: true,
+      skipAuth: true,
+      agent: 'codex',
+    });
+    await handleInitCommand({
+      yes: true,
+      skipInstall: true,
+      skipAuth: true,
+      agent: 'cursor',
+      project: '/workspace',
+    });
+
+    expect(installCliRouterCard).not.toHaveBeenCalled();
   });
 
   it('rejects router-card setup without an explicit project or skills', async () => {

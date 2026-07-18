@@ -967,20 +967,39 @@ export async function handleInitCommand(
 }
 
 async function runNonInteractive(options: InitOptions): Promise<void> {
-  if (options.routerCard && options.skipSkills) {
+  const normalizedAgent = options.agent?.trim().toLowerCase();
+  const routerAgent: RouterCardAgent | undefined =
+    normalizedAgent === 'claude' || normalizedAgent === 'claude-code'
+      ? 'claude'
+      : normalizedAgent === 'codex'
+        ? 'codex'
+        : undefined;
+  const explicitlyEnableRouter = options.routerCard === true;
+  if (explicitlyEnableRouter && options.skipSkills) {
     throw new Error('--router-card requires skills; remove --skip-skills.');
   }
-  if (options.routerCard && !options.agent) {
+  if (explicitlyEnableRouter && !options.agent) {
     throw new Error('--router-card requires --agent claude or --agent codex.');
   }
-  if (options.routerCard && !options.project) {
+  if (explicitlyEnableRouter && !routerAgent) {
+    throw new Error(
+      '--router-card currently supports --agent claude or --agent codex.'
+    );
+  }
+  if (explicitlyEnableRouter && !options.project) {
     throw new Error('--router-card requires an explicit --project <path>.');
   }
+  const routerEligible = Boolean(
+    options.routerCard !== false &&
+    routerAgent &&
+    options.project &&
+    !options.skipSkills
+  );
   const steps: string[] = [];
   if (!options.skipAuth) steps.push('auth');
   if (!options.skipInstall) steps.push('install');
   if (!options.skipSkills) steps.push('skills');
-  if (options.routerCard) steps.push('router');
+  if (routerEligible) steps.push('router');
   const total = steps.length;
   let current = 0;
 
@@ -1067,26 +1086,21 @@ async function runNonInteractive(options: InitOptions): Promise<void> {
     }
   }
 
-  if (options.routerCard) {
-    if (!isAuthenticated()) {
+  if (explicitlyEnableRouter && !isAuthenticated()) {
+    throw new Error(
+      'Router-card setup requires an authenticated Firecrawl CLI.'
+    );
+  }
+
+  if (routerEligible && isAuthenticated()) {
+    if (!routerAgent) {
       throw new Error(
-        'Router-card setup requires an authenticated Firecrawl CLI.'
+        'Router-card setup requires --agent claude or --agent codex.'
       );
     }
-    const normalized = options.agent!.trim().toLowerCase();
-    const agent: RouterCardAgent =
-      normalized === 'claude' || normalized === 'claude-code'
-        ? 'claude'
-        : normalized === 'codex'
-          ? 'codex'
-          : (() => {
-              throw new Error(
-                '--router-card currently supports --agent claude or --agent codex.'
-              );
-            })();
     const project = resolveRouterCardProject(options.project);
     console.log(`${stepLabel()} Configuring project web routing...`);
-    const receipt = installCliRouterCard(agent, project);
+    const receipt = installCliRouterCard(routerAgent, project);
     console.log(
       `${green}✓${reset} ${receipt.changed ? 'Installed' : 'Verified'} Firecrawl CLI router card in ${receipt.path}\n`
     );

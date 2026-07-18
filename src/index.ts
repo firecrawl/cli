@@ -2155,8 +2155,9 @@ program
   .option('--skip-skills', 'Skip skills installation')
   .option(
     '--router-card',
-    'Install the candidate project-local CLI router card (requires --agent and --project)'
+    'Explicitly install the project-local CLI router card (requires --agent and --project)'
   )
+  .option('--no-router-card', 'Skip project-local routing during this init run')
   .option('--project <path>', 'Project directory for the candidate router card')
   .action(async (template, options) => {
     const globalOptions = program.opts();
