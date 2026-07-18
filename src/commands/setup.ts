@@ -14,6 +14,7 @@ import {
 import os from 'os';
 import path from 'path';
 import readline from 'readline';
+import { Command, Option } from 'commander';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { getApiKey } from '../utils/config';
 import {
@@ -28,6 +29,13 @@ import {
   WEB_AGENTS,
   type WebAgent,
 } from '../utils/web-defaults';
+import {
+  assertRouterCardStateSafe,
+  installRouterCard,
+  removeRouterCard,
+  resolveRouterCardProject,
+  type RouterCardAgent,
+} from '../utils/router-card';
 
 export type SetupSubcommand = 'skills' | 'workflows' | 'mcp' | 'defaults';
 
@@ -49,12 +57,28 @@ export interface SetupOptions {
   nativeSkills?: boolean;
   /** Render compact skill install output. */
   quiet?: boolean;
+  project?: string;
+  routerCard?: boolean;
+  removeRouterCard?: boolean;
 }
 
 const green = '\x1b[32m';
 const dim = '\x1b[2m';
 const reset = '\x1b[0m';
 const ADD_MCP_PACKAGE = 'add-mcp@1.14.0';
+
+export function addSetupRouterOptions(command: Command): Command {
+  return command
+    .option('--project <path>', 'Project directory for routing guidance')
+    .option('--router-card', 'Write project routing guidance after MCP setup')
+    .option('--no-router-card', 'Leave project routing guidance unchanged')
+    .addOption(
+      new Option(
+        '--remove-router-card',
+        'Remove managed project routing guidance only'
+      ).conflicts('routerCard')
+    );
+}
 
 const SKILL_REPO_LABELS: Record<string, string> = {
   'firecrawl/cli': 'Core CLI skills',
@@ -383,6 +407,44 @@ export async function installSkillsForAgent(
 
 export async function installMcp(options: SetupOptions): Promise<void> {
   const resolvedAgent = resolveMcpAgent(options.agent);
+  const routerOptionSpecified = options.routerCard !== undefined;
+  const routerAction =
+    routerOptionSpecified || Boolean(options.removeRouterCard);
+  if (options.removeRouterCard && routerOptionSpecified) {
+    throw new Error(
+      '--remove-router-card conflicts with --router-card and --no-router-card.'
+    );
+  }
+
+  let routerAgent: RouterCardAgent | undefined;
+  let routerProject: string | undefined;
+  if (routerAction) {
+    if (!options.agent || !options.project) {
+      throw new Error('Router-card options require --agent and --project.');
+    }
+    if (
+      resolvedAgent.kind !== 'add-mcp' ||
+      !['claude-code', 'codex'].includes(resolvedAgent.agent ?? '')
+    ) {
+      throw new Error(
+        'Project router cards support --agent claude-code and --agent codex.'
+      );
+    }
+    routerAgent = resolvedAgent.agent === 'claude-code' ? 'claude' : 'codex';
+    routerProject = resolveRouterCardProject(options.project);
+    if (options.routerCard || options.removeRouterCard) {
+      assertRouterCardStateSafe(routerAgent, routerProject);
+    }
+    if (options.removeRouterCard) {
+      const result = removeRouterCard(routerAgent, routerProject);
+      console.log(`Firecrawl router card removed from ${result.path}.`);
+      return;
+    }
+    if (options.routerCard && !getApiKey()) {
+      throw new Error('Project router cards require authenticated MCP setup.');
+    }
+  }
+
   if (resolvedAgent.kind === 'hermes') {
     await installHermesMcp();
     return;
@@ -402,6 +464,10 @@ export async function installMcp(options: SetupOptions): Promise<void> {
   }
 
   await installAddMcp(options, resolvedAgent);
+  if (options.routerCard && routerAgent && routerProject) {
+    const result = installRouterCard(routerAgent, routerProject);
+    console.log(`Firecrawl router card configured at ${result.path}.`);
+  }
 }
 
 async function installAddMcp(
@@ -458,6 +524,7 @@ async function installAddMcp(
     execFileSync('npx', args, {
       stdio: 'inherit',
       env: cleanNpmEnv(),
+      ...(options.project ? { cwd: path.resolve(options.project) } : {}),
     });
     if (options.quiet) {
       const target = resolvedAgent.agent

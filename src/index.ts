@@ -57,7 +57,11 @@ import {
   findTemplate,
   stepAuth,
 } from './commands/init';
-import { handleMakeDefaultCommand, handleSetupCommand } from './commands/setup';
+import {
+  addSetupRouterOptions,
+  handleMakeDefaultCommand,
+  handleSetupCommand,
+} from './commands/setup';
 import type { SetupSubcommand } from './commands/setup';
 import { handleEnvPullCommand } from './commands/env';
 import { handleStatusCommand } from './commands/status';
@@ -2169,7 +2173,7 @@ program
     });
   });
 
-program
+const setupCommand = program
   .command('setup')
   .description(
     'Set up individual firecrawl integrations (skills, workflows, mcp, defaults)'
@@ -2190,10 +2194,12 @@ program
   .option(
     '--undo',
     'Undo setup defaults by re-enabling native web tools where supported'
-  )
-  .action(async (subcommand: SetupSubcommand, options) => {
+  );
+addSetupRouterOptions(setupCommand).action(
+  async (subcommand: SetupSubcommand, options) => {
     await handleSetupCommand(subcommand, options);
-  });
+  }
+);
 
 program
   .command('make')

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync, execSync } from 'child_process';
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -225,6 +226,175 @@ describe('handleSetupCommand', () => {
         stdio: 'inherit',
       })
     );
+  });
+
+  it('writes project router state only after MCP setup succeeds', async () => {
+    const project = mkdtempSync(
+      path.join(os.tmpdir(), 'firecrawl-setup-router-')
+    );
+    let cardExistedDuringMcpSetup = true;
+    vi.mocked(execFileSync).mockImplementationOnce(() => {
+      cardExistedDuringMcpSetup = existsSync(path.join(project, 'AGENTS.md'));
+      return '' as never;
+    });
+
+    try {
+      await handleSetupCommand('mcp', {
+        agent: 'codex',
+        project,
+        routerCard: true,
+        yes: true,
+      });
+
+      expect(cardExistedDuringMcpSetup).toBe(false);
+      expect(readFileSync(path.join(project, 'AGENTS.md'), 'utf8')).toContain(
+        'firecrawl-router-card:start'
+      );
+      expect(execFileSync).toHaveBeenCalledWith(
+        'npx',
+        expect.arrayContaining(['add-mcp@1.14.0', '--agent', 'codex']),
+        expect.objectContaining({ cwd: project, stdio: 'inherit' })
+      );
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it('does not write project router state when MCP setup fails', async () => {
+    const project = mkdtempSync(
+      path.join(os.tmpdir(), 'firecrawl-setup-router-')
+    );
+    vi.mocked(execFileSync).mockImplementationOnce(() => {
+      throw new Error('setup failed');
+    });
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit 1');
+    }) as never);
+
+    try {
+      await expect(
+        handleSetupCommand('mcp', {
+          agent: 'codex',
+          project,
+          routerCard: true,
+          yes: true,
+        })
+      ).rejects.toThrow('exit 1');
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(existsSync(path.join(project, 'AGENTS.md'))).toBe(false);
+      expect(existsSync(path.join(project, '.firecrawl'))).toBe(false);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps ordinary and explicit default-off MCP setup router-neutral', async () => {
+    const project = mkdtempSync(
+      path.join(os.tmpdir(), 'firecrawl-setup-router-')
+    );
+    const card = path.join(project, 'AGENTS.md');
+    const existing =
+      'before\n\n<!-- firecrawl-router-card:start -->\nold\n<!-- firecrawl-router-card:end -->\n';
+    writeFileSync(card, existing);
+
+    try {
+      await handleSetupCommand('mcp', {
+        agent: 'codex',
+        project,
+        yes: true,
+      });
+      expect(readFileSync(card, 'utf8')).toBe(existing);
+
+      await handleSetupCommand('mcp', {
+        agent: 'codex',
+        project,
+        routerCard: false,
+        yes: true,
+      });
+      expect(readFileSync(card, 'utf8')).toBe(existing);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it('does not inspect malformed router state for explicit default-off setup', async () => {
+    const project = mkdtempSync(
+      path.join(os.tmpdir(), 'firecrawl-setup-router-')
+    );
+    const card = path.join(project, 'AGENTS.md');
+    const malformed =
+      'before\n<!-- firecrawl-router-card:start -->\nunterminated\n';
+    writeFileSync(card, malformed);
+
+    try {
+      await handleSetupCommand('mcp', {
+        agent: 'codex',
+        project,
+        routerCard: false,
+        yes: true,
+      });
+      expect(execFileSync).toHaveBeenCalledOnce();
+      expect(readFileSync(card, 'utf8')).toBe(malformed);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it('removes only managed project router state without running MCP setup', async () => {
+    const project = mkdtempSync(
+      path.join(os.tmpdir(), 'firecrawl-setup-router-')
+    );
+    const card = path.join(project, 'AGENTS.md');
+    writeFileSync(
+      card,
+      'before\n\n<!-- firecrawl-router-card:start -->\nold\n<!-- firecrawl-router-card:end -->\n'
+    );
+
+    try {
+      await handleSetupCommand('mcp', {
+        agent: 'codex',
+        project,
+        removeRouterCard: true,
+      });
+
+      expect(execFileSync).not.toHaveBeenCalled();
+      expect(readFileSync(card, 'utf8')).toBe('before\n');
+      expect(existsSync(path.join(project, '.firecrawl'))).toBe(false);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it('fails router actions closed before MCP side effects', async () => {
+    const project = mkdtempSync(
+      path.join(os.tmpdir(), 'firecrawl-setup-router-')
+    );
+    try {
+      await expect(
+        handleSetupCommand('mcp', {
+          agent: 'codex',
+          routerCard: true,
+        })
+      ).rejects.toThrow('--project');
+      await expect(
+        handleSetupCommand('mcp', {
+          agent: 'cursor',
+          project,
+          routerCard: true,
+        })
+      ).rejects.toThrow('claude-code and --agent codex');
+      await expect(
+        handleSetupCommand('mcp', {
+          agent: 'codex',
+          project,
+          routerCard: false,
+          removeRouterCard: true,
+        })
+      ).rejects.toThrow('conflicts');
+      expect(execFileSync).not.toHaveBeenCalled();
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
   });
 
   it('normalizes launch aliases when reinstalling MCP after auth changes', async () => {
