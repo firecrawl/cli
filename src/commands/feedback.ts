@@ -20,6 +20,7 @@ export interface EndpointFeedbackOptions {
   tags?: string[];
   note?: string;
   valuableSources?: ValuableSourceInput[];
+  valuableResultPositions?: number[];
   missingContent?: MissingContentInput[];
   querySuggestions?: string;
   url?: string;
@@ -111,8 +112,9 @@ export function parseFeedbackListArg(
   return normalizeList(trimmed.split(','));
 }
 
-export function parsePageNumbersArg(
-  raw: string | undefined
+function parsePositiveIntArrayArg(
+  raw: string | undefined,
+  flag: string
 ): number[] | undefined {
   if (!raw) return undefined;
   const trimmed = raw.trim();
@@ -123,12 +125,12 @@ export function parsePageNumbersArg(
     try {
       const parsed = JSON.parse(trimmed);
       if (!Array.isArray(parsed)) {
-        throw new Error('--page-numbers must be a JSON array.');
+        throw new Error(`${flag} must be a JSON array.`);
       }
       values = parsed;
     } catch {
       throw new Error(
-        '--page-numbers must be a comma-separated list or valid JSON array.'
+        `${flag} must be a comma-separated list or valid JSON array.`
       );
     }
   } else {
@@ -142,6 +144,18 @@ export function parsePageNumbersArg(
     .filter((value) => Number.isInteger(value) && value > 0);
 
   return numbers.length > 0 ? numbers : undefined;
+}
+
+export function parsePageNumbersArg(
+  raw: string | undefined
+): number[] | undefined {
+  return parsePositiveIntArrayArg(raw, '--page-numbers');
+}
+
+export function parseValuableResultPositionsArg(
+  raw: string | undefined
+): number[] | undefined {
+  return parsePositiveIntArrayArg(raw, '--valuable-result-positions');
 }
 
 export function parseMetadataArg(
@@ -207,6 +221,7 @@ export function parseEndpointFeedbackCliOptions(options: {
   metadata?: string;
   metadataFile?: string;
   valuableSources?: string;
+  valuableResultPositions?: string;
   missingContent?: string | string[];
   rating?: string;
 }) {
@@ -217,6 +232,9 @@ export function parseEndpointFeedbackCliOptions(options: {
     pageNumbers: parsePageNumbersArg(options.pageNumbers),
     metadata: parseMetadataArg(options.metadata, options.metadataFile),
     valuableSources: parseValuableSourcesArg(options.valuableSources),
+    valuableResultPositions: parseValuableResultPositionsArg(
+      options.valuableResultPositions
+    ),
     missingContent: parseMissingContentArg(options.missingContent),
   };
 }
@@ -261,6 +279,7 @@ export async function executeEndpointFeedback(
       ['tags', normalizeList(options.tags)],
       ['note', options.note],
       ['valuableSources', options.valuableSources],
+      ['valuableResultPositions', options.valuableResultPositions],
       ['missingContent', options.missingContent],
       ['querySuggestions', options.querySuggestions],
       ['url', options.url],

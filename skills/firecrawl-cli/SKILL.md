@@ -193,9 +193,7 @@ The `check` response then carries a per-field diff (paths like `plans[0].price`)
   },
   "snapshot": {
     "json": {
-      "plans": [
-        /* current full extraction */
-      ]
+      "plans": [/* current full extraction */]
     }
   }
 }
@@ -255,11 +253,11 @@ Single format outputs raw content. Multiple formats (e.g., `--format markdown,li
 These patterns are useful when working with file-based output (`-o` flag) for complex tasks:
 
 ```bash
-# Extract URLs from search
-jq -r '.data.web[].url' .firecrawl/search.json
+# Extract URLs from search with their 1-indexed positions (needed for feedback)
+jq -r '.data.web | to_entries[] | "\(.key + 1)\t\(.value.url)"' .firecrawl/search.json
 
-# Get titles and URLs
-jq -r '.data.web[] | "\(.title): \(.url)"' .firecrawl/search.json
+# Get positions, titles, and URLs
+jq -r '.data.web | to_entries[] | "\(.key + 1)\t\(.value.title): \(.value.url)"' .firecrawl/search.json
 ```
 
 ## After search: send feedback (refunds 1 credit)
@@ -271,13 +269,13 @@ SEARCH_ID=$(jq -r '.id' .firecrawl/search-react-hooks.json)
 
 firecrawl search-feedback "$SEARCH_ID" \
   --rating good \
-  --valuable-sources '[{"url":"https://react.dev/reference/react/hooks","reason":"Authoritative"}]' \
+  --valuable-result-positions "1,3" \
   --missing-content '[{"topic":"useDeferredValue example"},{"topic":"Server Components hooks"}]' \
   --query-suggestions "Boost react.dev for react-hooks queries" \
   --silent &
 ```
 
-The most useful field is `--missing-content`: an _array_ of specific pieces of content you expected to find but didn't. Use one entry per missing topic. Bad/partial feedback with detailed `--missing-content` is just as valuable as good feedback.
+The most useful field is `--missing-content`: an _array_ of specific pieces of content you expected to find but didn't. Use one entry per missing topic. Bad/partial feedback with detailed `--missing-content` is just as valuable as good feedback. Mark useful results with `--valuable-result-positions` (1-indexed into `data.web`, list **every** useful one — unlisted results count as not useful); reserve `--valuable-sources` for useful URLs that were not in `data.web`.
 
 **Opt out:** `export FIRECRAWL_NO_SEARCH_FEEDBACK=1` makes the CLI skip every feedback call silently. Respect that flag — do not try to work around it. See [firecrawl-search](../firecrawl-search/SKILL.md) for the full pattern.
 

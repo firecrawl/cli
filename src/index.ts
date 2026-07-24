@@ -37,6 +37,7 @@ import {
   handleEndpointFeedbackCommand,
   parseEndpointFeedbackCliOptions,
   parseEndpointFeedbackEndpoint,
+  parseValuableResultPositionsArg,
 } from './commands/feedback';
 import { handleAgentCommand } from './commands/agent';
 import {
@@ -1295,8 +1296,15 @@ function createSearchFeedbackCommand(): Command {
     .argument('<searchId>', 'The id returned by `firecrawl search ... --json`')
     .requiredOption('--rating <rating>', 'Overall rating: good | bad | partial')
     .option(
+      '--valuable-result-positions <numbersOrJson>',
+      '1-indexed positions in data.web of every result that was useful ' +
+        '(e.g. "1,3" or [1,3]). Unlisted results are treated as not useful.'
+    )
+    .option(
       '--valuable-sources <urlsOrJson>',
-      'Comma-separated URLs OR JSON array of {url, reason} entries'
+      'Comma-separated URLs OR JSON array of {url, reason} entries. ' +
+        'For useful URLs NOT in data.web; use --valuable-result-positions ' +
+        'for returned web results.'
     )
     .option(
       '--missing-content <topicsOrJson...>',
@@ -1337,6 +1345,19 @@ function createSearchFeedbackCommand(): Command {
         process.exit(1);
       }
 
+      let valuableResultPositions;
+      try {
+        valuableResultPositions = parseValuableResultPositionsArg(
+          options.valuableResultPositions
+        );
+      } catch (error: any) {
+        console.error(
+          'Error:',
+          error?.message || 'Invalid --valuable-result-positions'
+        );
+        process.exit(1);
+      }
+
       let missingContent;
       try {
         missingContent = parseMissingContentArg(options.missingContent);
@@ -1349,6 +1370,7 @@ function createSearchFeedbackCommand(): Command {
         searchId,
         rating: rating as SearchFeedbackRating,
         valuableSources,
+        valuableResultPositions,
         missingContent,
         querySuggestions: options.querySuggestions,
         apiKey: options.apiKey,
@@ -1384,6 +1406,11 @@ function createFeedbackCommand(): Command {
     .option(
       '--valuable-sources <urlsOrJson>',
       'Comma-separated URLs OR JSON array of {url, reason} entries'
+    )
+    .option(
+      '--valuable-result-positions <numbersOrJson>',
+      'Search only: 1-indexed positions in data.web of every useful result ' +
+        '(e.g. "1,3" or [1,3])'
     )
     .option(
       '--missing-content <topicsOrJson...>',
@@ -1440,6 +1467,7 @@ function createFeedbackCommand(): Command {
         tags: parsed.tags,
         note: options.note,
         valuableSources: parsed.valuableSources,
+        valuableResultPositions: parsed.valuableResultPositions,
         missingContent: parsed.missingContent,
         querySuggestions: options.querySuggestions,
         url: options.url,

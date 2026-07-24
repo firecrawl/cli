@@ -370,20 +370,21 @@ endpoint feedback calls silently.
 
 #### Feedback Options
 
-| Option                           | Description                                  |
-| -------------------------------- | -------------------------------------------- |
-| `--rating <rating>`              | Required: `good`, `partial`, or `bad`        |
-| `--issues <codesOrJson>`         | Comma-separated issue codes or JSON array    |
-| `--tags <codesOrJson>`           | Comma-separated tags or JSON array           |
-| `--note <text>`                  | Short human-readable feedback                |
-| `--valuable-sources <json>`      | JSON array of `{url, reason}` entries        |
-| `--missing-content <json>`       | JSON array of `{topic, description}` entries |
-| `--query-suggestions <text>`     | Search/query improvement notes               |
-| `--url <url>`                    | Relevant URL for scrape or parse feedback    |
-| `--page-numbers <numbersOrJson>` | Comma-separated page numbers or JSON array   |
-| `--metadata <json>`              | Small JSON object with extra context         |
-| `--metadata-file <path>`         | Path to small metadata JSON object           |
-| `--silent`                       | Suppress output for background agent calls   |
+| Option                                        | Description                                                        |
+| --------------------------------------------- | ------------------------------------------------------------------ |
+| `--rating <rating>`                           | Required: `good`, `partial`, or `bad`                              |
+| `--issues <codesOrJson>`                      | Comma-separated issue codes or JSON array                          |
+| `--tags <codesOrJson>`                        | Comma-separated tags or JSON array                                 |
+| `--note <text>`                               | Short human-readable feedback                                      |
+| `--valuable-sources <json>`                   | JSON array of `{url, reason}` entries                              |
+| `--valuable-result-positions <numbersOrJson>` | Search only: 1-indexed `data.web` positions of every useful result |
+| `--missing-content <json>`                    | JSON array of `{topic, description}` entries                       |
+| `--query-suggestions <text>`                  | Search/query improvement notes                                     |
+| `--url <url>`                                 | Relevant URL for scrape or parse feedback                          |
+| `--page-numbers <numbersOrJson>`              | Comma-separated page numbers or JSON array                         |
+| `--metadata <json>`                           | Small JSON object with extra context                               |
+| `--metadata-file <path>`                      | Path to small metadata JSON object                                 |
+| `--silent`                                    | Suppress output for background agent calls                         |
 
 ---
 

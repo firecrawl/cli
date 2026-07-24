@@ -17,6 +17,7 @@ export interface SearchFeedbackOptions {
   searchId: string;
   rating: SearchFeedbackRating;
   valuableSources?: ValuableSourceInput[];
+  valuableResultPositions?: number[];
   missingContent?: MissingContentInput[];
   querySuggestions?: string;
   apiKey?: string;
@@ -117,6 +118,12 @@ export async function executeSearchFeedback(
           url: s.url,
           ...(s.reason ? { reason: s.reason } : {}),
         }));
+    }
+    if (
+      options.valuableResultPositions &&
+      options.valuableResultPositions.length > 0
+    ) {
+      body.valuableResultPositions = options.valuableResultPositions;
     }
     if (options.missingContent && options.missingContent.length > 0) {
       body.missingContent = options.missingContent
