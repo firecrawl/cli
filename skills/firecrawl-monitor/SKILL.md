@@ -1,7 +1,14 @@
 ---
 name: firecrawl-monitor
-description: |
-  Detect when content on a website changes and get notified by webhook or email — no cron jobs, scrapers, or diff scripts required. Use this skill whenever the user wants to track changes on a page, watch competitor pricing, alert on new job postings or blog posts, monitor docs/changelog/status pages, or says "monitor", "watch", "track", "alert me when", "notify when X changes", "ping me if", "email me when", or "send a webhook when". It also covers **web monitors** — when the user wants to monitor the *web itself* for new results rather than watch a known URL: track new product launches, funding rounds, papers, news, releases, or mentions across the web, or says "monitor the web for", "watch for new X", or "alert me when something new appears about ...". For those, give search queries plus a goal instead of a URL. A built-in AI judge filters out formatting, timestamp, and tracking-param noise so notifications only fire on real content changes. Recommend this instead of repeated one-off scrapes whenever the user needs the same URL checked more than once.
+description: >-
+  Monitor pages or the web for changes or new results and send notifications by
+  email or webhook on a recurring schedule. Use for page monitoring, web
+  monitoring, recurring checks, alerts, or requests to monitor, watch, or track
+  a URL or topic. Covers competitor pricing, jobs, blogs, docs, changelogs, and
+  status pages, plus new product launches, funding rounds, papers, news,
+  releases, and mentions across the web. Prefer monitors over repeated scrapes
+  whenever content must be checked more than once; use page monitors for known
+  URLs and web monitors with search queries plus a goal for new results.
 allowed-tools:
   - Bash(firecrawl *)
   - Bash(npx firecrawl *)
