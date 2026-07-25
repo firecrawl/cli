@@ -10,6 +10,13 @@ import {
   installSkillsForAgent,
 } from './setup';
 import { ALL_SKILL_REPOS } from './skills-install';
+import { removeInstalledRouterGuidance } from './skills-native';
+import {
+  installRouterCard,
+  removeRouterCard,
+  resolveRouterCardProject,
+} from '../utils/router-card';
+import { getApiKey } from '../utils/config';
 
 export interface LaunchOptions {
   config?: boolean;
@@ -19,6 +26,9 @@ export interface LaunchOptions {
   yes?: boolean;
   skipMcp?: boolean;
   skipSkills?: boolean;
+  routerCard?: boolean;
+  removeRouterCard?: boolean;
+  project?: string;
 }
 
 interface LaunchTarget {
@@ -30,7 +40,10 @@ interface LaunchTarget {
   command: string;
   args?: string[];
   supportsExtraArgs?: boolean;
-  fallbackCommand?: () => { command: string; args: string[] } | null;
+  fallbackCommand?: (
+    project: string
+  ) => { command: string; args: string[] } | null;
+  routerCardAgent?: 'claude' | 'codex';
 }
 
 type LaunchSetupMode = 'both' | 'mcp' | 'skills';
@@ -38,6 +51,7 @@ type LaunchSetupMode = 'both' | 'mcp' | 'skills';
 const TARGETS: LaunchTarget[] = [
   {
     aliases: ['claude', 'claude-code'],
+    routerCardAgent: 'claude',
     displayName: 'Claude Code',
     mcpAgent: 'claude-code',
     skillsAgent: 'claude-code',
@@ -55,16 +69,17 @@ const TARGETS: LaunchTarget[] = [
     mcpAgent: 'vscode',
     command: 'code',
     args: ['.'],
-    fallbackCommand: () => {
+    fallbackCommand: (project) => {
       if (process.platform !== 'darwin') return null;
       return {
         command: 'open',
-        args: ['-a', 'Visual Studio Code', process.cwd()],
+        args: ['-a', 'Visual Studio Code', project],
       };
     },
   },
   {
     aliases: ['codex'],
+    routerCardAgent: 'codex',
     displayName: 'Codex',
     mcpAgent: 'codex',
     skillsAgent: 'codex',
@@ -72,6 +87,7 @@ const TARGETS: LaunchTarget[] = [
   },
   {
     aliases: ['codex-app', 'codex-desktop', 'codex-gui'],
+    routerCardAgent: 'codex',
     displayName: 'Codex App',
     mcpAgent: 'codex',
     skillsAgent: 'codex',
@@ -201,7 +217,8 @@ function commandExists(command: string): boolean {
 
 function resolveLaunchCommand(
   target: LaunchTarget,
-  extraArgs: string[]
+  extraArgs: string[],
+  project: string
 ): { command: string; args: string[] } {
   if (extraArgs.length > 0 && target.supportsExtraArgs === false) {
     throw new Error(`${target.displayName} does not accept extra arguments.`);
@@ -214,7 +231,7 @@ function resolveLaunchCommand(
     };
   }
 
-  const fallback = target.fallbackCommand?.();
+  const fallback = target.fallbackCommand?.(project);
   if (fallback) {
     return {
       command: fallback.command,
@@ -247,6 +264,23 @@ export async function handleLaunchCommand(
 
   const targetSupportsMcp = Boolean(target.mcpInstaller || target.mcpAgent);
   const targetSupportsSkills = Boolean(target.skillsAgent);
+  const project = path.resolve(options.project ?? process.cwd());
+  if (options.removeRouterCard) {
+    if (!target.routerCardAgent) {
+      throw new Error(
+        'Router-card removal is currently supported for Claude and Codex.'
+      );
+    }
+    const routerProject = resolveRouterCardProject(options.project);
+    const result = removeRouterCard(target.routerCardAgent, routerProject);
+    const removedSkillDescriptions = target.skillsAgent
+      ? removeInstalledRouterGuidance(target.skillsAgent, routerProject)
+      : 0;
+    console.log(
+      `Firecrawl routing ${result.changed || removedSkillDescriptions > 0 ? 'removed' : 'not present'}: card ${result.changed ? 'removed' : 'not present'} at ${result.path}; restored ${removedSkillDescriptions} skill description(s).`
+    );
+    return;
+  }
   let installMcpForTarget = targetSupportsMcp && !options.skipMcp;
   let installSkillsForTarget = targetSupportsSkills && !options.skipSkills;
 
@@ -260,6 +294,17 @@ export async function handleLaunchCommand(
     installMcpForTarget = setupMode === 'both' || setupMode === 'mcp';
     installSkillsForTarget = setupMode === 'both' || setupMode === 'skills';
   }
+
+  const installRoutingState = Boolean(
+    target.routerCardAgent &&
+    options.routerCard !== false &&
+    installMcpForTarget &&
+    installSkillsForTarget &&
+    getApiKey()
+  );
+  const routerProject = installRoutingState
+    ? resolveRouterCardProject(options.project)
+    : undefined;
 
   if (installMcpForTarget) {
     if (target.mcpInstaller) {
@@ -283,8 +328,16 @@ export async function handleLaunchCommand(
         yes: true,
         nativeSkills: true,
         quiet: true,
+        routerGuidanceProject: installRoutingState ? routerProject : undefined,
       },
       ALL_SKILL_REPOS
+    );
+  }
+
+  if (installRoutingState && target.routerCardAgent && routerProject) {
+    const result = installRouterCard(target.routerCardAgent, routerProject);
+    console.log(
+      `Firecrawl router card ${result.changed ? 'installed' : 'already current'} at ${result.path} (sha256:${result.sha256}). Remove it with \`firecrawl launch ${target.aliases[0]} --remove-router-card --project ${routerProject}\`.`
     );
   }
 
@@ -293,10 +346,11 @@ export async function handleLaunchCommand(
     return;
   }
 
-  const launch = resolveLaunchCommand(target, extraArgs);
+  const launch = resolveLaunchCommand(target, extraArgs, project);
   const result = spawnSync(launch.command, launch.args, {
     stdio: 'inherit',
     env: process.env,
+    cwd: project,
   });
 
   if (result.error) {

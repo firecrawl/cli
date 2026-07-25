@@ -9,6 +9,9 @@ import {
   installSkillsForAgent,
 } from '../../commands/setup';
 import { ALL_SKILL_REPOS } from '../../commands/skills-install';
+import { installRouterCard, removeRouterCard } from '../../utils/router-card';
+import { getApiKey } from '../../utils/config';
+import { removeInstalledRouterGuidance } from '../../commands/skills-native';
 
 vi.mock('child_process', () => ({
   spawnSync: vi.fn(),
@@ -23,6 +26,32 @@ vi.mock('../../commands/setup', () => ({
   installMcp: vi.fn(async () => undefined),
   installOpenClawMcp: vi.fn(async () => undefined),
   installSkillsForAgent: vi.fn(async () => undefined),
+}));
+
+vi.mock('../../utils/router-card', () => ({
+  installRouterCard: vi.fn(() => ({
+    path: '/project/AGENTS.md',
+    changed: true,
+    version: 1,
+    sha256: 'df867193a6fe011342fce14b770e497cf667ca755e396bb16bbb52c513627951',
+  })),
+  removeRouterCard: vi.fn(() => ({
+    path: '/project/AGENTS.md',
+    changed: true,
+    version: 1,
+    sha256: 'df867193a6fe011342fce14b770e497cf667ca755e396bb16bbb52c513627951',
+  })),
+  resolveRouterCardProject: vi.fn(
+    (project?: string) => project ?? process.cwd()
+  ),
+}));
+
+vi.mock('../../utils/config', () => ({
+  getApiKey: vi.fn(() => 'fc-test-key'),
+}));
+
+vi.mock('../../commands/skills-native', () => ({
+  removeInstalledRouterGuidance: vi.fn(() => 32),
 }));
 
 describe('handleLaunchCommand', () => {
@@ -74,10 +103,12 @@ describe('handleLaunchCommand', () => {
         yes: true,
         nativeSkills: true,
         quiet: true,
+        routerGuidanceProject: process.cwd(),
       },
       ALL_SKILL_REPOS
     );
     expect(spawnSync).not.toHaveBeenCalled();
+    expect(installRouterCard).toHaveBeenCalledWith('claude', process.cwd());
   });
 
   it('supports setup and config as install-mode aliases', async () => {
@@ -126,6 +157,7 @@ describe('handleLaunchCommand', () => {
         yes: true,
         nativeSkills: true,
         quiet: true,
+        routerGuidanceProject: process.cwd(),
       },
       ALL_SKILL_REPOS
     );
@@ -180,6 +212,7 @@ describe('handleLaunchCommand', () => {
         yes: true,
         nativeSkills: true,
         quiet: true,
+        routerGuidanceProject: undefined,
       },
       ALL_SKILL_REPOS
     );
@@ -202,6 +235,7 @@ describe('handleLaunchCommand', () => {
         yes: true,
         nativeSkills: true,
         quiet: true,
+        routerGuidanceProject: process.cwd(),
       },
       ALL_SKILL_REPOS
     );
@@ -226,6 +260,7 @@ describe('handleLaunchCommand', () => {
     await handleLaunchCommand('opencode', { skipMcp: true });
 
     expect(installMcp).not.toHaveBeenCalled();
+    expect(installRouterCard).not.toHaveBeenCalled();
     expect(installSkillsForAgent).toHaveBeenCalledWith(
       'opencode',
       {
@@ -233,6 +268,7 @@ describe('handleLaunchCommand', () => {
         yes: true,
         nativeSkills: true,
         quiet: true,
+        routerGuidanceProject: undefined,
       },
       ALL_SKILL_REPOS
     );
@@ -241,11 +277,95 @@ describe('handleLaunchCommand', () => {
     });
   });
 
+  it('writes the harness-native router card after authenticated MCP and skills setup', async () => {
+    await handleLaunchCommand('codex', {
+      project: '/tmp/example-project',
+    });
+
+    expect(installRouterCard).toHaveBeenCalledWith(
+      'codex',
+      '/tmp/example-project'
+    );
+    expect(spawnSync).toHaveBeenNthCalledWith(
+      2,
+      'codex',
+      [],
+      expect.objectContaining({ cwd: '/tmp/example-project' })
+    );
+  });
+
+  it('does not write router state for keyless launch', async () => {
+    vi.mocked(getApiKey).mockReturnValueOnce(undefined);
+
+    await handleLaunchCommand('codex');
+
+    expect(installRouterCard).not.toHaveBeenCalled();
+    expect(installSkillsForAgent).toHaveBeenCalledWith(
+      'codex',
+      expect.objectContaining({ routerGuidanceProject: undefined }),
+      ALL_SKILL_REPOS
+    );
+  });
+
+  it('does not write router state for an unvalidated harness', async () => {
+    await handleLaunchCommand('opencode');
+
+    expect(installRouterCard).not.toHaveBeenCalled();
+    expect(installSkillsForAgent).toHaveBeenCalledWith(
+      'opencode',
+      expect.objectContaining({ routerGuidanceProject: undefined }),
+      ALL_SKILL_REPOS
+    );
+  });
+
+  it('supports explicitly disabling router-card delivery', async () => {
+    await handleLaunchCommand('codex', { routerCard: false });
+
+    expect(installRouterCard).not.toHaveBeenCalled();
+  });
+
+  it('does not create the rejected card-only state when skills are skipped', async () => {
+    await handleLaunchCommand('codex', { skipSkills: true });
+
+    expect(installRouterCard).not.toHaveBeenCalled();
+    expect(installSkillsForAgent).not.toHaveBeenCalled();
+  });
+
+  it('removes the managed card without running setup or launching', async () => {
+    await handleLaunchCommand('codex', {
+      removeRouterCard: true,
+      project: '/tmp/example-project',
+    });
+
+    expect(removeRouterCard).toHaveBeenCalledWith(
+      'codex',
+      '/tmp/example-project'
+    );
+    expect(removeInstalledRouterGuidance).toHaveBeenCalledWith(
+      'codex',
+      '/tmp/example-project'
+    );
+    expect(installMcp).not.toHaveBeenCalled();
+    expect(installSkillsForAgent).not.toHaveBeenCalled();
+    expect(spawnSync).not.toHaveBeenCalled();
+  });
+
+  it('never writes a router card when MCP configuration fails', async () => {
+    vi.mocked(installMcp).mockRejectedValueOnce(new Error('MCP failed'));
+
+    await expect(handleLaunchCommand('codex')).rejects.toThrow('MCP failed');
+
+    expect(installRouterCard).not.toHaveBeenCalled();
+    expect(installSkillsForAgent).not.toHaveBeenCalled();
+    expect(spawnSync).not.toHaveBeenCalled();
+  });
+
   it('can skip skills for a launch target that normally supports them', async () => {
     await handleLaunchCommand('opencode', { skipMcp: true, skipSkills: true });
 
     expect(installMcp).not.toHaveBeenCalled();
     expect(installSkillsForAgent).not.toHaveBeenCalled();
+    expect(installRouterCard).not.toHaveBeenCalled();
   });
 
   it('configures Hermes MCP and skills, then launches Hermes Agent', async () => {
@@ -259,6 +379,7 @@ describe('handleLaunchCommand', () => {
         yes: true,
         nativeSkills: true,
         quiet: true,
+        routerGuidanceProject: undefined,
       },
       ALL_SKILL_REPOS
     );
@@ -284,6 +405,7 @@ describe('handleLaunchCommand', () => {
         yes: true,
         nativeSkills: true,
         quiet: true,
+        routerGuidanceProject: undefined,
       },
       ALL_SKILL_REPOS
     );

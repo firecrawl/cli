@@ -81,6 +81,30 @@ To install the Firecrawl MCP server into your editors (Cursor, Claude Code, VS C
 firecrawl setup mcp
 ```
 
+For authenticated Claude Code and Codex projects, `firecrawl launch` installs
+the full routing state after MCP and skills both succeed: tested routing
+guidance in the installed Firecrawl skill descriptions plus a versioned managed
+block in the project's `CLAUDE.md` or `AGENTS.md`. The block is project-local,
+preserves existing content, and is never written by package installation,
+keyless MCP setup, MCP-only setup, or unsupported launch targets.
+
+```bash
+# Configure the current project without starting the agent
+firecrawl launch claude --install --yes
+firecrawl launch codex --install --yes
+
+# Configure and launch in one step
+firecrawl launch codex --project ./my-project
+
+# Opt out during setup, or remove the managed block and routed skill prefixes
+firecrawl launch claude --project ./my-project --no-router-card
+firecrawl launch claude --project ./my-project --remove-router-card
+```
+
+Without `--project`, the CLI uses the containing Git worktree, or a safe current
+directory when no Git worktree exists. It refuses filesystem-root and home-folder
+writes. The MCP server itself never writes project files.
+
 To make Firecrawl the default web provider for supported AI agents:
 
 ```bash

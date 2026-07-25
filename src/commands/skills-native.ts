@@ -7,6 +7,10 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import {
+  addRouterGuidanceToSkillDescription,
+  removeRouterGuidanceFromSkillDescription,
+} from '../utils/router-card';
 
 const green = '\x1b[32m';
 const dim = '\x1b[2m';
@@ -29,6 +33,11 @@ export interface NativeSkillsInstallOptions {
   agent?: string;
   /** Suppress per-repo status lines; caller will render its own summary. */
   quiet?: boolean;
+  /**
+   * Create the tested router-prefixed skill state inside this project.
+   * Global canonical skills stay source-faithful and shared across projects.
+   */
+  routerGuidanceProject?: string;
 }
 
 export interface NativeSkillsInstallResult {
@@ -125,6 +134,12 @@ const AGENTS: AgentConfig[] = [
 /** Canonical directory for skill files — single source of truth */
 const CANONICAL_DIR = '.agents/skills';
 const LOCK_FILE = '.agents/.skill-lock.json';
+const PROJECT_ROUTER_SKILL_MARKER = '.firecrawl-router-skill';
+
+const PROJECT_SKILLS_DIRS: Record<string, string> = {
+  'claude-code': '.claude/skills',
+  codex: '.agents/skills',
+};
 
 interface SkillEntry {
   /** Skill name from SKILL.md frontmatter */
@@ -490,6 +505,14 @@ export async function installSkillsNative(
       linkedAgents.push(agent.name);
     }
 
+    if (options.routerGuidanceProject) {
+      installProjectRouterGuidance(
+        options.agent!,
+        path.resolve(options.routerGuidanceProject),
+        skills.map((skill) => skill.name)
+      );
+    }
+
     // Update lock file
     let lock: LockFile = { version: 3, skills: {} };
     try {
@@ -539,6 +562,90 @@ export async function installSkillsNative(
       // Best effort cleanup
     }
   }
+}
+
+function projectSkillsRoot(agent: string | undefined, project: string): string {
+  if (!agent || !PROJECT_SKILLS_DIRS[agent]) {
+    throw new Error(
+      `Project-scoped router guidance is not supported for ${agent ?? 'this agent'}`
+    );
+  }
+  return path.join(project, PROJECT_SKILLS_DIRS[agent]);
+}
+
+export function installProjectRouterGuidance(
+  agent: string,
+  project: string,
+  skillNames?: string[]
+): number {
+  const canonicalBase = path.join(os.homedir(), CANONICAL_DIR);
+  const root = projectSkillsRoot(agent, project);
+  fs.mkdirSync(root, { recursive: true });
+  let changed = 0;
+  const names =
+    skillNames ??
+    fs
+      .readdirSync(canonicalBase, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  for (const skillName of names) {
+    if (!skillName.startsWith('firecrawl-')) continue;
+    const source = path.join(canonicalBase, skillName);
+    const target = path.join(root, skillName);
+    const marker = path.join(target, PROJECT_ROUTER_SKILL_MARKER);
+    const skillFile = path.join(target, 'SKILL.md');
+
+    if (!fs.existsSync(skillFile)) {
+      if (fs.existsSync(target)) {
+        fs.rmSync(target, { recursive: true, force: true });
+      }
+      copyDir(source, target);
+      fs.writeFileSync(marker, 'managed by firecrawl launch\n', 'utf8');
+    }
+
+    const content = fs.readFileSync(skillFile, 'utf8');
+    const updated = addRouterGuidanceToSkillDescription(content);
+    if (updated === content) continue;
+    fs.writeFileSync(skillFile, updated, 'utf8');
+    changed += 1;
+  }
+  return changed;
+}
+
+/** Remove only project-scoped Firecrawl router skill state. */
+export function removeInstalledRouterGuidance(
+  agent: string,
+  project: string
+): number {
+  const root = projectSkillsRoot(agent, path.resolve(project));
+  let changed = 0;
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const entry of entries) {
+    if (!entry.name.startsWith('firecrawl-')) continue;
+    const skillDir = path.join(root, entry.name);
+    const marker = path.join(skillDir, PROJECT_ROUTER_SKILL_MARKER);
+    if (fs.existsSync(marker)) {
+      fs.rmSync(skillDir, { recursive: true, force: true });
+      changed += 1;
+      continue;
+    }
+    const skillFile = path.join(skillDir, 'SKILL.md');
+    try {
+      const content = fs.readFileSync(skillFile, 'utf8');
+      const updated = removeRouterGuidanceFromSkillDescription(content);
+      if (updated === content) continue;
+      fs.writeFileSync(skillFile, updated, 'utf8');
+      changed += 1;
+    } catch {
+      // A missing/malformed project skill must not block removal of other skills.
+    }
+  }
+  return changed;
 }
 
 /** Check if npx is available */
