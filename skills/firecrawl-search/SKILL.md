@@ -23,11 +23,12 @@ Web search with optional content scraping. Returns search results as JSON, optio
 # Basic search
 firecrawl search "your query" -o .firecrawl/result.json --json
 
-# Search and scrape full page content from results
-firecrawl search "your query" --scrape -o .firecrawl/scraped.json --json
-
 # News from the past day
 firecrawl search "your query" --sources news --tbs qdr:d -o .firecrawl/news.json --json
+
+# Advanced: search and scrape full page content for each result
+# Use only when snippets/URLs are not enough; this adds scrape credits per result.
+firecrawl search "your query" --scrape --limit 3 -o .firecrawl/scraped.json --json
 ```
 
 ## Options
@@ -47,7 +48,9 @@ firecrawl search "your query" --sources news --tbs qdr:d -o .firecrawl/news.json
 
 ## Tips
 
-- **`--scrape` fetches full content** — don't re-scrape URLs from search results. This saves credits and avoids redundant fetches.
+- **Start without `--scrape` by default.** Plain search costs the least and usually gives enough URLs/snippets to choose what to inspect next.
+- **Use `--scrape` only when you need full page content for every returned result.** It adds normal scrape credits for each result page on top of the search cost, so keep `--limit` small.
+- **If you already used `--scrape`, do not re-scrape those URLs.** The full content is already in the search output.
 - Always write results to `.firecrawl/` with `-o` to avoid context window bloat.
 - Use `jq` to extract URLs or titles: `jq -r '.data.web[].url' .firecrawl/search.json`
 - Naming convention: `.firecrawl/search-{query}.json` or `.firecrawl/search-{query}-scraped.json`

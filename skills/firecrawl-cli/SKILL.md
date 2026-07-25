@@ -42,6 +42,10 @@ firecrawl scrape "https://firecrawl.dev" -o .firecrawl/install-check.md
 ```
 
 ```bash
+# Basic search first; inspect URLs/snippets before deciding what to scrape.
+firecrawl search "query" --limit 5
+
+# Advanced: scrape each result inline. Adds scrape credits per result; keep limits small.
 firecrawl search "query" --scrape --limit 3
 ```
 
@@ -205,6 +209,7 @@ Use `modes: ["json", "git-diff"]` for **mixed mode**: you get both `diff.json` (
 
 **Avoid redundant fetches:**
 
+- Start with plain `search`; use `search --scrape` only when you need full content for every result. `--scrape` adds scrape credits per result, so keep `--limit` small.
 - `search --scrape` already fetches full page content. Don't re-scrape those URLs.
 - Check `.firecrawl/` for existing data before fetching again.
 
