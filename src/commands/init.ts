@@ -601,24 +601,29 @@ async function stepIntegrations(options: InitOptions): Promise<number | null> {
       case 'mcp': {
         console.log(`\n  Setting up MCP server...`);
         const apiKey = getApiKey();
-        if (!apiKey) {
-          console.log(
-            `  ${dim}Skipped — no API key found. Run "firecrawl login" first, then "firecrawl setup mcp".${reset}`
-          );
-          break;
-        }
+        const environmentBacked = Boolean(
+          apiKey && process.env.FIRECRAWL_API_KEY === apiKey
+        );
         try {
           await installMcp({
             global: options.global,
-            agent: options.agent,
+            agent: options.agent ?? (environmentBacked ? 'all' : undefined),
             yes: true,
             quiet: true,
+            // Stored credentials must never be persisted into MCP client config.
+            // Install the anonymous endpoint instead; an environment-backed
+            // credential continues through the authenticated setup path.
+            keyless: !environmentBacked,
           });
           console.log(`  ${green}✓${reset} MCP server installed`);
-        } catch {
-          console.error(
-            '  Failed to install MCP securely. Run "firecrawl setup mcp" later.'
-          );
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? apiKey
+                ? error.message.replaceAll(apiKey, '[REDACTED]')
+                : error.message
+              : 'unknown error';
+          console.error(`  Failed to install MCP securely: ${message}`);
         }
         break;
       }

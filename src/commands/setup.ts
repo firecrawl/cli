@@ -51,6 +51,8 @@ export interface SetupOptions {
   nativeSkills?: boolean;
   /** Render compact skill install output. */
   quiet?: boolean;
+  /** Configure the anonymous hosted MCP path even when a stored key exists. */
+  keyless?: boolean;
 }
 
 const green = '\x1b[32m';
@@ -185,7 +187,7 @@ function isEnvironmentBackedApiKey(apiKey: string | undefined): boolean {
   return Boolean(apiKey && process.env[ENV_API_KEY] === apiKey);
 }
 
-function assertSubprocessSafeCredential(apiKey = getApiKey()): void {
+function assertSubprocessSafeCredential(apiKey?: string): void {
   if (apiKey && !isEnvironmentBackedApiKey(apiKey)) {
     throw new Error(
       'Secure MCP setup cannot pass a stored API key to this client. Export FIRECRAWL_API_KEY and rerun with a supported --agent, or run keyless setup without a credential.'
@@ -210,9 +212,9 @@ function environmentHeaderForAgent(agent?: string): string | undefined {
 }
 
 function firecrawlMcpHeaders(
-  agent?: string
+  agent?: string,
+  apiKey?: string
 ): Record<string, string> | undefined {
-  const apiKey = getApiKey();
   if (!apiKey) return undefined;
 
   // Keep this helper safe in isolation. Callers currently reject stored keys
@@ -527,7 +529,7 @@ export async function installMcp(options: SetupOptions): Promise<void> {
     throw new Error('Choose either --global or --project, not both.');
   }
 
-  const apiKey = getApiKey();
+  const apiKey = options.keyless ? undefined : getApiKey();
   const resolvedAgent = resolveMcpAgent(options.agent);
   if (resolvedAgent.kind === 'all-launchers' && options.project && apiKey) {
     throw new Error(
@@ -569,7 +571,7 @@ async function installAddMcp(
   resolvedAgent: Extract<ResolvedMcpAgent, { kind: 'add-mcp' }>
 ): Promise<void> {
   const mcpUrl = firecrawlHostedMcpUrl();
-  const apiKey = getApiKey();
+  const apiKey = options.keyless ? undefined : getApiKey();
   if (
     resolvedAgent.agent === 'codex' &&
     !options.project &&
@@ -580,7 +582,7 @@ async function installAddMcp(
     return;
   }
 
-  const headers = firecrawlMcpHeaders(resolvedAgent.agent);
+  const headers = firecrawlMcpHeaders(resolvedAgent.agent, apiKey);
   const useGlobal = !options.project && Boolean(options.global);
 
   const args = [
@@ -670,7 +672,7 @@ function firecrawlMcpConfig(agent?: string): {
 } {
   return {
     url: firecrawlHostedMcpUrl(),
-    headers: firecrawlMcpHeaders(agent),
+    headers: firecrawlMcpHeaders(agent, getApiKey()),
   };
 }
 

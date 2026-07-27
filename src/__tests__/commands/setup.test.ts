@@ -14,6 +14,7 @@ import path from 'path';
 import {
   handleMakeDefaultCommand,
   handleSetupCommand,
+  installMcp,
   installHermesMcp,
   installOpenClawMcp,
   installSkillsForAgent,
@@ -204,6 +205,35 @@ describe('handleSetupCommand', () => {
       })
     ).rejects.toThrow('Export FIRECRAWL_API_KEY');
     expect(execFileSync).not.toHaveBeenCalled();
+  });
+  it('can explicitly install keyless MCP without exposing a stored API key', async () => {
+    await installMcp({
+      agent: 'claude-code',
+      global: true,
+      yes: true,
+      keyless: true,
+    });
+
+    expect(execFileSync).toHaveBeenCalledWith(
+      'npx',
+      [
+        '-y',
+        'add-mcp@1.14.0',
+        'https://mcp.firecrawl.dev/v2/mcp',
+        '--name',
+        'firecrawl',
+        '--transport',
+        'http',
+        '--global',
+        '--agent',
+        'claude-code',
+        '--yes',
+      ],
+      expect.objectContaining({ stdio: 'inherit' })
+    );
+    expect(vi.mocked(execFileSync).mock.calls.flat().join(' ')).not.toContain(
+      'fc-test-key'
+    );
   });
   it('normalizes launch aliases for environment-backed MCP setup', async () => {
     process.env.FIRECRAWL_API_KEY = 'fc-test-key';

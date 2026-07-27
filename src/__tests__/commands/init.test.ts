@@ -106,6 +106,7 @@ describe('handleInitCommand', () => {
       agent: 'codex',
       yes: true,
       quiet: true,
+      keyless: true,
     });
     expect(execSync).not.toHaveBeenCalledWith(
       expect.stringContaining('add-mcp'),
@@ -127,7 +128,7 @@ describe('handleInitCommand', () => {
     await handleInitCommand({ skipInstall: true, skipAuth: true });
 
     expect(console.error).toHaveBeenCalledWith(
-      '  Failed to install MCP securely. Run "firecrawl setup mcp" later.'
+      '  Failed to install MCP securely: installer failed for [REDACTED]'
     );
     expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain(
       'fc-stored-key'
