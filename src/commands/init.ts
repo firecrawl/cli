@@ -25,6 +25,7 @@ import {
   WEB_AGENTS,
   type WebAgent,
 } from '../utils/web-defaults';
+import { installMcp } from './setup';
 
 export interface InitOptions {
   global?: boolean;
@@ -606,25 +607,17 @@ async function stepIntegrations(options: InitOptions): Promise<number | null> {
           );
           break;
         }
-        const args = [
-          'npx',
-          '-y',
-          'add-mcp',
-          '"npx -y firecrawl-mcp"',
-          '--name',
-          'firecrawl',
-        ];
-        if (options.global) args.push('--global');
-        if (options.agent) args.push('--agent', options.agent);
         try {
-          execSync(args.join(' '), {
-            stdio: 'inherit',
-            env: { ...cleanNpmEnv(), FIRECRAWL_API_KEY: apiKey },
+          await installMcp({
+            global: options.global,
+            agent: options.agent,
+            yes: true,
+            quiet: true,
           });
           console.log(`  ${green}✓${reset} MCP server installed`);
         } catch {
           console.error(
-            '  Failed to install MCP. Run "firecrawl setup mcp" later.'
+            '  Failed to install MCP securely. Run "firecrawl setup mcp" later.'
           );
         }
         break;

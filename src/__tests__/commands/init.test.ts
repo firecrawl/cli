@@ -2,13 +2,38 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execSync } from 'child_process';
 import { handleInitCommand } from '../../commands/init';
 
+const { installMcpMock, getApiKeyMock, confirmMock, checkboxMock } = vi.hoisted(
+  () => ({
+    installMcpMock: vi.fn(),
+    getApiKeyMock: vi.fn(),
+    confirmMock: vi.fn(),
+    checkboxMock: vi.fn(),
+  })
+);
+
 vi.mock('child_process', () => ({
   execSync: vi.fn(),
+}));
+
+vi.mock('../../commands/setup', () => ({
+  installMcp: installMcpMock,
+}));
+
+vi.mock('../../utils/config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../utils/config')>()),
+  getApiKey: getApiKeyMock,
+}));
+
+vi.mock('@inquirer/prompts', () => ({
+  confirm: confirmMock,
+  checkbox: checkboxMock,
+  select: vi.fn(),
 }));
 
 describe('handleInitCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getApiKeyMock.mockReturnValue(undefined);
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
@@ -57,6 +82,55 @@ describe('handleInitCommand', () => {
     expect(execSync).toHaveBeenCalledWith(
       'npx -y skills add firecrawl/firecrawl-workflows --full-depth --global --yes --agent cursor',
       expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'] })
+    );
+  });
+
+  it('routes interactive MCP setup through the hardened hosted installer', async () => {
+    getApiKeyMock.mockReturnValue('fc-stored-key');
+    confirmMock
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false);
+    checkboxMock.mockResolvedValueOnce(['mcp']);
+    installMcpMock.mockResolvedValueOnce(undefined);
+
+    await handleInitCommand({
+      skipInstall: true,
+      skipAuth: true,
+      global: true,
+      agent: 'codex',
+    });
+
+    expect(installMcpMock).toHaveBeenCalledWith({
+      global: true,
+      agent: 'codex',
+      yes: true,
+      quiet: true,
+    });
+    expect(execSync).not.toHaveBeenCalledWith(
+      expect.stringContaining('add-mcp'),
+      expect.anything()
+    );
+  });
+
+  it('does not print installer errors that could contain a stored credential', async () => {
+    getApiKeyMock.mockReturnValue('fc-stored-key');
+    confirmMock
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false);
+    checkboxMock.mockResolvedValueOnce(['mcp']);
+    installMcpMock.mockRejectedValueOnce(
+      new Error('installer failed for fc-stored-key')
+    );
+
+    await handleInitCommand({ skipInstall: true, skipAuth: true });
+
+    expect(console.error).toHaveBeenCalledWith(
+      '  Failed to install MCP securely. Run "firecrawl setup mcp" later.'
+    );
+    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain(
+      'fc-stored-key'
     );
   });
 });
