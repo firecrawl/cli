@@ -117,7 +117,7 @@ Subcommands: `create | list | get | update | delete | run | checks | check`.
 | `-o, --output <path>`      | Output file path                                                          |
 | `--pretty`                 | Pretty-print JSON output                                                  |
 
-Minimum schedule interval is **15 minutes**. Monitoring is **not available for zero-data-retention teams**.
+Minimum schedule interval is **5 minutes**. Monitoring is **not available for zero-data-retention teams**.
 
 ## Web monitors (monitor the web)
 

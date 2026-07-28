@@ -7,11 +7,11 @@ allowed-tools:
   - Bash(npx firecrawl *)
 ---
 
-# firecrawl download
+# firecrawl experimental download
 
-> **Experimental.** Convenience command that combines `map` + `scrape` to save an entire site as local files.
+> **Experimental.** Convenience command that combines `map` + `scrape` to save an entire site as local files. Registered under `firecrawl experimental download`, with `firecrawl x download` as the short alias.
 
-Maps the site first to discover pages, then scrapes each one into nested directories under `.firecrawl/`. All scrape options work with download. Always pass `-y` to skip the confirmation prompt.
+Maps the site first to discover pages, then scrapes each one into nested directories under `.firecrawl/`. A subset of scrape options is supported (listed below). Always pass `-y` to skip the confirmation prompt.
 
 ## When to use
 
@@ -23,23 +23,23 @@ Maps the site first to discover pages, then scrapes each one into nested directo
 
 ```bash
 # Interactive wizard (picks format, screenshots, paths for you)
-firecrawl download https://docs.example.com
+firecrawl x download https://docs.example.com
 
 # With screenshots
-firecrawl download https://docs.example.com --screenshot --limit 20 -y
+firecrawl x download https://docs.example.com --screenshot --limit 20 -y
 
 # Multiple formats (each saved as its own file per page)
-firecrawl download https://docs.example.com --format markdown,links --screenshot --limit 20 -y
+firecrawl x download https://docs.example.com --format markdown,links --screenshot --limit 20 -y
 # Creates per page: index.md + links.txt + screenshot.png
 
 # Filter to specific sections
-firecrawl download https://docs.example.com --include-paths "/features,/sdks"
+firecrawl x download https://docs.example.com --include-paths "/features,/sdks"
 
 # Skip translations
-firecrawl download https://docs.example.com --exclude-paths "/zh,/ja,/fr,/es,/pt-BR"
+firecrawl x download https://docs.example.com --exclude-paths "/zh,/ja,/fr,/es,/pt-BR"
 
 # Full combo
-firecrawl download https://docs.example.com \
+firecrawl x download https://docs.example.com \
   --include-paths "/features,/sdks" \
   --exclude-paths "/zh,/ja" \
   --only-main-content \
@@ -58,9 +58,11 @@ firecrawl download https://docs.example.com \
 | `--allow-subdomains`      | Include subdomain pages                                  |
 | `-y`                      | Skip confirmation prompt (always use in automated flows) |
 
-## Scrape options (all work with download)
+## Scrape options supported by download
 
-`-f <formats>`, `-H`, `-S`, `--screenshot`, `--full-page-screenshot`, `--only-main-content`, `--include-tags`, `--exclude-tags`, `--wait-for`, `--max-age`, `--country`, `--languages`
+Only these scrape options are registered on the download command:
+
+`-f <formats>` (markdown, html, rawHtml, links, images, summary, json), `-H, --html`, `-S, --summary`, `--screenshot`, `--full-page-screenshot`, `--only-main-content`, `--include-tags`, `--exclude-tags`, `--wait-for`, `--max-age`, `--country`, `--languages`, `--lockdown`
 
 ## See also
 

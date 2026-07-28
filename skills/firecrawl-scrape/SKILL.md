@@ -41,17 +41,17 @@ firecrawl scrape "https://example.com/pricing" --query "What is the enterprise p
 
 ## Options
 
-| Option                   | Description                                                      |
-| ------------------------ | ---------------------------------------------------------------- |
-| `-f, --format <formats>` | Output formats: markdown, html, rawHtml, links, screenshot, json |
-| `-Q, --query <prompt>`   | Ask a question about the page content (5 credits)                |
-| `-H`                     | Include HTTP headers in output                                   |
-| `--only-main-content`    | Strip nav, footer, sidebar — main content only                   |
-| `--wait-for <ms>`        | Wait for JS rendering before scraping                            |
-| `--include-tags <tags>`  | Only include these HTML tags                                     |
-| `--exclude-tags <tags>`  | Exclude these HTML tags                                          |
-| `--redact-pii`           | Redact personally identifiable information from output           |
-| `-o, --output <path>`    | Output file path                                                 |
+| Option                   | Description                                                                                                             |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `-f, --format <formats>` | Output formats: markdown, html, rawHtml, links, images, screenshot, summary, changeTracking, json, attributes, branding |
+| `-Q, --query <prompt>`   | Ask a question about the page content (5 credits)                                                                       |
+| `-H, --html`             | Output raw HTML (shortcut for `--format html`)                                                                          |
+| `--only-main-content`    | Strip nav, footer, sidebar — main content only                                                                          |
+| `--wait-for <ms>`        | Wait for JS rendering before scraping                                                                                   |
+| `--include-tags <tags>`  | Only include these HTML tags                                                                                            |
+| `--exclude-tags <tags>`  | Exclude these HTML tags                                                                                                 |
+| `--redact-pii`           | Redact personally identifiable information from output                                                                  |
+| `-o, --output <path>`    | Output file path                                                                                                        |
 
 ## Tips
 

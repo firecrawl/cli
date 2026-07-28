@@ -31,8 +31,8 @@ firecrawl interact --prompt "Fill in the email field with test@example.com"
 firecrawl interact --prompt "Extract the pricing table"
 
 # 3. Or use code for precise control
-firecrawl interact --code "agent-browser click @e5" --language bash
-firecrawl interact --code "agent-browser snapshot -i" --language bash
+firecrawl interact --code "agent-browser click @e5" --bash
+firecrawl interact --code "agent-browser snapshot -i" --bash
 
 # 4. Stop the session when done
 firecrawl interact stop
@@ -40,14 +40,14 @@ firecrawl interact stop
 
 ## Options
 
-| Option                | Description                                       |
-| --------------------- | ------------------------------------------------- |
-| `--prompt <text>`     | Natural language instruction (use this OR --code) |
-| `--code <code>`       | Code to execute in the browser session            |
-| `--language <lang>`   | Language for code: bash, python, node             |
-| `--timeout <seconds>` | Execution timeout (default: 30, max: 300)         |
-| `--scrape-id <id>`    | Target a specific scrape (default: last scrape)   |
-| `-o, --output <path>` | Output file path                                  |
+| Option                           | Description                                       |
+| -------------------------------- | ------------------------------------------------- |
+| `-p, --prompt <text>`            | Natural language instruction (use this OR --code) |
+| `-c, --code <code>`              | Code to execute in the browser session            |
+| `--bash` / `--python` / `--node` | Language for `--code` (default: node)             |
+| `--timeout <seconds>`            | Execution timeout (default: 30, max: 300)         |
+| `-s, --scrape-id <id>`           | Target a specific scrape (default: last scrape)   |
+| `-o, --output <path>`            | Output file path                                  |
 
 ## Profiles
 
