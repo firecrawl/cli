@@ -120,6 +120,11 @@ const AGENTS: AgentConfig[] = [
     globalSkillsDir: '.hermes/skills',
     detectDir: '.hermes',
   },
+  {
+    name: 'adal',
+    globalSkillsDir: '.adal/skills',
+    detectDir: '.adal',
+  },
 ];
 
 /** Canonical directory for skill files — single source of truth */
@@ -465,16 +470,23 @@ export async function installSkillsNative(
           // Not a symlink — remove if exists
         }
 
-        // Remove existing (file, dir, or broken symlink)
+        // Handle existing path — non-destructive by default
         try {
           const stat = fs.lstatSync(linkPath);
-          if (stat.isSymbolicLink() || stat.isFile()) {
+          if (stat.isSymbolicLink()) {
+            // Stale/incorrect symlink — safe to replace
             fs.unlinkSync(linkPath);
-          } else if (stat.isDirectory()) {
-            fs.rmSync(linkPath, { recursive: true, force: true });
+          } else {
+            // Real file or directory owned by user — skip, never overwrite
+            if (!options.quiet) {
+              console.log(
+                `  ${dim}⚠ Skipped ${skill.name}: existing ${stat.isDirectory() ? 'directory' : 'file'} at ${linkPath}${reset}`
+              );
+            }
+            continue;
           }
         } catch {
-          // Doesn't exist — fine
+          // Doesn't exist — fine, proceed to create symlink
         }
 
         // Create relative symlink
