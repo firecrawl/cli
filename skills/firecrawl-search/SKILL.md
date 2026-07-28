@@ -40,6 +40,8 @@ firecrawl search "your query" --sources news --tbs qdr:d -o .firecrawl/news.json
 | `--tbs <qdr:h\|d\|w\|m\|y>`          | Time-based search filter                      |
 | `--location`                         | Location for search results                   |
 | `--country <code>`                   | Country code for search                       |
+| `--highlights`                       | Return query-relevant highlights per result   |
+| `--no-highlights`                    | Keep the original search snippets             |
 | `--scrape`                           | Also scrape full page content for each result |
 | `--scrape-formats`                   | Formats when scraping (default: markdown)     |
 | `-o, --output <path>`                | Output file path                              |

@@ -20,7 +20,7 @@ If the task is to integrate Firecrawl into an application, add `FIRECRAWL_API_KE
 Must be installed. Check with `firecrawl --status`.
 
 ```
-  🔥 firecrawl cli v1.8.0
+  🔥 firecrawl cli vX.Y.Z (your installed version)
 
   ● Authenticated via FIRECRAWL_API_KEY
   Concurrency: 0/100 jobs (parallel scrape limit)
@@ -64,7 +64,7 @@ Follow this escalation pattern:
 | Bulk extract a site section | `crawl`               | Need many pages (e.g., all /docs/)                        |
 | AI-powered data extraction  | `agent`               | Need structured data from complex sites                   |
 | Interact with a page        | `scrape` + `interact` | Content requires clicks, form fills, pagination, or login |
-| Download a site to files    | `download`            | Save an entire site as local files                        |
+| Download a site to files    | `x download`          | Save an entire site as local files (experimental)         |
 | Parse a local file          | `parse`               | File on disk (PDF, DOCX, XLSX, etc.) — not a URL          |
 | Watch pages for changes     | `monitor`             | Schedule recurring scrapes/crawls, diff against snapshots |
 
