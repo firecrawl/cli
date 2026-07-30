@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import stripJsonComments from 'strip-json-comments';
 
 const CLAUDE_DENY_TOOLS = ['WebSearch', 'WebFetch'] as const;
 const CODEX_WEB_SEARCH_DISABLED = 'web_search = "disabled"';
@@ -37,12 +38,6 @@ async function writeText(filePath: string, content: string): Promise<void> {
   await fs.writeFile(filePath, content, 'utf8');
 }
 
-function removeJsonComments(content: string): string {
-  return content
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:\\])\/\/.*$/gm, '$1');
-}
-
 async function configureClaudeDefaults(
   undo: boolean
 ): Promise<WebDefaultResult> {
@@ -52,7 +47,7 @@ async function configureClaudeDefaults(
 
   if (existing && existing.trim()) {
     try {
-      config = JSON.parse(removeJsonComments(existing));
+      config = JSON.parse(stripJsonComments(existing));
     } catch {
       return {
         agent: 'Claude Code',
