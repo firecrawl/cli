@@ -724,7 +724,11 @@ export async function installHermesMcp(): Promise<void> {
  * AdaL scopes MCP servers to the project you're running it from.
  */
 export async function installAdalMcp(options: SetupOptions = {}): Promise<void> {
-  const config = firecrawlMcpConfig('adal');
+  const apiKey = options.keyless ? undefined : getApiKey();
+  const config: { url: string; headers?: Record<string, string> } = {
+    url: firecrawlHostedMcpUrl(),
+    headers: firecrawlMcpHeaders('adal', apiKey),
+  };
   const configPath = path.join(os.homedir(), '.adal', 'settings.json');
   const projectPath = process.cwd();
 
@@ -733,14 +737,21 @@ export async function installAdalMcp(options: SetupOptions = {}): Promise<void> 
   const existing = existsSync(configPath)
     ? readFileSync(configPath, 'utf-8')
     : '';
-  let root: Record<string, unknown>;
+  const settingsFileError = `Failed to parse existing AdaL settings at ${configPath}. Fix or remove the file, then retry.`;
+  let parsed: unknown;
   try {
-    root = existing ? JSON.parse(existing) : {};
+    parsed = existing ? JSON.parse(existing) : {};
   } catch {
-    throw new Error(
-      `Failed to parse existing AdaL settings at ${configPath}. Fix or remove the file, then retry.`
-    );
+    throw new Error(settingsFileError);
   }
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    Array.isArray(parsed)
+  ) {
+    throw new Error(settingsFileError);
+  }
+  const root = parsed as Record<string, unknown>;
 
   const projects =
     typeof root.projects === 'object' &&
