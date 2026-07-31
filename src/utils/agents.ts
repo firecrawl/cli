@@ -18,7 +18,8 @@ export type AgentId =
   | 'vscode'
   | 'windsurf'
   | 'codex'
-  | 'continue';
+  | 'continue'
+  | 'adal';
 
 export interface AgentDetection {
   id: AgentId;
@@ -123,6 +124,17 @@ const SPECS: AgentSpec[] = [
       path.join(home, '.continue', 'config.json'),
       path.join(cwd, '.continue', 'config.json'),
     ],
+  },
+  {
+    id: 'adal',
+    name: 'AdaL',
+    presencePaths: () => [path.join(home, '.adal')],
+    // AdaL stores MCP servers per-project under
+    // `projects.<absolute_project_path>.mcpServers` inside a single global
+    // settings.json. The generic JSON walker below (hasFirecrawlMcpEntry)
+    // recurses through nested objects, so pointing at settings.json is
+    // enough — no project-path resolution needed for detection.
+    mcpConfigPaths: () => [path.join(home, '.adal', 'settings.json')],
   },
 ];
 
