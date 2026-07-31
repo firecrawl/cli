@@ -4,20 +4,36 @@
 
 import type { ScrapeFormat } from './scrape';
 
-export type SearchSource = 'web' | 'images' | 'news';
+export type SearchSource = 'web' | 'images' | 'news' | 'exchange';
 export type SearchCategory = 'github' | 'research' | 'pdf';
 
+/** One Exchange capability to execute. */
+export interface ExchangeCall {
+  provider: string;
+  capability: string;
+  options: Record<string, unknown>;
+  providerApiKey?: string;
+}
+
 export interface SearchOptions {
-  /** Search query (required) */
-  query: string;
+  /** Search query. Optional when only browsing or calling Exchange providers */
+  query?: string;
   /** API key for Firecrawl */
   apiKey?: string;
   /** API URL for Firecrawl */
   apiUrl?: string;
   /** Maximum number of results (default: 5, max: 100) */
   limit?: number;
-  /** Sources to search: web, images, news (default: web) */
+  /** Sources to search: web, images, news, exchange (default: web) */
   sources?: SearchSource[];
+  /** Limit Exchange discovery to provider cohorts */
+  exchangeCategories?: string[];
+  /** Limit Exchange discovery to named providers */
+  exchangeProviders?: string[];
+  /** Limit Exchange discovery to specific provider/capability pairs */
+  exchangeCapabilities?: string[];
+  /** Exchange capabilities to execute */
+  exchange?: ExchangeCall[];
   /** Categories to filter results: github, research, pdf */
   categories?: SearchCategory[];
   /** Time-based search parameter (e.g., qdr:h, qdr:d, qdr:w, qdr:m, qdr:y) */
@@ -98,10 +114,36 @@ export interface NewsSearchResult {
   };
 }
 
+/** A capability discovered via `--sources exchange`. */
+export interface ExchangeProviderResult {
+  url: string;
+  title?: string;
+  description?: string;
+  provider: string;
+  capability: string;
+  creditsPerCall?: number;
+}
+
+/** The outcome of one executed Exchange capability. */
+export interface ExchangeCallResult {
+  provider: string;
+  capability: string;
+  delivery?: string;
+  creditsCost?: number;
+  data?: unknown;
+  error?: {
+    code?: string;
+    message?: string;
+    retryable?: boolean;
+  };
+}
+
 export interface SearchResultData {
   web?: WebSearchResult[];
   images?: ImageSearchResult[];
   news?: NewsSearchResult[];
+  providers?: ExchangeProviderResult[];
+  exchange?: ExchangeCallResult[];
 }
 
 export interface SearchResult {

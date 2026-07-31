@@ -901,13 +901,30 @@ Max upload size: 50 MB
   return parseCmd;
 }
 
+/** Commander accumulator for a flag that may be passed more than once. */
+function collectRepeatable(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
+function splitList(value?: string): string[] | undefined {
+  if (!value) return undefined;
+  const items = value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return items.length > 0 ? items : undefined;
+}
+
 /**
  * Create and configure the search command
  */
 function createSearchCommand(): Command {
   const searchCmd = new Command('search')
-    .description('Search the web using Firecrawl')
-    .argument('<query>', 'Search query')
+    .description('Search the web and Exchange data providers using Firecrawl')
+    .argument(
+      '[query]',
+      'Search query. Optional when only browsing or calling Exchange providers'
+    )
     .option(
       '--limit <number>',
       'Maximum number of results (default: 5, max: 100)',
@@ -915,7 +932,37 @@ function createSearchCommand(): Command {
     )
     .option(
       '--sources <sources>',
-      'Comma-separated sources to search: web, images, news (default: web)'
+      'Comma-separated sources to search: web, images, news, exchange (default: web)'
+    )
+    .option(
+      '--exchange-categories <categories>',
+      'Comma-separated Exchange cohorts to browse, e.g. people,finance'
+    )
+    .option(
+      '--exchange-providers <providers>',
+      'Comma-separated Exchange provider slugs to limit discovery to'
+    )
+    .option(
+      '--exchange-capabilities <capabilities>',
+      'Comma-separated provider/capability pairs to limit discovery to'
+    )
+    .option(
+      '--exchange-call <provider/capability>',
+      'Execute an Exchange capability. Repeatable; pair each with --exchange-options',
+      collectRepeatable,
+      []
+    )
+    .option(
+      '--exchange-options <json>',
+      'JSON arguments for the matching --exchange-call, in the same order',
+      collectRepeatable,
+      []
+    )
+    .option(
+      '--exchange-provider-key <key>',
+      'Your own credential for a bring-your-own-key capability, in --exchange-call order',
+      collectRepeatable,
+      []
     )
     .option(
       '--categories <categories>',
@@ -982,7 +1029,7 @@ function createSearchCommand(): Command {
           .map((s: string) => s.trim().toLowerCase()) as SearchSource[];
 
         // Validate sources
-        const validSources = ['web', 'images', 'news'];
+        const validSources = ['web', 'images', 'news', 'exchange'];
         for (const source of sources) {
           if (!validSources.includes(source)) {
             console.error(
@@ -1020,10 +1067,60 @@ function createSearchCommand(): Command {
           .map((f: string) => f.trim()) as ScrapeFormat[];
       }
 
+      // Pair each --exchange-call with the --exchange-options at the same
+      // index, so repeated flags stay associated without a nested syntax.
+      const exchange = (options.exchangeCall as string[]).map(
+        (target: string, index: number) => {
+          const [provider, capability] = target.split('/');
+          if (!provider || !capability) {
+            console.error(
+              `Error: --exchange-call "${target}" must be in provider/capability form`
+            );
+            process.exit(1);
+          }
+          const raw = (options.exchangeOptions as string[])[index];
+          let callOptions: Record<string, unknown> = {};
+          if (raw) {
+            try {
+              callOptions = JSON.parse(raw);
+            } catch {
+              console.error(
+                `Error: --exchange-options for "${target}" is not valid JSON`
+              );
+              process.exit(1);
+            }
+          }
+          const providerApiKey = (options.exchangeProviderKey as string[])[
+            index
+          ];
+          return {
+            provider,
+            capability,
+            options: callOptions,
+            ...(providerApiKey ? { providerApiKey } : {}),
+          };
+        }
+      );
+
+      if (
+        !query &&
+        sources?.includes('exchange') !== true &&
+        !exchange.length
+      ) {
+        console.error(
+          'Error: provide a query, --sources exchange, or an --exchange-call'
+        );
+        process.exit(1);
+      }
+
       const searchOptions = {
         query,
         limit: options.limit,
         sources,
+        exchangeCategories: splitList(options.exchangeCategories),
+        exchangeProviders: splitList(options.exchangeProviders),
+        exchangeCapabilities: splitList(options.exchangeCapabilities),
+        exchange,
         categories,
         tbs: options.tbs,
         location: options.location,

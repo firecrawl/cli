@@ -10,6 +10,8 @@ import type {
   WebSearchResult,
   ImageSearchResult,
   NewsSearchResult,
+  ExchangeProviderResult,
+  ExchangeCallResult,
 } from '../types/search';
 import { getClient, isKeylessMode, keylessRequest } from '../utils/client';
 import { writeOutput } from '../utils/output';
@@ -31,11 +33,29 @@ export async function executeSearch(
       searchParams.highlights = options.highlights;
     }
 
-    // Add sources if specified
+    // Add sources if specified. The exchange source carries its own discovery
+    // filters, so it is built as an object rather than a bare type.
     if (options.sources && options.sources.length > 0) {
-      searchParams.sources = options.sources.map((source) => ({
-        type: source,
-      }));
+      searchParams.sources = options.sources.map((source) => {
+        if (source !== 'exchange') return { type: source };
+        return {
+          type: 'exchange',
+          ...(options.exchangeCategories?.length
+            ? { categories: options.exchangeCategories }
+            : {}),
+          ...(options.exchangeProviders?.length
+            ? { providers: options.exchangeProviders }
+            : {}),
+          ...(options.exchangeCapabilities?.length
+            ? { capabilities: options.exchangeCapabilities }
+            : {}),
+        };
+      });
+    }
+
+    // Add Exchange capability calls
+    if (options.exchange && options.exchange.length > 0) {
+      searchParams.exchange = options.exchange;
     }
 
     // Add categories if specified
@@ -93,7 +113,7 @@ export async function executeSearch(
     }
 
     const searchBody = {
-      query: options.query,
+      ...(options.query ? { query: options.query } : {}),
       ...searchParams,
     };
 
@@ -123,6 +143,10 @@ export async function executeSearch(
     if (payload.web) data.web = payload.web as WebSearchResult[];
     if (payload.images) data.images = payload.images as ImageSearchResult[];
     if (payload.news) data.news = payload.news as NewsSearchResult[];
+    if (payload.providers)
+      data.providers = payload.providers as ExchangeProviderResult[];
+    if (payload.exchange)
+      data.exchange = payload.exchange as ExchangeCallResult[];
 
     return {
       success: true,
@@ -229,6 +253,63 @@ function formatSearchReadable(
     }
   }
 
+  // Format Exchange discovery results
+  if (data.providers && data.providers.length > 0) {
+    if (lines.length > 0) {
+      lines.push('');
+    }
+    lines.push('=== Exchange Providers ===');
+    lines.push('');
+
+    for (const result of data.providers) {
+      lines.push(
+        `${result.title || `${result.provider} / ${result.capability}`}`
+      );
+      lines.push(`  Call: ${result.provider}/${result.capability}`);
+      if (typeof result.creditsPerCall === 'number') {
+        lines.push(`  Credits per call: ${result.creditsPerCall}`);
+      }
+      lines.push(`  Contract: ${result.url}`);
+      if (result.description) {
+        lines.push(`  ${result.description}`);
+      }
+      lines.push('');
+    }
+  }
+
+  // Format executed Exchange calls
+  if (data.exchange && data.exchange.length > 0) {
+    if (lines.length > 0) {
+      lines.push('');
+    }
+    lines.push('=== Exchange Results ===');
+    lines.push('');
+
+    for (const result of data.exchange) {
+      lines.push(`${result.provider}/${result.capability}`);
+      if (result.error) {
+        lines.push(
+          `  Error: ${result.error.message || result.error.code || 'failed'}`
+        );
+        if (result.error.retryable) {
+          lines.push('  Retryable: yes');
+        }
+      } else {
+        if (typeof result.creditsCost === 'number') {
+          lines.push(`  Credits: ${result.creditsCost}`);
+        }
+        lines.push('  --- Data ---');
+        const indented = JSON.stringify(result.data, null, 2)
+          .split('\n')
+          .map((line) => `  ${line}`)
+          .join('\n');
+        lines.push(indented);
+        lines.push('  --- End Data ---');
+      }
+      lines.push('');
+    }
+  }
+
   return lines.join('\n');
 }
 
@@ -253,7 +334,9 @@ export async function handleSearchCommand(
   const hasResults =
     (result.data.web && result.data.web.length > 0) ||
     (result.data.images && result.data.images.length > 0) ||
-    (result.data.news && result.data.news.length > 0);
+    (result.data.news && result.data.news.length > 0) ||
+    (result.data.providers && result.data.providers.length > 0) ||
+    (result.data.exchange && result.data.exchange.length > 0);
 
   if (!hasResults) {
     console.log('No results found.');
