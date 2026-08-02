@@ -1063,6 +1063,7 @@ function createDeveloperCommand(): Command {
       parseInt
     )
     .addOption(new Option('--k <number>').argParser(parseInt).hideHelp())
+    .option('--skills-only', 'Search only agent-skill files', false)
     .option(
       '-k, --api-key <key>',
       'Firecrawl API key (overrides global --api-key)'
@@ -1083,6 +1084,7 @@ Examples:
       await handleDeveloperSearchCommand({
         query,
         k: researchLimit(options),
+        skillsOnly: options.skillsOnly,
         apiKey: options.apiKey,
         apiUrl: options.apiUrl,
         output: options.output,

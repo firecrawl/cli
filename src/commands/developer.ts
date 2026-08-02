@@ -69,6 +69,7 @@ export async function handleDeveloperSearchCommand(
     const params = new URLSearchParams();
     params.append('query', options.query);
     if (options.k != null) params.append('k', String(options.k));
+    if (options.skillsOnly) params.append('skills', 'only');
     const data = await getDeveloper<{ results?: DeveloperItem[] }>(
       `${BASE}?${params.toString()}`,
       options

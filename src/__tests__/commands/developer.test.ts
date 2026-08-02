@@ -67,6 +67,19 @@ describe('handleDeveloperSearchCommand', () => {
       );
     });
 
+    it('passes skills=only when skillsOnly is set', async () => {
+      mockHttpGet.mockResolvedValue(mockDeveloperResponse([sampleResult]));
+
+      await handleDeveloperSearchCommand({
+        query: 'tokio spawn_blocking',
+        skillsOnly: true,
+      });
+
+      expect(mockHttpGet).toHaveBeenCalledWith(
+        '/v2/developer/search?query=tokio+spawn_blocking&skills=only&integration=cli'
+      );
+    });
+
     it('passes k when a limit is provided', async () => {
       mockHttpGet.mockResolvedValue(mockDeveloperResponse([sampleResult]));
 
