@@ -37,6 +37,7 @@ type ResolvedMcpAgent =
   | { kind: 'add-mcp'; agent?: string; all?: boolean }
   | { kind: 'hermes' }
   | { kind: 'openclaw' }
+  | { kind: 'adal' }
   | { kind: 'all-launchers' };
 
 export interface SetupOptions {
@@ -200,6 +201,7 @@ function environmentHeaderForAgent(agent?: string): string | undefined {
     case 'claude-code':
     case 'hermes':
     case 'openclaw':
+    case 'adal':
       return `Bearer \${${ENV_API_KEY}}`;
     case 'cursor':
     case 'vscode':
@@ -258,6 +260,8 @@ function resolveMcpAgent(agent: string | undefined): ResolvedMcpAgent {
       return { kind: 'hermes' };
     case 'openclaw':
       return { kind: 'openclaw' };
+    case 'adal':
+      return { kind: 'adal' };
     default:
       return { kind: 'add-mcp', agent };
   }
@@ -550,6 +554,10 @@ export async function installMcp(options: SetupOptions): Promise<void> {
     await installOpenClawMcp();
     return;
   }
+  if (resolvedAgent.kind === 'adal') {
+    await installAdalMcp(options);
+    return;
+  }
   if (resolvedAgent.kind === 'all-launchers') {
     await installAllMcpLaunchers(options);
     return;
@@ -564,6 +572,7 @@ async function installAllMcpLaunchers(options: SetupOptions): Promise<void> {
   }
   await installHermesMcp();
   await installOpenClawMcp();
+  await installAdalMcp(options);
 }
 
 async function installAddMcp(
@@ -702,6 +711,93 @@ export async function installHermesMcp(): Promise<void> {
     chmodSync(configPath, 0o600);
   }
   console.log(`Hermes Agent MCP configured at ${configPath}.`);
+}
+
+/**
+ * Install the Firecrawl MCP server into AdaL.
+ *
+ * AdaL stores MCP servers per-project inside a single global
+ * `~/.adal/settings.json`, under `projects.<absolute_project_path>.mcpServers`
+ * (see deep_research/src/deep_research/mcp_integration/mcp_client_manager.py
+ * `MCPServerConfig` for the schema AdaL itself reads/writes). We register
+ * against the current working directory as the project path, matching how
+ * AdaL scopes MCP servers to the project you're running it from.
+ */
+export async function installAdalMcp(options: SetupOptions = {}): Promise<void> {
+  const apiKey = options.keyless ? undefined : getApiKey();
+  const config: { url: string; headers?: Record<string, string> } = {
+    url: firecrawlHostedMcpUrl(),
+    headers: firecrawlMcpHeaders('adal', apiKey),
+  };
+  const configPath = path.join(os.homedir(), '.adal', 'settings.json');
+  const projectPath = process.cwd();
+
+  mkdirSync(path.dirname(configPath), { recursive: true });
+
+  const existing = existsSync(configPath)
+    ? readFileSync(configPath, 'utf-8')
+    : '';
+  const settingsFileError = `Failed to parse existing AdaL settings at ${configPath}. Fix or remove the file, then retry.`;
+  let parsed: unknown;
+  try {
+    parsed = existing ? JSON.parse(existing) : {};
+  } catch {
+    throw new Error(settingsFileError);
+  }
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    Array.isArray(parsed)
+  ) {
+    throw new Error(settingsFileError);
+  }
+  const root = parsed as Record<string, unknown>;
+
+  const projects =
+    typeof root.projects === 'object' &&
+    root.projects !== null &&
+    !Array.isArray(root.projects)
+      ? (root.projects as Record<string, unknown>)
+      : {};
+
+  const project =
+    typeof projects[projectPath] === 'object' &&
+    projects[projectPath] !== null &&
+    !Array.isArray(projects[projectPath])
+      ? (projects[projectPath] as Record<string, unknown>)
+      : {};
+
+  const mcpServers =
+    typeof project.mcpServers === 'object' &&
+    project.mcpServers !== null &&
+    !Array.isArray(project.mcpServers)
+      ? (project.mcpServers as Record<string, unknown>)
+      : {};
+
+  mcpServers.firecrawl = {
+    name: 'firecrawl',
+    type: 'http',
+    url: config.url,
+    headers: config.headers,
+    enabled: true,
+    trust: false,
+  };
+  project.mcpServers = mcpServers;
+  projects[projectPath] = project;
+  root.projects = projects;
+
+  writeFileSync(configPath, JSON.stringify(root, null, 2) + '\n', {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
+  if (process.platform !== 'win32') {
+    chmodSync(configPath, 0o600);
+  }
+  if (!options.quiet) {
+    console.log(
+      `AdaL MCP configured at ${configPath} for project ${projectPath}.`
+    );
+  }
 }
 
 export async function installOpenClawMcp(): Promise<void> {

@@ -120,6 +120,15 @@ const AGENTS: AgentConfig[] = [
     globalSkillsDir: '.hermes/skills',
     detectDir: '.hermes',
   },
+  {
+    // AdaL's SkillsManager loads personal skills from `~/.adal/skills/`
+    // (see deep_research/src/deep_research/main_agent.py `_load_skills_index`)
+    // and project skills from `<cwd>/.adal/skills/`. Global install target
+    // matches the personal-skills path.
+    name: 'adal',
+    globalSkillsDir: '.adal/skills',
+    detectDir: '.adal',
+  },
 ];
 
 /** Canonical directory for skill files — single source of truth */
