@@ -2,7 +2,9 @@ import { getClient, isKeylessMode, keylessGet } from '../utils/client';
 import { writeOutput } from '../utils/output';
 import type { DeveloperItem, DeveloperSearchOptions } from '../types/developer';
 
-const BASE = '/v2/developer/search';
+// The other mount, /v2/developer/search, rejects keyless callers and may be
+// withdrawn.
+const BASE = '/v2/search/developer';
 const MAX_PASSAGE_CHARS = 1200;
 
 async function getDeveloper<T>(

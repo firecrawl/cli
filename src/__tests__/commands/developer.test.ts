@@ -23,7 +23,7 @@ describe('handleDeveloperSearchCommand', () => {
   let mockHttpGet: ReturnType<typeof vi.fn>;
 
   // Wrap a payload in the axios envelope returned by `client.http.get`.
-  // Mirrors the `/v2/developer/search` response shape:
+  // Mirrors the `/v2/search/developer` response shape:
   //   { success, results: [{ id, type, url, title, passages: [{ text }] }] }
   const mockDeveloperResponse = (results: any[]) => ({
     data: { success: true, results },
@@ -56,14 +56,14 @@ describe('handleDeveloperSearchCommand', () => {
   });
 
   describe('API call generation', () => {
-    it('calls /v2/developer/search with the query and integration tag', async () => {
+    it('calls /v2/search/developer with the query and integration tag', async () => {
       mockHttpGet.mockResolvedValue(mockDeveloperResponse([sampleResult]));
 
       await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
 
       expect(mockHttpGet).toHaveBeenCalledTimes(1);
       expect(mockHttpGet).toHaveBeenCalledWith(
-        '/v2/developer/search?query=tokio+spawn_blocking&integration=cli'
+        '/v2/search/developer?query=tokio+spawn_blocking&integration=cli'
       );
     });
 
@@ -76,7 +76,7 @@ describe('handleDeveloperSearchCommand', () => {
       });
 
       expect(mockHttpGet).toHaveBeenCalledWith(
-        '/v2/developer/search?query=tokio+spawn_blocking&skills=only&integration=cli'
+        '/v2/search/developer?query=tokio+spawn_blocking&skills=only&integration=cli'
       );
     });
 
@@ -89,7 +89,7 @@ describe('handleDeveloperSearchCommand', () => {
       });
 
       expect(mockHttpGet).toHaveBeenCalledWith(
-        '/v2/developer/search?query=tokio+spawn_blocking&k=5&integration=cli'
+        '/v2/search/developer?query=tokio+spawn_blocking&k=5&integration=cli'
       );
     });
 

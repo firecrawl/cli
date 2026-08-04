@@ -364,7 +364,7 @@ firecrawl developer "axum middleware ordering"
 
 | Option                | Description                               |
 | --------------------- | ----------------------------------------- |
-| `--limit <n>`         | Number of results (default: 20, max: 100) |
+| `--limit <n>`         | Number of results (default: 10, max: 100) |
 | `--skills-only`       | Search only agent-skill files             |
 | `-o, --output <path>` | Save to file                              |
 | `--json`              | Output as compact JSON                    |

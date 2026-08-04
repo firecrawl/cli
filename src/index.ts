@@ -1059,7 +1059,7 @@ function createDeveloperCommand(): Command {
     .argument('<query>', 'Natural-language developer question or search phrase')
     .option(
       '--limit <number>',
-      'Number of results to return (default: 20, max: 100)',
+      'Number of results to return (default: 10, max: 100)',
       parseInt
     )
     .addOption(new Option('--k <number>').argParser(parseInt).hideHelp())
