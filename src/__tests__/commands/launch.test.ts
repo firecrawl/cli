@@ -186,8 +186,15 @@ describe('handleLaunchCommand', () => {
 
   it('does not pretend a stored API key can persist beyond install-only mode', async () => {
     vi.mocked(getApiKey).mockReturnValue('fc-stored-key');
+    vi.mocked(installMcp).mockRejectedValueOnce(
+      new Error(
+        'Secure MCP setup cannot persist a stored API key for future client sessions. Export FIRECRAWL_API_KEY, launch the client through "firecrawl launch <agent>", or configure keyless MCP.'
+      )
+    );
 
-    await handleLaunchCommand('claude', { install: true });
+    await expect(
+      handleLaunchCommand('claude', { install: true })
+    ).rejects.toThrow('Export FIRECRAWL_API_KEY');
 
     expect(installMcp).toHaveBeenCalledWith({
       agent: 'claude-code',
@@ -406,32 +413,39 @@ describe('handleLaunchCommand', () => {
     expect(installSkillsForAgent).not.toHaveBeenCalled();
   });
 
-  it('can explicitly launch keyless without passing a stored API key to the client', async () => {
-    vi.mocked(getApiKey).mockReturnValue('fc-stored-key');
+  it.each([
+    ['claude', 'claude-code', 'claude', []],
+    ['hermes', 'hermes', 'hermes', []],
+    ['openclaw', 'openclaw', 'openclaw', ['tui']],
+  ])(
+    'can explicitly launch %s keyless without passing a stored API key to the client',
+    async (target, mcpAgent, command, args) => {
+      vi.mocked(getApiKey).mockReturnValue('fc-stored-key');
 
-    await handleLaunchCommand('claude', {
-      keyless: true,
-      skipSkills: true,
-    });
+      await handleLaunchCommand(target, {
+        keyless: true,
+        skipSkills: true,
+      });
 
-    expect(installMcp).toHaveBeenCalledWith({
-      agent: 'claude-code',
-      global: true,
-      yes: true,
-      quiet: true,
-      keyless: true,
-    });
-    expect(spawnSync).toHaveBeenNthCalledWith(
-      2,
-      'claude',
-      [],
-      expect.objectContaining({
-        env: expect.not.objectContaining({
-          FIRECRAWL_API_KEY: 'fc-stored-key',
-        }),
-      })
-    );
-  });
+      expect(installMcp).toHaveBeenCalledWith({
+        agent: mcpAgent,
+        global: true,
+        yes: true,
+        quiet: true,
+        keyless: true,
+      });
+      expect(spawnSync).toHaveBeenNthCalledWith(
+        2,
+        command,
+        args,
+        expect.objectContaining({
+          env: expect.not.objectContaining({
+            FIRECRAWL_API_KEY: 'fc-stored-key',
+          }),
+        })
+      );
+    }
+  );
 
   it('rejects contradictory keyless and skip-MCP options', async () => {
     await expect(
