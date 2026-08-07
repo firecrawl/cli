@@ -3,13 +3,9 @@ import os from 'os';
 import path from 'path';
 import readline from 'readline';
 import { spawnSync } from 'child_process';
-import {
-  installHermesMcp,
-  installMcp,
-  installOpenClawMcp,
-  installSkillsForAgent,
-} from './setup';
+import { installMcp, installSkillsForAgent } from './setup';
 import { ALL_SKILL_REPOS } from './skills-install';
+import { getApiKey } from '../utils/config';
 
 export interface LaunchOptions {
   config?: boolean;
@@ -19,17 +15,18 @@ export interface LaunchOptions {
   yes?: boolean;
   skipMcp?: boolean;
   skipSkills?: boolean;
+  keyless?: boolean;
 }
 
 interface LaunchTarget {
   aliases: string[];
   displayName: string;
   mcpAgent?: string;
-  mcpInstaller?: () => Promise<void>;
   skillsAgent?: string;
   command: string;
   args?: string[];
   supportsExtraArgs?: boolean;
+  mayReuseGuiProcess?: boolean;
   fallbackCommand?: () => { command: string; args: string[] } | null;
 }
 
@@ -55,6 +52,7 @@ const TARGETS: LaunchTarget[] = [
     mcpAgent: 'vscode',
     command: 'code',
     args: ['.'],
+    mayReuseGuiProcess: true,
     fallbackCommand: () => {
       if (process.platform !== 'darwin') return null;
       return {
@@ -78,6 +76,7 @@ const TARGETS: LaunchTarget[] = [
     command: 'open',
     args: ['-b', 'com.openai.codex'],
     supportsExtraArgs: false,
+    mayReuseGuiProcess: true,
     fallbackCommand: () => {
       if (process.platform !== 'darwin') return null;
       return {
@@ -96,14 +95,14 @@ const TARGETS: LaunchTarget[] = [
   {
     aliases: ['hermes', 'hermes-agent'],
     displayName: 'Hermes Agent',
-    mcpInstaller: installHermesMcp,
+    mcpAgent: 'hermes',
     skillsAgent: 'hermes-agent',
     command: 'hermes',
   },
   {
     aliases: ['openclaw'],
     displayName: 'OpenClaw',
-    mcpInstaller: installOpenClawMcp,
+    mcpAgent: 'openclaw',
     skillsAgent: 'openclaw',
     command: 'openclaw',
     args: ['tui'],
@@ -232,6 +231,10 @@ export async function handleLaunchCommand(
   options: LaunchOptions = {},
   extraArgs: string[] = []
 ): Promise<void> {
+  if (options.keyless && options.skipMcp) {
+    throw new Error('--keyless cannot be combined with --skip-mcp.');
+  }
+
   if (!targetName && extraArgs.length > 0) {
     throw new Error(
       'Extra launch arguments require an explicit launch target.'
@@ -245,10 +248,18 @@ export async function handleLaunchCommand(
     );
   }
 
-  const targetSupportsMcp = Boolean(target.mcpInstaller || target.mcpAgent);
+  const targetSupportsMcp = Boolean(target.mcpAgent);
   const targetSupportsSkills = Boolean(target.skillsAgent);
   let installMcpForTarget = targetSupportsMcp && !options.skipMcp;
   let installSkillsForTarget = targetSupportsSkills && !options.skipSkills;
+  const installOnly = Boolean(
+    options.config || options.install || options.setup
+  );
+  const apiKey = options.keyless ? undefined : getApiKey();
+  const runtimeEnv =
+    !installOnly && apiKey && process.env.FIRECRAWL_API_KEY !== apiKey
+      ? { ...process.env, FIRECRAWL_API_KEY: apiKey }
+      : process.env;
 
   if (
     installMcpForTarget &&
@@ -262,15 +273,16 @@ export async function handleLaunchCommand(
   }
 
   if (installMcpForTarget) {
-    if (target.mcpInstaller) {
-      await target.mcpInstaller();
-    } else if (target.mcpAgent) {
-      await installMcp({
+    if (target.mcpAgent) {
+      const installOptions = {
         agent: target.mcpAgent,
         global: options.global !== false,
         yes: true,
         quiet: true,
-      });
+        ...(options.keyless ? { keyless: true } : {}),
+      };
+      if (runtimeEnv === process.env) await installMcp(installOptions);
+      else await installMcp(installOptions, runtimeEnv);
     }
   }
 
@@ -288,15 +300,21 @@ export async function handleLaunchCommand(
     );
   }
 
-  if (options.config || options.install || options.setup) {
+  if (installOnly) {
     console.log(`${target.displayName} is configured with Firecrawl MCP.`);
     return;
+  }
+
+  if (runtimeEnv !== process.env && target.mayReuseGuiProcess) {
+    console.warn(
+      `${target.displayName} may reuse an existing GUI process that cannot inherit the stored API key. If MCP authentication fails, export FIRECRAWL_API_KEY before opening the app.`
+    );
   }
 
   const launch = resolveLaunchCommand(target, extraArgs);
   const result = spawnSync(launch.command, launch.args, {
     stdio: 'inherit',
-    env: process.env,
+    env: runtimeEnv,
   });
 
   if (result.error) {

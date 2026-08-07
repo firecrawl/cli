@@ -2,13 +2,9 @@ import { spawnSync } from 'child_process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { select } from '@inquirer/prompts';
 import { handleLaunchCommand } from '../../commands/launch';
-import {
-  installHermesMcp,
-  installMcp,
-  installOpenClawMcp,
-  installSkillsForAgent,
-} from '../../commands/setup';
+import { installMcp, installSkillsForAgent } from '../../commands/setup';
 import { ALL_SKILL_REPOS } from '../../commands/skills-install';
+import { getApiKey } from '../../utils/config';
 
 vi.mock('child_process', () => ({
   spawnSync: vi.fn(),
@@ -19,17 +15,23 @@ vi.mock('@inquirer/prompts', () => ({
 }));
 
 vi.mock('../../commands/setup', () => ({
-  installHermesMcp: vi.fn(async () => undefined),
   installMcp: vi.fn(async () => undefined),
-  installOpenClawMcp: vi.fn(async () => undefined),
   installSkillsForAgent: vi.fn(async () => undefined),
+}));
+
+vi.mock('../../utils/config', () => ({
+  getApiKey: vi.fn(() => undefined),
 }));
 
 describe('handleLaunchCommand', () => {
   const originalIsTty = process.stdin.isTTY;
+  let originalApiKey: string | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getApiKey).mockReturnValue(undefined);
+    originalApiKey = process.env.FIRECRAWL_API_KEY;
+    delete process.env.FIRECRAWL_API_KEY;
     vi.mocked(spawnSync).mockReturnValue({ status: 0 } as never);
     Object.defineProperty(process.stdin, 'isTTY', {
       configurable: true,
@@ -38,6 +40,8 @@ describe('handleLaunchCommand', () => {
   });
 
   afterEach(() => {
+    if (originalApiKey === undefined) delete process.env.FIRECRAWL_API_KEY;
+    else process.env.FIRECRAWL_API_KEY = originalApiKey;
     Object.defineProperty(process.stdin, 'isTTY', {
       configurable: true,
       value: originalIsTty,
@@ -110,6 +114,23 @@ describe('handleLaunchCommand', () => {
     );
   });
 
+  it('warns when a GUI client may not inherit a launch-scoped stored key', async () => {
+    vi.mocked(getApiKey).mockReturnValue('fc-stored-key');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    try {
+      await handleLaunchCommand('code', { skipSkills: true });
+
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'may reuse an existing GUI process that cannot inherit the stored API key'
+        )
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('passes extra arguments through to Codex', async () => {
     await handleLaunchCommand('codex', {}, ['--sandbox', 'workspace-write']);
 
@@ -135,6 +156,47 @@ describe('handleLaunchCommand', () => {
       ['--sandbox', 'workspace-write'],
       expect.objectContaining({ stdio: 'inherit' })
     );
+  });
+
+  it('keeps a stored API key indirect while launching an agent with authenticated MCP', async () => {
+    vi.mocked(getApiKey).mockReturnValue('fc-stored-key');
+
+    await handleLaunchCommand('claude');
+
+    expect(installMcp).toHaveBeenCalledWith(
+      {
+        agent: 'claude-code',
+        global: true,
+        yes: true,
+        quiet: true,
+      },
+      expect.objectContaining({ FIRECRAWL_API_KEY: 'fc-stored-key' })
+    );
+    expect(spawnSync).toHaveBeenNthCalledWith(
+      2,
+      'claude',
+      [],
+      expect.objectContaining({
+        stdio: 'inherit',
+        env: expect.objectContaining({ FIRECRAWL_API_KEY: 'fc-stored-key' }),
+      })
+    );
+    expect(process.env.FIRECRAWL_API_KEY).toBeUndefined();
+  });
+
+  it('does not pretend a stored API key can persist beyond install-only mode', async () => {
+    vi.mocked(getApiKey).mockReturnValue('fc-stored-key');
+
+    await handleLaunchCommand('claude', { install: true });
+
+    expect(installMcp).toHaveBeenCalledWith({
+      agent: 'claude-code',
+      global: true,
+      yes: true,
+      quiet: true,
+    });
+    expect(spawnSync).not.toHaveBeenCalled();
+    expect(process.env.FIRECRAWL_API_KEY).toBeUndefined();
   });
 
   it('asks which Codex setup to run and can install MCP only', async () => {
@@ -251,7 +313,12 @@ describe('handleLaunchCommand', () => {
   it('configures Hermes MCP and skills, then launches Hermes Agent', async () => {
     await handleLaunchCommand('hermes');
 
-    expect(installHermesMcp).toHaveBeenCalled();
+    expect(installMcp).toHaveBeenCalledWith({
+      agent: 'hermes',
+      global: true,
+      yes: true,
+      quiet: true,
+    });
     expect(installSkillsForAgent).toHaveBeenCalledWith(
       'hermes-agent',
       {
@@ -273,10 +340,39 @@ describe('handleLaunchCommand', () => {
     );
   });
 
+  it('passes a stored API key only through the launched Hermes process environment', async () => {
+    vi.mocked(getApiKey).mockReturnValue('fc-stored-key');
+
+    await handleLaunchCommand('hermes');
+
+    expect(installMcp).toHaveBeenCalledWith(
+      {
+        agent: 'hermes',
+        global: true,
+        yes: true,
+        quiet: true,
+      },
+      expect.objectContaining({ FIRECRAWL_API_KEY: 'fc-stored-key' })
+    );
+    expect(spawnSync).toHaveBeenNthCalledWith(
+      2,
+      'hermes',
+      [],
+      expect.objectContaining({
+        env: expect.objectContaining({ FIRECRAWL_API_KEY: 'fc-stored-key' }),
+      })
+    );
+  });
+
   it('configures OpenClaw MCP and skills, then launches the TUI', async () => {
     await handleLaunchCommand('openclaw');
 
-    expect(installOpenClawMcp).toHaveBeenCalled();
+    expect(installMcp).toHaveBeenCalledWith({
+      agent: 'openclaw',
+      global: true,
+      yes: true,
+      quiet: true,
+    });
     expect(installSkillsForAgent).toHaveBeenCalledWith(
       'openclaw',
       {
@@ -301,8 +397,49 @@ describe('handleLaunchCommand', () => {
   it('can skip skills for Hermes and OpenClaw launch targets', async () => {
     await handleLaunchCommand('hermes', { skipSkills: true });
 
-    expect(installHermesMcp).toHaveBeenCalled();
+    expect(installMcp).toHaveBeenCalledWith({
+      agent: 'hermes',
+      global: true,
+      yes: true,
+      quiet: true,
+    });
     expect(installSkillsForAgent).not.toHaveBeenCalled();
+  });
+
+  it('can explicitly launch keyless without passing a stored API key to the client', async () => {
+    vi.mocked(getApiKey).mockReturnValue('fc-stored-key');
+
+    await handleLaunchCommand('claude', {
+      keyless: true,
+      skipSkills: true,
+    });
+
+    expect(installMcp).toHaveBeenCalledWith({
+      agent: 'claude-code',
+      global: true,
+      yes: true,
+      quiet: true,
+      keyless: true,
+    });
+    expect(spawnSync).toHaveBeenNthCalledWith(
+      2,
+      'claude',
+      [],
+      expect.objectContaining({
+        env: expect.not.objectContaining({
+          FIRECRAWL_API_KEY: 'fc-stored-key',
+        }),
+      })
+    );
+  });
+
+  it('rejects contradictory keyless and skip-MCP options', async () => {
+    await expect(
+      handleLaunchCommand('claude', { keyless: true, skipMcp: true })
+    ).rejects.toThrow('--keyless cannot be combined with --skip-mcp');
+
+    expect(installMcp).not.toHaveBeenCalled();
+    expect(spawnSync).not.toHaveBeenCalled();
   });
 
   it('requires an explicit target in non-interactive mode', async () => {

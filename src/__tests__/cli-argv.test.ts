@@ -35,6 +35,29 @@ describe('CLI argv parsing', () => {
   });
 
   testWithBuiltCli(
+    'exposes explicit keyless MCP setup and launch flags',
+    () => {
+      const setup = spawnSync(process.execPath, [cliPath, 'setup', '--help'], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      });
+      const launch = spawnSync(
+        process.execPath,
+        [cliPath, 'launch', '--help'],
+        {
+          cwd: process.cwd(),
+          encoding: 'utf8',
+        }
+      );
+
+      expect(setup.status).toBe(0);
+      expect(setup.stdout).toContain('--keyless');
+      expect(launch.status).toBe(0);
+      expect(launch.stdout).toContain('--keyless');
+    }
+  );
+
+  testWithBuiltCli(
     'parses subcommands when a wrapper leaves the entry script path in argv',
     () => {
       const script = `

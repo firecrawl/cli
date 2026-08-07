@@ -235,6 +235,22 @@ describe('handleSetupCommand', () => {
       'fc-test-key'
     );
   });
+  it('accepts a launch-scoped environment while keeping the stored key out of MCP config and argv', async () => {
+    await installMcp(
+      {
+        agent: 'claude-code',
+        global: true,
+        yes: true,
+      },
+      { ...process.env, FIRECRAWL_API_KEY: 'fc-test-key' }
+    );
+
+    const args = vi.mocked(execFileSync).mock.calls[0]?.[1];
+    expect(args).toContain('Authorization: Bearer ${FIRECRAWL_API_KEY}');
+    expect(args?.join(' ')).not.toContain('fc-test-key');
+    const subprocessEnv = vi.mocked(execFileSync).mock.calls[0]?.[2]?.env;
+    expect(subprocessEnv?.FIRECRAWL_API_KEY).toBeUndefined();
+  });
   it('normalizes launch aliases for environment-backed MCP setup', async () => {
     process.env.FIRECRAWL_API_KEY = 'fc-test-key';
 
@@ -390,6 +406,27 @@ describe('handleSetupCommand', () => {
     }
   });
 
+  it('honors explicit keyless setup for Hermes even when a key is stored', async () => {
+    const home = mkdtempSync(
+      path.join(os.tmpdir(), 'firecrawl-hermes-keyless-test-')
+    );
+    process.env.HOME = home;
+
+    try {
+      await installMcp({ agent: 'hermes', keyless: true });
+
+      const config = readFileSync(
+        path.join(home, '.hermes', 'config.yaml'),
+        'utf-8'
+      );
+      expect(config).toContain('https://mcp.firecrawl.dev/v2/mcp');
+      expect(config).not.toContain('Authorization');
+      expect(config).not.toContain('fc-test-key');
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it('rejects a stored key before invoking the OpenClaw CLI', async () => {
     await expect(installOpenClawMcp()).rejects.toThrow(
       'Export FIRECRAWL_API_KEY'
@@ -404,6 +441,15 @@ describe('handleSetupCommand', () => {
     const config = vi.mocked(execFileSync).mock.calls[0]?.[1]?.[3] as string;
     expect(config).toContain('Bearer ${FIRECRAWL_API_KEY}');
     expect(config).not.toContain('Bearer fc-test-key');
+  });
+
+  it('honors explicit keyless setup for OpenClaw even when a key is stored', async () => {
+    await installMcp({ agent: 'openclaw', keyless: true });
+
+    const config = vi.mocked(execFileSync).mock.calls[0]?.[1]?.[3] as string;
+    expect(config).toContain('https://mcp.firecrawl.dev/v2/mcp');
+    expect(config).not.toContain('Authorization');
+    expect(config).not.toContain('fc-test-key');
   });
 
   it('surfaces a sanitized OpenClaw setup failure', async () => {

@@ -183,14 +183,20 @@ function firecrawlHostedMcpUrl(): string {
   return 'https://mcp.firecrawl.dev/v2/mcp';
 }
 
-function isEnvironmentBackedApiKey(apiKey: string | undefined): boolean {
-  return Boolean(apiKey && process.env[ENV_API_KEY] === apiKey);
+function isEnvironmentBackedApiKey(
+  apiKey: string | undefined,
+  runtimeEnv: NodeJS.ProcessEnv = process.env
+): boolean {
+  return Boolean(apiKey && runtimeEnv[ENV_API_KEY] === apiKey);
 }
 
-function assertSubprocessSafeCredential(apiKey?: string): void {
-  if (apiKey && !isEnvironmentBackedApiKey(apiKey)) {
+function assertSubprocessSafeCredential(
+  apiKey?: string,
+  runtimeEnv: NodeJS.ProcessEnv = process.env
+): void {
+  if (apiKey && !isEnvironmentBackedApiKey(apiKey, runtimeEnv)) {
     throw new Error(
-      'Secure MCP setup cannot pass a stored API key to this client. Export FIRECRAWL_API_KEY and rerun with a supported --agent, or run keyless setup without a credential.'
+      'Secure MCP setup cannot persist a stored API key for future client sessions. Export FIRECRAWL_API_KEY, launch the client through "firecrawl launch <agent>", or configure keyless MCP.'
     );
   }
 }
@@ -213,14 +219,15 @@ function environmentHeaderForAgent(agent?: string): string | undefined {
 
 function firecrawlMcpHeaders(
   agent?: string,
-  apiKey?: string
+  apiKey?: string,
+  runtimeEnv: NodeJS.ProcessEnv = process.env
 ): Record<string, string> | undefined {
   if (!apiKey) return undefined;
 
   // Keep this helper safe in isolation. Callers currently reject stored keys
   // before reaching it, but a future call site must not turn one into a raw
   // Authorization header in argv or a client configuration file.
-  assertSubprocessSafeCredential(apiKey);
+  assertSubprocessSafeCredential(apiKey, runtimeEnv);
   const environmentHeader = environmentHeaderForAgent(agent);
   if (environmentHeader) return { Authorization: environmentHeader };
   throw new Error(
@@ -524,7 +531,13 @@ export async function installSkillsForAgent(
   );
 }
 
-export async function installMcp(options: SetupOptions): Promise<void> {
+export async function installMcp(
+  options: SetupOptions,
+  // `firecrawl launch` may provide the exact environment inherited by the
+  // client it starts. This lets MCP config keep an indirect env reference
+  // without mutating the parent shell or exposing the key to setup commands.
+  runtimeEnv: NodeJS.ProcessEnv = process.env
+): Promise<void> {
   if (options.global && options.project) {
     throw new Error('Choose either --global or --project, not both.');
   }
@@ -536,53 +549,64 @@ export async function installMcp(options: SetupOptions): Promise<void> {
       'Authenticated --agent all setup does not support --project because Codex requires a global environment-backed MCP configuration. Choose one --agent for project setup, use --agent all --global, or run keyless setup.'
     );
   }
-  if (!options.agent && isEnvironmentBackedApiKey(apiKey)) {
+  if (!options.agent && isEnvironmentBackedApiKey(apiKey, runtimeEnv)) {
     throw new Error(
       "Environment-backed MCP setup requires --agent so Firecrawl can use that client's native variable syntax. Choose a supported client or use --agent all; the API key will not be written literally."
     );
   }
   if (resolvedAgent.kind === 'hermes') {
-    await installHermesMcp();
+    await installHermesMcp(runtimeEnv, options.keyless);
     return;
   }
-  assertSubprocessSafeCredential(apiKey);
+  assertSubprocessSafeCredential(apiKey, runtimeEnv);
   if (resolvedAgent.kind === 'openclaw') {
-    await installOpenClawMcp();
+    await installOpenClawMcp(runtimeEnv, options.keyless);
     return;
   }
   if (resolvedAgent.kind === 'all-launchers') {
-    await installAllMcpLaunchers(options);
+    await installAllMcpLaunchers(options, runtimeEnv);
     return;
   }
 
-  await installAddMcp(options, resolvedAgent);
+  await installAddMcp(options, resolvedAgent, runtimeEnv);
 }
 
-async function installAllMcpLaunchers(options: SetupOptions): Promise<void> {
+async function installAllMcpLaunchers(
+  options: SetupOptions,
+  runtimeEnv: NodeJS.ProcessEnv
+): Promise<void> {
   for (const agent of ADD_MCP_LAUNCH_AGENTS) {
-    await installAddMcp({ ...options, yes: true }, { kind: 'add-mcp', agent });
+    await installAddMcp(
+      { ...options, yes: true },
+      { kind: 'add-mcp', agent },
+      runtimeEnv
+    );
   }
-  await installHermesMcp();
-  await installOpenClawMcp();
+  await installHermesMcp(runtimeEnv, options.keyless);
+  await installOpenClawMcp(runtimeEnv, options.keyless);
 }
 
 async function installAddMcp(
   options: SetupOptions,
-  resolvedAgent: Extract<ResolvedMcpAgent, { kind: 'add-mcp' }>
+  resolvedAgent: Extract<ResolvedMcpAgent, { kind: 'add-mcp' }>,
+  runtimeEnv: NodeJS.ProcessEnv
 ): Promise<void> {
   const mcpUrl = firecrawlHostedMcpUrl();
   const apiKey = options.keyless ? undefined : getApiKey();
+  // Codex has no Authorization template in environmentHeaderForAgent. Its
+  // native bearer-token option is the verified env indirection, so this must
+  // remain before the generic firecrawlMcpHeaders path.
   if (
     resolvedAgent.agent === 'codex' &&
     !options.project &&
     apiKey &&
-    isEnvironmentBackedApiKey(apiKey)
+    isEnvironmentBackedApiKey(apiKey, runtimeEnv)
   ) {
     installCodexMcpFromEnvironment(options, mcpUrl);
     return;
   }
 
-  const headers = firecrawlMcpHeaders(resolvedAgent.agent, apiKey);
+  const headers = firecrawlMcpHeaders(resolvedAgent.agent, apiKey, runtimeEnv);
   const useGlobal = !options.project && Boolean(options.global);
 
   const args = [
@@ -665,19 +689,30 @@ function installCodexMcpFromEnvironment(
   }
 }
 
-function firecrawlMcpConfig(agent?: string): {
+function firecrawlMcpConfig(
+  agent?: string,
+  runtimeEnv: NodeJS.ProcessEnv = process.env,
+  keyless = false
+): {
   url: string;
   headers?: Record<string, string>;
   transport?: string;
 } {
   return {
     url: firecrawlHostedMcpUrl(),
-    headers: firecrawlMcpHeaders(agent, getApiKey()),
+    headers: firecrawlMcpHeaders(
+      agent,
+      keyless ? undefined : getApiKey(),
+      runtimeEnv
+    ),
   };
 }
 
-export async function installHermesMcp(): Promise<void> {
-  const config = firecrawlMcpConfig('hermes');
+export async function installHermesMcp(
+  runtimeEnv: NodeJS.ProcessEnv = process.env,
+  keyless = false
+): Promise<void> {
+  const config = firecrawlMcpConfig('hermes', runtimeEnv, keyless);
   const configPath = path.join(os.homedir(), '.hermes', 'config.yaml');
   mkdirSync(path.dirname(configPath), { recursive: true });
 
@@ -704,9 +739,12 @@ export async function installHermesMcp(): Promise<void> {
   console.log(`Hermes Agent MCP configured at ${configPath}.`);
 }
 
-export async function installOpenClawMcp(): Promise<void> {
+export async function installOpenClawMcp(
+  runtimeEnv: NodeJS.ProcessEnv = process.env,
+  keyless = false
+): Promise<void> {
   const config = {
-    ...firecrawlMcpConfig('openclaw'),
+    ...firecrawlMcpConfig('openclaw', runtimeEnv, keyless),
     transport: 'streamable-http',
   };
   console.log('Configuring Firecrawl MCP for OpenClaw...\n');

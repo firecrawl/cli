@@ -2251,6 +2251,10 @@ program
     'Skip prompts; for bare setup, install the default skills + MCP bundle'
   )
   .option(
+    '--keyless',
+    'Configure anonymous hosted MCP even when an API key is stored'
+  )
+  .option(
     '--undo',
     'Undo setup defaults by re-enabling native web tools where supported'
   )
@@ -2293,6 +2297,10 @@ program
   .option('--config', 'Alias for --install')
   .option('--skip-mcp', 'Launch without installing or updating Firecrawl MCP')
   .option('--skip-skills', 'Launch without installing Firecrawl skills')
+  .option(
+    '--keyless',
+    'Configure anonymous hosted MCP without an Authorization header'
+  )
   .option(
     '-g, --global',
     'Install Firecrawl MCP globally for the selected agent',
