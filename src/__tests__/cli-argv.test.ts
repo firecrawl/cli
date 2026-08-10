@@ -34,6 +34,17 @@ describe('CLI argv parsing', () => {
     expect(result.stderr).not.toContain('unknown command');
   });
 
+  testWithBuiltCli('exposes pretty JSON output for search', () => {
+    const result = spawnSync(process.execPath, [cliPath, 'search', '--help'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Usage: firecrawl search');
+    expect(result.stdout).toContain('--pretty');
+  });
+
   testWithBuiltCli(
     'exposes explicit keyless MCP setup and launch flags',
     () => {
