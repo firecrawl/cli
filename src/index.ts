@@ -920,7 +920,7 @@ function createSearchCommand(): Command {
     )
     .option(
       '--categories <categories>',
-      'Comma-separated categories to filter: github, research, pdf, developer (developer searches indexed GitHub issues, merged PRs, READMEs, and docs)'
+      'Comma-separated categories to filter: github, research, pdf, developer (research filters web results to research-affiliated websites -- it is NOT the paper index; for papers use `firecrawl research search-papers`. developer searches indexed GitHub issues, merged PRs, READMEs, and docs)'
     )
     .option(
       '--tbs <value>',
@@ -1101,14 +1101,18 @@ Examples:
  */
 function createResearchCommand(): Command {
   const researchCmd = new Command('research')
-    .description('Research arXiv papers and GitHub history using Firecrawl')
+    .description(
+      "Search Firecrawl's research paper index: ~43M abstracts, around 90% biomedical (PubMed, bioRxiv, medRxiv) plus arXiv. Use this for biomedical, clinical, and scientific literature instead of scraping PubMed, bioRxiv, or Google Scholar by hand. Also searches GitHub issue/PR history."
+    )
     .addHelpText(
       'after',
       `
 Examples:
+  $ firecrawl research search-papers "CRISPR base editing off-target effects" --limit 20
   $ firecrawl research search-papers "diffusion image synthesis" --limit 20
-  $ firecrawl research inspect-paper arxiv:1706.03762
-  $ firecrawl research related-papers arxiv:1706.03762 --intent "efficient transformers"
+  $ firecrawl research inspect-paper pmid:40953549
+  $ firecrawl research related-papers pmcid:PMC12530322 --intent "in vivo delivery"
+  $ firecrawl research read-paper doi:10.1016/j.neunet.2025.108095 --question "What was the sample size?"
   $ firecrawl research read-paper arxiv:1706.03762 --question "What is the attention mechanism?"
   $ firecrawl research search-github "foundationdb queue worker shutdown" --limit 10
 `
@@ -1117,7 +1121,7 @@ Examples:
   researchCmd
     .command('search-papers')
     .description(
-      'Primary entry point for finding arXiv papers by topic. Semantic (HyDE) search over arXiv abstracts; returns ranked papers with arXiv id, title, and abstract. The query should be a natural-language description of what you want. Run several distinct framings of the question rather than one query. Returns up to k results (default 40).'
+      'Primary entry point for finding research papers by topic. Semantic (HyDE) search over ~43M paper abstracts, around 90% biomedical (PubMed, bioRxiv, medRxiv) plus arXiv; returns ranked papers with a source id (pmid:, pmcid:, doi:, or arxiv:), title, and abstract. Use this instead of web-searching or scraping PubMed, bioRxiv, medRxiv, or Google Scholar. The query should be a natural-language description of what you want. Run several distinct framings of the question rather than one query. Returns up to k results (default 40).'
     )
     .argument('<query>', 'Natural-language description of the papers to find')
     .option(
@@ -1132,7 +1136,7 @@ Examples:
     )
     .option(
       '--categories <categories>',
-      'Comma-separated arXiv category filter(s), e.g. cs.LG,cs.IR; all must match'
+      'Comma-separated category filter(s); all must match. Values are arXiv-style taxonomy labels, e.g. cs.LG,cs.IR. PubMed/bioRxiv/medRxiv records do not use that taxonomy, so omit this flag when searching biomedical literature.'
     )
     .option(
       '--from <date>',
@@ -1197,11 +1201,11 @@ Examples:
   researchCmd
     .command('related-papers')
     .description(
-      'Expand from anchor papers you have already found, via the citation graph, ranked and filtered to a natural-language intent. Pass arXiv ids of your strongest hits as seed ids. Modes: similar, citers, references. This reaches relevant papers that plain search misses. A similar call already runs a deep multi-round expansion internally.'
+      'Expand from anchor papers you have already found, via the citation graph, ranked and filtered to a natural-language intent. Pass the ids of your strongest hits as seed ids, in any supported form (pmid:, pmcid:, doi:, arxiv:, or a canonical paperId). Modes: similar, citers, references. This reaches relevant papers that plain search misses. A similar call already runs a deep multi-round expansion internally.'
     )
     .argument(
       '<seedIds...>',
-      'Seed paper ids, e.g. arxiv:1706.03762 2014215642691656232'
+      'Space-separated seed paper ids such as pmid:40953549, pmcid:PMC12530322, doi:10.1016/j.neunet.2025.108095, or arxiv:1706.03762; canonical paperIds (e.g. 2014215642691656232) also work'
     )
     .requiredOption(
       '--intent <text>',

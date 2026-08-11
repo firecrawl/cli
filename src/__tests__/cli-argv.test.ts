@@ -34,6 +34,50 @@ describe('CLI argv parsing', () => {
     expect(result.stderr).not.toContain('unknown command');
   });
 
+  testWithBuiltCli('lists the research command in root help output', () => {
+    const result = spawnSync(process.execPath, [cliPath, '--help'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/^\s*research\b/m);
+  });
+
+  testWithBuiltCli('parses the research command and shows its help', () => {
+    const result = spawnSync(
+      process.execPath,
+      [cliPath, 'research', '--help'],
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      }
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Usage: firecrawl research');
+    expect(result.stdout).toContain('search-papers');
+    expect(result.stdout).toContain('read-paper');
+    expect(result.stderr).not.toContain('unknown command');
+  });
+
+  testWithBuiltCli(
+    'describes the research index by its real corpus, not just arXiv',
+    () => {
+      const result = spawnSync(process.execPath, [cliPath, '--help'], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toMatch(/^\s*research\b/m);
+      // Collapse wrapping so the assertion does not depend on terminal width.
+      const flattened = result.stdout.replace(/\s+/g, ' ');
+      expect(flattened).toContain('PubMed');
+      expect(flattened).toContain('biomedical');
+    }
+  );
+
   testWithBuiltCli(
     'exposes explicit keyless MCP setup and launch flags',
     () => {
