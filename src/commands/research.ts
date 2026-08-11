@@ -149,7 +149,7 @@ function fmtGithub(results?: GitHubItem[]): string {
   return results
     .map((item) => {
       const lines: string[] = [];
-      if (item.resultType === 'repo_readme') {
+      if (item.number == null && item.pageType == null) {
         lines.push(`[${item.repo ?? '?'}] README`);
       } else {
         const ref = item.number != null ? `#${item.number}` : '';

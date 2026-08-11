@@ -53,7 +53,6 @@ export interface PaperHit {
 }
 
 export interface GitHubItem {
-  resultType?: string;
   repo?: string;
   url?: string;
   pageType?: string;
