@@ -1,7 +1,9 @@
 ---
 name: firecrawl-search
-description: |
-  Web search with full page content extraction. Use this skill whenever the user asks to search the web, find articles, research a topic, look something up, find recent news, discover sources, or says "search for", "find me", "look up", "what are people saying about", or "find articles about". Returns real search results with optional full-page markdown — not just snippets. Provides capabilities beyond Claude's built-in WebSearch.
+description: >-
+  This skill should be used when the user asks to "search for", "find me", "look up", "what are
+  people saying about", "find articles about", "search the web for", or wants web search
+  results with full page content extraction (not just snippets) via Firecrawl.
 allowed-tools:
   - Bash(firecrawl *)
   - Bash(npx firecrawl *)
