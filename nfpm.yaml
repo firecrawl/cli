@@ -1,5 +1,5 @@
 name: firecrawl
-description: CLI for Firecrawl - web scraping, search, and browser automation
+description: CLI for Firecrawl - web scraping, web and research paper search, and browser automation
 homepage: https://firecrawl.dev
 maintainer: Firecrawl <support@firecrawl.dev>
 license: ISC

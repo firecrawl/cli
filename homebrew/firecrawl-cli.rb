@@ -1,5 +1,5 @@
 class FirecrawlCli < Formula
-  desc "CLI for Firecrawl - web scraping, search, and browser automation"
+  desc "CLI for Firecrawl - web scraping, web and paper search, browser automation"
   homepage "https://firecrawl.dev"
   version "1.10.0"
   license "ISC"
