@@ -1,7 +1,7 @@
 ---
 name: firecrawl-search
 description: |
-  Web search with full page content extraction. Use this skill whenever the user asks to search the web, find articles, research a topic, look something up, find recent news, discover sources, or says "search for", "find me", "look up", "what are people saying about", or "find articles about". Returns real search results with optional full-page markdown — not just snippets. Provides capabilities beyond Claude's built-in WebSearch.
+  Web search with full page content extraction, plus routing to Firecrawl's research paper index. Use this skill whenever the user asks to search the web, find articles, research a topic, look something up, find recent news, discover sources, or says "search for", "find me", "look up", "what are people saying about", or "find articles about". Also use it for scientific literature — finding papers, studies, trials, or preprints on PubMed, bioRxiv, medRxiv, or arXiv. Returns real search results with optional full-page markdown — not just snippets. Provides capabilities beyond Claude's built-in WebSearch.
 allowed-tools:
   - Bash(firecrawl *)
   - Bash(npx firecrawl *)
@@ -15,6 +15,7 @@ Web search with optional content scraping. Returns search results as JSON, optio
 
 - You don't have a specific URL yet
 - You need to find pages, answer questions, or discover sources
+- You need research papers — see [Paper search](#paper-search), which routes to `firecrawl research`, not to `search --categories research`
 - First step in the [workflow escalation pattern](firecrawl-cli): search → scrape → map → crawl → interact
 
 ## Quick start
@@ -31,6 +32,9 @@ firecrawl search "your query" --sources news --tbs qdr:d -o .firecrawl/news.json
 
 # Programming question: search GitHub issues, merged PRs, READMEs, and docs
 firecrawl search "your query" --categories developer -o .firecrawl/developer.json --json
+
+# Research papers: use the paper index, NOT `search --categories research`
+firecrawl research search-papers "your query" -o .firecrawl/papers.json --json
 ```
 
 ## Developer search
@@ -57,20 +61,52 @@ Each result holds `id`, `type` (`issue`, `pull_request`, `readme`, `doc`),
 `url`, `title`, and `passages`. Read them with
 `jq -r '.results[] | .url, .passages[].text' .firecrawl/developer.json`.
 
+## Paper search
+
+**`--categories research` is not the paper index.** It only narrows ordinary web
+results to research-affiliated websites (a short domain allowlist). For actual
+papers use the `firecrawl research` command group, which searches roughly 43M
+abstracts, around 90% biomedical (PubMed, bioRxiv, medRxiv) plus arXiv.
+
+Reach for it on any biomedical, clinical, or scientific-literature question
+instead of web-searching or scraping PubMed, bioRxiv, medRxiv, or Google
+Scholar by hand:
+
+```bash
+# Find papers by topic -- start here, and run several distinct framings
+firecrawl research search-papers "CRISPR base editing off-target effects" \
+  --limit 20 -o .firecrawl/papers.json --json
+
+# Expand from your strongest hits along the citation graph
+firecrawl research related-papers pmid:40953549 --intent "in vivo delivery" \
+  -o .firecrawl/papers-related.json --json
+
+# Verify a specific claim against the full text before you cite it
+firecrawl research read-paper pmcid:PMC12530322 --question "What was the sample size?" \
+  -o .firecrawl/paper-passages.json --json
+```
+
+Paper ids accept `pmid:`, `pmcid:`, `doi:`, and `arxiv:` forms. `inspect-paper`
+returns canonical metadata for one id. Read hits with
+`jq -r '.results[] | .primaryId, .title' .firecrawl/papers.json`.
+
+See [firecrawl-cli](../firecrawl-cli/SKILL.md) for how paper search fits the
+overall command routing.
+
 ## Options
 
-| Option                                         | Description                                   |
-| ---------------------------------------------- | --------------------------------------------- |
-| `--limit <n>`                                  | Max number of results                         |
-| `--sources <web,images,news>`                  | Source types to search                        |
-| `--categories <github,research,pdf,developer>` | Filter by category                            |
-| `--tbs <qdr:h\|d\|w\|m\|y>`                    | Time-based search filter                      |
-| `--location`                                   | Location for search results                   |
-| `--country <code>`                             | Country code for search                       |
-| `--scrape`                                     | Also scrape full page content for each result |
-| `--scrape-formats`                             | Formats when scraping (default: markdown)     |
-| `-o, --output <path>`                          | Output file path                              |
-| `--json`                                       | Output as JSON                                |
+| Option                                         | Description                                                                                                                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--limit <n>`                                  | Max number of results                                                                                                                                              |
+| `--sources <web,images,news>`                  | Source types to search                                                                                                                                             |
+| `--categories <github,research,pdf,developer>` | Filter by category. `research` = research-affiliated websites (see [Paper search](#paper-search) for the actual paper index); `developer` = the coding-agent index |
+| `--tbs <qdr:h\|d\|w\|m\|y>`                    | Time-based search filter                                                                                                                                           |
+| `--location`                                   | Location for search results                                                                                                                                        |
+| `--country <code>`                             | Country code for search                                                                                                                                            |
+| `--scrape`                                     | Also scrape full page content for each result                                                                                                                      |
+| `--scrape-formats`                             | Formats when scraping (default: markdown)                                                                                                                          |
+| `-o, --output <path>`                          | Output file path                                                                                                                                                   |
+| `--json`                                       | Output as JSON                                                                                                                                                     |
 
 ## Tips
 
