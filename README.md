@@ -1,6 +1,6 @@
 # 🔥 Firecrawl CLI
 
-Command-line interface for Firecrawl. Search, scrape, interact, crawl, map, and run agent jobs directly from your terminal.
+Command-line interface for Firecrawl. Search, scrape, interact, crawl, map, search research papers and developer sources, and run agent jobs directly from your terminal.
 
 ## Installation
 
@@ -281,10 +281,13 @@ firecrawl search "landscape photography" --sources images
 # Multiple sources
 firecrawl search "machine learning" --sources web,news,images
 
-# Filter by category (GitHub, research papers, PDFs)
+# Filter by category (GitHub, research-affiliated websites, PDFs)
 firecrawl search "web data python" --categories github
 firecrawl search "transformer architecture" --categories research
 firecrawl search "machine learning" --categories github,research
+
+# Note: --categories research narrows *web* results to research-affiliated
+# websites. To search papers themselves, use `firecrawl research search-papers`.
 
 # Developer search: GitHub issues, merged PRs, READMEs, and docs
 firecrawl search "axum middleware ordering" --categories developer
@@ -307,23 +310,23 @@ firecrawl search "AI data tools"
 
 #### Search Options
 
-| Option                       | Description                                                                                 |
-| ---------------------------- | ------------------------------------------------------------------------------------------- |
-| `--limit <n>`                | Maximum results (default: 5, max: 100)                                                      |
-| `--sources <sources>`        | Comma-separated: `web`, `images`, `news` (default: web)                                     |
-| `--categories <categories>`  | Comma-separated: `github`, `research`, `pdf`, `developer`                                   |
-| `--tbs <value>`              | Time filter: `qdr:h` (hour), `qdr:d` (day), `qdr:w` (week), `qdr:m` (month), `qdr:y` (year) |
-| `--location <location>`      | Geo-targeting (e.g., "Germany", "San Francisco,California,United States")                   |
-| `--country <code>`           | ISO country code (default: US)                                                              |
-| `--timeout <ms>`             | Timeout in milliseconds (default: 60000)                                                    |
-| `--highlights`               | Return query-relevant highlights for each result                                            |
-| `--no-highlights`            | Keep the original search snippets                                                           |
-| `--ignore-invalid-urls`      | Exclude URLs invalid for other Firecrawl endpoints                                          |
-| `--scrape`                   | Enable scraping of search results                                                           |
-| `--scrape-formats <formats>` | Scrape formats when `--scrape` enabled (default: markdown)                                  |
-| `--only-main-content`        | Include only main content when scraping (default: true)                                     |
-| `-o, --output <path>`        | Save to file                                                                                |
-| `--json`                     | Output as compact JSON                                                                      |
+| Option                       | Description                                                                                                                                                               |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--limit <n>`                | Maximum results (default: 5, max: 100)                                                                                                                                    |
+| `--sources <sources>`        | Comma-separated: `web`, `images`, `news` (default: web)                                                                                                                   |
+| `--categories <categories>`  | Comma-separated: `github`, `research` (research-affiliated websites -- for papers use [`research search-papers`](#research---search-research-papers)), `pdf`, `developer` |
+| `--tbs <value>`              | Time filter: `qdr:h` (hour), `qdr:d` (day), `qdr:w` (week), `qdr:m` (month), `qdr:y` (year)                                                                               |
+| `--location <location>`      | Geo-targeting (e.g., "Germany", "San Francisco,California,United States")                                                                                                 |
+| `--country <code>`           | ISO country code (default: US)                                                                                                                                            |
+| `--timeout <ms>`             | Timeout in milliseconds (default: 60000)                                                                                                                                  |
+| `--highlights`               | Return query-relevant highlights for each result                                                                                                                          |
+| `--no-highlights`            | Keep the original search snippets                                                                                                                                         |
+| `--ignore-invalid-urls`      | Exclude URLs invalid for other Firecrawl endpoints                                                                                                                        |
+| `--scrape`                   | Enable scraping of search results                                                                                                                                         |
+| `--scrape-formats <formats>` | Scrape formats when `--scrape` enabled (default: markdown)                                                                                                                |
+| `--only-main-content`        | Include only main content when scraping (default: true)                                                                                                                   |
+| `-o, --output <path>`        | Save to file                                                                                                                                                              |
+| `--json`                     | Output as compact JSON                                                                                                                                                    |
 
 #### Examples
 
@@ -337,7 +340,10 @@ firecrawl search "web data library" --categories github --limit 20
 # Search and get full content
 firecrawl search "firecrawl documentation" --scrape --scrape-formats markdown --json -o results.json
 
-# Find research papers
+# Find research papers -- use the paper index, not the website filter
+firecrawl research search-papers "large language models" --json
+
+# Narrow web results to research-affiliated websites (not the paper index)
 firecrawl search "large language models" --categories research --json
 
 # Answer a programming question from issues, merged PRs, READMEs, and docs
@@ -379,6 +385,61 @@ firecrawl developer "tokio spawn_blocking panics thread limit" --limit 10
 # Keep the full passages for an agent
 firecrawl developer "tokio select cancellation safety" --json -o results.json
 ```
+
+---
+
+### `research` - Search research papers
+
+Search Firecrawl's research paper index: roughly 43M abstracts, around 90% biomedical (PubMed, bioRxiv, medRxiv) plus arXiv. Use this for biomedical, clinical, and scientific literature rather than scraping PubMed, bioRxiv, or Google Scholar by hand.
+
+This is **not** the same thing as `firecrawl search --categories research`, which only narrows ordinary web results to research-affiliated websites.
+
+```bash
+# Find papers by topic (start here)
+firecrawl research search-papers "CRISPR base editing off-target effects" --limit 20
+
+# Full metadata for one paper, by any supported id form
+firecrawl research inspect-paper pmid:40953549
+
+# Expand along the citation graph from your strongest hits
+firecrawl research related-papers pmcid:PMC12530322 --intent "in vivo delivery"
+
+# Read full-text passages to verify a specific claim
+firecrawl research read-paper doi:10.1016/j.neunet.2025.108095 --question "What was the sample size?"
+
+# Search GitHub issue/PR history and repository READMEs
+firecrawl research search-github "foundationdb queue worker shutdown" --limit 10
+```
+
+Paper ids accept `pmid:`, `pmcid:`, `doi:`, and `arxiv:` forms, plus canonical `paperId` values returned by search.
+
+#### Subcommands
+
+| Subcommand                    | Description                                                                 |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| `search-papers <query>`       | Semantic (HyDE) search over paper abstracts. The primary entry point.       |
+| `inspect-paper <paperId>`     | Canonical metadata: title, abstract, authors, categories, source ids, dates |
+| `related-papers <seedIds...>` | Citation-graph expansion from seed papers, ranked against `--intent`        |
+| `read-paper <paperId>`        | Best-matching in-body full-text passages for a `--question`                 |
+| `search-github <query>`       | GitHub issue/PR history and repository READMEs                              |
+
+#### `search-papers` Options
+
+| Option                      | Description                                                                            |
+| --------------------------- | -------------------------------------------------------------------------------------- |
+| `--limit <n>`               | Number of results (default: 40)                                                        |
+| `--authors <authors>`       | Comma-separated author substring filter(s); all must match                             |
+| `--categories <categories>` | arXiv-style taxonomy labels (e.g. `cs.LG,cs.IR`). Biomedical records do not use these. |
+| `--from <date>`             | Inclusive lower bound on created/updated date (YYYY-MM-DD)                             |
+| `--to <date>`               | Inclusive upper bound on created/updated date (YYYY-MM-DD)                             |
+| `-o, --output <path>`       | Save to file                                                                           |
+| `--json`                    | Output as compact JSON                                                                 |
+| `--pretty`                  | Pretty print JSON output                                                               |
+
+#### Tips
+
+- Run several distinct framings of the same question rather than one query -- recall improves markedly.
+- Use `search-papers` to find anchors, `related-papers` to expand, then `read-paper` to verify a candidate before including it.
 
 ---
 
