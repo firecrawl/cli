@@ -385,9 +385,17 @@ function binaryOnPath(name: string, ctx: McpContext): boolean {
   return false;
 }
 
+/**
+ * Detection prefers a false negative to a false positive: every agent is listed
+ * in the picker either way, so failing to pre-select one costs a keystroke,
+ * while pre-selecting an agent the user does not have is misleading.
+ *
+ * `hermes` is therefore matched on its config directory alone. The name is also
+ * used by an unrelated JavaScript engine that ships with common toolchains, so
+ * a PATH lookup reports it present on machines that do not have this agent.
+ */
 const LAUNCHER_DETECT: Record<McpLauncherId, (ctx: McpContext) => boolean> = {
-  hermes: (ctx) =>
-    existsSync(path.join(ctx.home, '.hermes')) || binaryOnPath('hermes', ctx),
+  hermes: (ctx) => existsSync(path.join(ctx.home, '.hermes')),
   openclaw: (ctx) =>
     existsSync(path.join(ctx.home, '.openclaw')) ||
     binaryOnPath('openclaw', ctx),

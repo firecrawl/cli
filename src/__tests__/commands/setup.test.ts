@@ -78,6 +78,7 @@ describe('handleSetupCommand', () => {
   let originalHome: string | undefined;
   let originalApiKey: string | undefined;
   let sandboxHome: string;
+  let originalPath: string | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -98,10 +99,15 @@ describe('handleSetupCommand', () => {
     // home. Without this a test run would rewrite the developer's own editors.
     sandboxHome = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-home-'));
     process.env.HOME = sandboxHome;
+    // Launcher detection also looks on PATH, so pin it for the same reason.
+    originalPath = process.env.PATH;
+    process.env.PATH = '';
   });
 
   afterEach(() => {
     rmSync(sandboxHome, { recursive: true, force: true });
+    if (originalPath === undefined) delete process.env.PATH;
+    else process.env.PATH = originalPath;
     if (originalHome === undefined) delete process.env.HOME;
     else process.env.HOME = originalHome;
     if (originalApiKey === undefined) delete process.env.FIRECRAWL_API_KEY;
@@ -472,7 +478,7 @@ describe('handleSetupCommand', () => {
   });
 
   it('offers launchers in the picker and configures Hermes by flag', async () => {
-    await handleSetupCommand('mcp', { hermes: true, yes: true } as never);
+    await handleSetupCommand('mcp', { clients: ['hermes'], yes: true });
 
     expect(
       readFileSync(path.join(sandboxHome, '.hermes', 'config.yaml'), 'utf-8')
@@ -502,10 +508,9 @@ describe('handleSetupCommand', () => {
     });
 
     await handleSetupCommand('mcp', {
-      cursor: true,
-      openclaw: true,
+      clients: ['cursor', 'openclaw'],
       yes: true,
-    } as never);
+    });
 
     expect(
       JSON.parse(
