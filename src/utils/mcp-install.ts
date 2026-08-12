@@ -20,7 +20,6 @@ import {
   type McpClient,
   type McpClientId,
   type McpContext,
-  type McpScope,
   type McpTargetId,
 } from './mcp-clients';
 
@@ -243,20 +242,11 @@ export async function appendRuleSection(
   return 'installed';
 }
 
-function configPathFor(client: McpClient, scope: McpScope, ctx: McpContext) {
-  // Agents without project support always take the global path.
-  const projectPath = client.projectConfigPath?.(ctx);
-  return scope === 'project' && projectPath
-    ? projectPath
-    : client.globalConfigPath(ctx);
-}
-
 async function writeMcpEntry(
   client: McpClient,
-  scope: McpScope,
   ctx: McpContext
 ): Promise<{ status: 'configured' | 'reconfigured'; configPath: string }> {
-  const configPath = configPathFor(client, scope, ctx);
+  const configPath = client.globalConfigPath(ctx);
   const entry = client.buildEntry(ctx);
 
   if (client.format === 'toml') {
@@ -288,15 +278,12 @@ async function writeMcpEntry(
 
 async function writeRule(
   client: McpClient,
-  scope: McpScope,
   ctx: McpContext
 ): Promise<{ status: 'installed' | 'updated' | 'unsupported'; path: string }> {
   const rule = client.rule;
   if (!rule) return { status: 'unsupported', path: '' };
 
-  const projectPath = rule.projectPath?.(ctx);
-  const rulePath =
-    scope === 'project' && projectPath ? projectPath : rule.globalPath(ctx);
+  const rulePath = rule.globalPath(ctx);
   const status =
     rule.kind === 'file'
       ? await writeRuleFile(rulePath, rule.content)
@@ -310,7 +297,7 @@ async function writeRule(
  */
 export async function setupMcpClient(
   id: McpClientId,
-  options: { scope: McpScope; rules: boolean; ctx: McpContext }
+  options: { rules: boolean; ctx: McpContext }
 ): Promise<McpClientResult> {
   const client = MCP_CLIENTS[id];
   const ctx = options.ctx;
@@ -326,11 +313,7 @@ export async function setupMcpClient(
   };
 
   try {
-    const { status, configPath } = await writeMcpEntry(
-      client,
-      options.scope,
-      ctx
-    );
+    const { status, configPath } = await writeMcpEntry(client, ctx);
     result.mcpStatus = status;
     result.mcpDetail = configPath;
   } catch (error) {
@@ -340,11 +323,7 @@ export async function setupMcpClient(
   if (!options.rules) return result;
 
   try {
-    const { status, path: rulePath } = await writeRule(
-      client,
-      options.scope,
-      ctx
-    );
+    const { status, path: rulePath } = await writeRule(client, ctx);
     result.ruleStatus = status;
     result.ruleDetail = rulePath;
   } catch (error) {

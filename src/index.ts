@@ -2244,10 +2244,6 @@ const setupCommand = program
     'What to set up: "core" (alias "skills"), "build", "workflows", "mcp", "defaults", or a single catalog skill name (the "firecrawl-" prefix is optional, e.g. "developer-index"); omit for an interactive installer'
   )
   .option(
-    '--project',
-    'For "mcp", install into project scope (stored API keys are never written to project files)'
-  )
-  .option(
     '-a, --agent <agent>',
     'Limit to a specific agent; required for environment-backed MCP setup, or use "all" to update every launch integration'
   )
@@ -2290,13 +2286,12 @@ Examples:
   $ firecrawl setup mcp --claude --cursor    # skip the picker
   $ firecrawl setup mcp --yes                # every detected agent, MCP only
   $ firecrawl setup mcp --yes --rules        # every detected agent, with rules
-  $ firecrawl setup mcp --project --cursor   # write project config
 `
   )
   .action(async (subcommand: SetupSubcommand, options) => {
     if (options.global) {
       console.error(
-        'Note: -g/--global is deprecated for setup. Global is the default; use --project for project scope.'
+        'Note: -g/--global is deprecated for setup. Global is the default.'
       );
     }
     await handleSetupCommand(subcommand, {

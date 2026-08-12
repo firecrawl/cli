@@ -267,7 +267,6 @@ describe('mcp install', () => {
   describe('setupMcpClient', () => {
     it('writes the keyless URL with no credentials', async () => {
       const result = await setupMcpClient('cursor', {
-        scope: 'global',
         rules: false,
         ctx,
       });
@@ -281,7 +280,6 @@ describe('mcp install', () => {
 
     it('references the env var instead of writing a credential', async () => {
       const result = await setupMcpClient('claude', {
-        scope: 'global',
         rules: false,
         ctx: { ...ctx, auth: 'env' },
       });
@@ -297,11 +295,23 @@ describe('mcp install', () => {
       });
     });
 
+    it('honours CLAUDE_CONFIG_DIR', async () => {
+      const configDir = path.join(root, 'claude-config');
+      const result = await setupMcpClient('claude', {
+        rules: true,
+        ctx: { ...ctx, env: { CLAUDE_CONFIG_DIR: configDir } },
+      });
+
+      expect(result.mcpDetail).toBe(path.join(configDir, '.claude.json'));
+      expect(result.ruleDetail).toBe(
+        path.join(configDir, 'rules', 'firecrawl.md')
+      );
+    });
+
     it('uses the environment-reference syntax each agent expands', async () => {
       const written: Record<string, unknown> = {};
       for (const id of ['cursor', 'vscode', 'opencode'] as const) {
         const result = await setupMcpClient(id, {
-          scope: 'global',
           rules: false,
           ctx: { ...ctx, auth: 'env' },
         });
@@ -321,7 +331,6 @@ describe('mcp install', () => {
 
     it('authenticates Codex through its native bearer token variable', async () => {
       await setupMcpClient('codex', {
-        scope: 'global',
         rules: false,
         ctx: { ...ctx, auth: 'env' },
       });
@@ -337,7 +346,6 @@ describe('mcp install', () => {
       writeFileSync(rulesPath, 'not a directory');
 
       const result = await setupMcpClient('cursor', {
-        scope: 'global',
         rules: true,
         ctx,
       });
@@ -352,7 +360,6 @@ describe('mcp install', () => {
       writeFileSync(file, '{ oops');
 
       const result = await setupMcpClient('cursor', {
-        scope: 'global',
         rules: false,
         ctx,
       });
@@ -369,6 +376,12 @@ describe('mcp install', () => {
       mkdirSync(path.join(ctx.home, '.codex'), { recursive: true });
 
       expect(await detectMcpClients(ctx)).toEqual(['cursor', 'codex']);
+    });
+
+    it('detects Claude Code from ~/.claude.json without ~/.claude', async () => {
+      writeFileSync(path.join(ctx.home, '.claude.json'), '{}');
+
+      expect(await detectMcpClients(ctx)).toEqual(['claude']);
     });
   });
 

@@ -74,6 +74,11 @@ vi.mock('../../utils/credentials', () => ({
   saveCredentials: vi.fn(),
 }));
 
+vi.mock('@inquirer/prompts', () => ({
+  checkbox: vi.fn(),
+  confirm: vi.fn(),
+}));
+
 describe('handleSetupCommand', () => {
   let originalHome: string | undefined;
   let originalApiKey: string | undefined;
@@ -497,6 +502,44 @@ describe('handleSetupCommand', () => {
     ).toContain('firecrawl:');
   });
 
+  it('lists only detected agents in the picker, already selected', async () => {
+    mkdirSync(path.join(sandboxHome, '.cursor'), { recursive: true });
+    mkdirSync(path.join(sandboxHome, '.hermes'), { recursive: true });
+
+    const { checkbox, confirm } = await import('@inquirer/prompts');
+    vi.mocked(checkbox).mockResolvedValue(['cursor']);
+    vi.mocked(confirm).mockResolvedValue(false);
+
+    const originalIsTTY = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, 'isTTY', {
+      configurable: true,
+      value: true,
+    });
+
+    try {
+      await handleSetupCommand('mcp', {});
+
+      expect(checkbox).toHaveBeenCalledOnce();
+      expect(vi.mocked(checkbox).mock.calls[0]?.[0]).toMatchObject({
+        choices: [
+          { value: 'cursor', checked: true },
+          { value: 'hermes', checked: true },
+        ],
+      });
+      expect(existsSync(path.join(sandboxHome, '.cursor', 'mcp.json'))).toBe(
+        true
+      );
+      expect(existsSync(path.join(sandboxHome, '.hermes', 'config.yaml'))).toBe(
+        false
+      );
+    } finally {
+      Object.defineProperty(process.stdin, 'isTTY', {
+        configurable: true,
+        value: originalIsTTY,
+      });
+    }
+  });
+
   it('detects an installed launcher so the picker can pre-select it', async () => {
     mkdirSync(path.join(sandboxHome, '.hermes'), { recursive: true });
 
@@ -580,30 +623,30 @@ describe('handleSetupCommand', () => {
     ).rejects.toThrow('Unknown agent');
   });
 
-  it('rejects a stored key before writing Hermes MCP config', async () => {
+  it('falls back to keyless Hermes MCP when only a stored key exists', async () => {
     const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-hermes-test-'));
     process.env.HOME = home;
     const configPath = path.join(home, '.hermes', 'config.yaml');
     mkdirSync(path.dirname(configPath), { recursive: true });
-    const originalConfig =
-      'theme: dark\nmcp_servers:\n  existing:\n    url: https://example.com/mcp\n';
-    writeFileSync(configPath, originalConfig, { mode: 0o600 });
+    writeFileSync(
+      configPath,
+      'theme: dark\nmcp_servers:\n  existing:\n    url: https://example.com/mcp\n',
+      { mode: 0o600 }
+    );
 
     try {
-      await expect(
-        handleSetupCommand('mcp', {
-          agent: 'hermes',
-          global: true,
-          yes: true,
-        })
-      ).rejects.toThrow('Export FIRECRAWL_API_KEY');
+      await handleSetupCommand('mcp', {
+        agent: 'hermes',
+        global: true,
+        yes: true,
+      });
 
       const config = readFileSync(configPath, 'utf-8');
-      expect(config).toBe(originalConfig);
       expect(config).toContain('theme: dark');
       expect(config).toContain('existing:');
-      expect(config).toContain('mcp_servers:');
-      expect(config).not.toContain('firecrawl:');
+      expect(config).toContain('firecrawl:');
+      expect(config).toContain(MCP_URL);
+      expect(config).not.toContain('Authorization');
       expect(config).not.toContain('fc-test-key');
       expect(execFileSync).not.toHaveBeenCalled();
       if (process.platform !== 'win32') {
@@ -656,11 +699,33 @@ describe('handleSetupCommand', () => {
     }
   });
 
+  it('suppresses Hermes installer logs in quiet mode', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await installMcp({ agent: 'hermes', quiet: true, keyless: true });
+      expect(log.mock.calls.flat().join('\n')).not.toContain(
+        'Hermes Agent MCP configured'
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it('rejects a stored key before invoking the OpenClaw CLI', async () => {
     await expect(installOpenClawMcp()).rejects.toThrow(
       'Export FIRECRAWL_API_KEY'
     );
     expect(execFileSync).not.toHaveBeenCalled();
+  });
+
+  it('falls back to keyless OpenClaw MCP when only a stored key exists', async () => {
+    await installMcp({ agent: 'openclaw' });
+
+    const config = vi.mocked(execFileSync).mock.calls[0]?.[1]?.[3] as string;
+    expect(config).toContain(MCP_URL);
+    expect(config).not.toContain('Authorization');
+    expect(config).not.toContain('fc-test-key');
   });
   it('uses OpenClaw environment expansion instead of persisting an env-backed key', async () => {
     process.env.FIRECRAWL_API_KEY = 'fc-test-key';
@@ -743,50 +808,14 @@ describe('handleSetupCommand', () => {
     }
   });
 
-  it('keeps an environment-backed --agent all project setup free of literals', async () => {
-    const home = mkdtempSync(
-      path.join(os.tmpdir(), 'firecrawl-all-project-env-')
-    );
-    mkdirSync(path.join(home, '.cursor'), { recursive: true });
-    process.env.HOME = home;
-    process.env.FIRECRAWL_API_KEY = 'fc-test-key';
-    const cwd = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-all-proj-cwd-'));
-    const originalCwd = process.cwd();
-    process.chdir(cwd);
-
-    try {
-      await handleSetupCommand('mcp', {
-        agent: 'all',
-        project: true,
-        yes: true,
-      });
-
-      const config = readFileSync(
-        path.join(cwd, '.cursor', 'mcp.json'),
-        'utf-8'
-      );
-      expect(JSON.parse(config).mcpServers.firecrawl.headers).toEqual({
-        Authorization: 'Bearer ${env:FIRECRAWL_API_KEY}',
-      });
-      expect(config).not.toContain('fc-test-key');
-    } finally {
-      process.chdir(originalCwd);
-      rmSync(cwd, { recursive: true, force: true });
-      rmSync(home, { recursive: true, force: true });
-    }
-  });
-
-  it('keeps keyless --agent all project setup available', async () => {
-    const home = mkdtempSync(
-      path.join(os.tmpdir(), 'firecrawl-all-project-keyless-')
-    );
+  it('keeps keyless --agent all setup available', async () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-all-keyless-'));
     process.env.HOME = home;
     vi.mocked(getApiKey).mockReturnValue(undefined);
 
     try {
       await handleSetupCommand('mcp', {
         agent: 'all',
-        project: true,
         yes: true,
       });
 
@@ -923,60 +952,7 @@ describe('handleSetupCommand', () => {
     }
   });
 
-  // --- Scope: project and global are mutually exclusive ---
-
-  it('keeps project scope for an environment-backed credential', async () => {
-    process.env.FIRECRAWL_API_KEY = 'fc-test-key';
-    const cwd = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-proj-env-'));
-    const originalCwd = process.cwd();
-    process.chdir(cwd);
-
-    try {
-      await handleSetupCommand('mcp', {
-        agent: 'cursor',
-        project: true,
-        yes: true,
-      });
-
-      const config = readFileSync(
-        path.join(cwd, '.cursor', 'mcp.json'),
-        'utf-8'
-      );
-      expect(JSON.parse(config).mcpServers.firecrawl.headers).toEqual({
-        Authorization: 'Bearer ${env:FIRECRAWL_API_KEY}',
-      });
-      expect(config).not.toContain('fc-test-key');
-    } finally {
-      process.chdir(originalCwd);
-      rmSync(cwd, { recursive: true, force: true });
-    }
-  });
-
-  it('writes project scope rather than global when --project is set', async () => {
-    vi.mocked(getApiKey).mockReturnValue(undefined);
-    const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-proj-home-'));
-    process.env.HOME = home;
-    const cwd = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-proj-cwd-'));
-    const originalCwd = process.cwd();
-    process.chdir(cwd);
-
-    try {
-      await handleSetupCommand('mcp', {
-        agent: 'cursor',
-        project: true,
-        yes: true,
-      });
-
-      expect(existsSync(path.join(cwd, '.cursor', 'mcp.json'))).toBe(true);
-      expect(existsSync(path.join(home, '.cursor', 'mcp.json'))).toBe(false);
-    } finally {
-      process.chdir(originalCwd);
-      rmSync(cwd, { recursive: true, force: true });
-      rmSync(home, { recursive: true, force: true });
-    }
-  });
-
-  it('defaults to global scope without --project', async () => {
+  it('writes MCP into global agent config', async () => {
     vi.mocked(getApiKey).mockReturnValue(undefined);
     const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-global-'));
     process.env.HOME = home;

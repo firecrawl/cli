@@ -21,8 +21,6 @@ export const API_KEY_ENV_VAR = 'FIRECRAWL_API_KEY';
 
 export type McpClientId = 'claude' | 'cursor' | 'vscode' | 'codex' | 'opencode';
 
-export type McpScope = 'global' | 'project';
-
 /**
  * Agent launchers that own their MCP configuration rather than reading a file
  * we write. They are offered alongside the editors but installed differently.
@@ -55,7 +53,6 @@ export interface McpRuleSpec {
   kind: 'file' | 'append';
   content: string;
   globalPath: (ctx: McpContext) => string;
-  projectPath?: (ctx: McpContext) => string;
 }
 
 export interface McpClient {
@@ -65,8 +62,6 @@ export interface McpClient {
   /** Key of the map holding MCP servers in this agent's config. */
   serversKey: string;
   globalConfigPath: (ctx: McpContext) => string;
-  /** Absent when the agent only supports global MCP configuration. */
-  projectConfigPath?: (ctx: McpContext) => string;
   buildEntry: (ctx: McpContext) => Record<string, unknown>;
   /** Absent when the agent has no rules mechanism. */
   rule?: McpRuleSpec;
@@ -157,7 +152,6 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
     format: 'json',
     serversKey: 'mcpServers',
     globalConfigPath: claudeGlobalConfigPath,
-    projectConfigPath: (ctx) => path.join(ctx.cwd, '.mcp.json'),
     buildEntry: (ctx) =>
       withEnvAuth(
         ctx,
@@ -169,10 +163,8 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
       content: RULE_BODY,
       globalPath: (ctx) =>
         path.join(claudeConfigDir(ctx), 'rules', 'firecrawl.md'),
-      projectPath: (ctx) =>
-        path.join(ctx.cwd, '.claude', 'rules', 'firecrawl.md'),
     },
-    detectPaths: (ctx) => [claudeConfigDir(ctx)],
+    detectPaths: (ctx) => [claudeConfigDir(ctx), claudeGlobalConfigPath(ctx)],
   },
   cursor: {
     id: 'cursor',
@@ -180,7 +172,6 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
     format: 'json',
     serversKey: 'mcpServers',
     globalConfigPath: (ctx) => path.join(ctx.home, '.cursor', 'mcp.json'),
-    projectConfigPath: (ctx) => path.join(ctx.cwd, '.cursor', 'mcp.json'),
     buildEntry: (ctx) =>
       withEnvAuth(ctx, { url: FIRECRAWL_MCP_URL }, ENV_HEADER.editor),
     rule: {
@@ -188,8 +179,6 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
       content: CURSOR_RULE,
       globalPath: (ctx) =>
         path.join(ctx.home, '.cursor', 'rules', 'firecrawl.mdc'),
-      projectPath: (ctx) =>
-        path.join(ctx.cwd, '.cursor', 'rules', 'firecrawl.mdc'),
     },
     detectPaths: (ctx) => [path.join(ctx.home, '.cursor')],
   },
@@ -199,7 +188,6 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
     format: 'json',
     serversKey: 'servers',
     globalConfigPath: (ctx) => path.join(vscodeUserDir(ctx), 'mcp.json'),
-    projectConfigPath: (ctx) => path.join(ctx.cwd, '.vscode', 'mcp.json'),
     buildEntry: (ctx) =>
       withEnvAuth(
         ctx,
@@ -211,13 +199,6 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
       content: VSCODE_RULE,
       globalPath: (ctx) =>
         path.join(vscodeUserDir(ctx), 'prompts', 'firecrawl.instructions.md'),
-      projectPath: (ctx) =>
-        path.join(
-          ctx.cwd,
-          '.github',
-          'instructions',
-          'firecrawl.instructions.md'
-        ),
     },
     detectPaths: (ctx) => [vscodeUserDir(ctx)],
   },
@@ -227,7 +208,6 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
     format: 'toml',
     serversKey: 'mcp_servers',
     globalConfigPath: (ctx) => path.join(ctx.home, '.codex', 'config.toml'),
-    projectConfigPath: (ctx) => path.join(ctx.cwd, '.codex', 'config.toml'),
     // Codex resolves the bearer token from the environment by variable name,
     // so it authenticates without a header template.
     buildEntry: (ctx) =>
@@ -238,7 +218,6 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
       kind: 'append',
       content: RULE_BODY,
       globalPath: (ctx) => path.join(ctx.home, '.codex', 'AGENTS.md'),
-      projectPath: (ctx) => path.join(ctx.cwd, 'AGENTS.md'),
     },
     detectPaths: (ctx) => [path.join(ctx.home, '.codex')],
   },
@@ -249,7 +228,6 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
     serversKey: 'mcp',
     globalConfigPath: (ctx) =>
       path.join(ctx.home, '.config', 'opencode', 'opencode.json'),
-    projectConfigPath: (ctx) => path.join(ctx.cwd, 'opencode.json'),
     buildEntry: (ctx) =>
       withEnvAuth(
         ctx,
@@ -261,7 +239,6 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
       content: RULE_BODY,
       globalPath: (ctx) =>
         path.join(ctx.home, '.config', 'opencode', 'AGENTS.md'),
-      projectPath: (ctx) => path.join(ctx.cwd, 'AGENTS.md'),
     },
     detectPaths: (ctx) => [path.join(ctx.home, '.config', 'opencode')],
   },
@@ -320,9 +297,9 @@ function binaryOnPath(name: string, ctx: McpContext): boolean {
 }
 
 /**
- * Detection prefers a false negative to a false positive: every agent is listed
- * in the picker either way, so failing to pre-select one costs a keystroke,
- * while pre-selecting an agent the user does not have is misleading.
+ * Detection prefers a false negative to a false positive: the picker only
+ * lists agents that look installed, so a miss means the user passes a flag
+ * (`--cursor`) instead of seeing an agent they do not have.
  *
  * `hermes` is therefore matched on its config directory alone. The name is also
  * used by an unrelated JavaScript engine that ships with common toolchains, so
