@@ -292,18 +292,14 @@ export async function setupMcpClient(
   options: { scope: McpScope; rules: boolean; ctx: McpContext }
 ): Promise<McpClientResult> {
   const client = MCP_CLIENTS[id];
-  // An agent with no verified environment-variable syntax falls back to the
-  // keyless endpoint rather than having a credential written literally.
-  const auth: McpAuthMode =
-    options.ctx.auth === 'env' && client.supportsEnvAuth ? 'env' : 'keyless';
-  const ctx: McpContext = { ...options.ctx, auth };
+  const ctx = options.ctx;
 
   const result: McpClientResult = {
     id,
     name: client.name,
     mcpStatus: 'failed',
     mcpDetail: '',
-    auth,
+    auth: ctx.auth,
     ruleStatus: 'skipped',
     ruleDetail: '',
   };

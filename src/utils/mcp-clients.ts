@@ -9,8 +9,7 @@
  * Credentials are never handled here. A stored API key must not end up as a
  * literal in a config file, so this module only ever emits an indirect
  * reference to `FIRECRAWL_API_KEY` using the syntax a given agent is known to
- * expand. Agents without a verified syntax get the keyless endpoint, which
- * still serves search, scrape, and parse under an anonymous rate limit.
+ * expand. An agent is only supported once that syntax is verified.
  */
 
 import { existsSync, promises as fs } from 'fs';
@@ -20,13 +19,7 @@ export const FIRECRAWL_MCP_URL = 'https://mcp.firecrawl.dev/v2/mcp';
 export const MCP_SERVER_NAME = 'firecrawl';
 export const API_KEY_ENV_VAR = 'FIRECRAWL_API_KEY';
 
-export type McpClientId =
-  | 'claude'
-  | 'cursor'
-  | 'vscode'
-  | 'codex'
-  | 'opencode'
-  | 'windsurf';
+export type McpClientId = 'claude' | 'cursor' | 'vscode' | 'codex' | 'opencode';
 
 export type McpScope = 'global' | 'project';
 
@@ -75,11 +68,6 @@ export interface McpClient {
   /** Absent when the agent only supports global MCP configuration. */
   projectConfigPath?: (ctx: McpContext) => string;
   buildEntry: (ctx: McpContext) => Record<string, unknown>;
-  /**
-   * True when this agent can authenticate without a literal key: either it
-   * expands an env reference in headers, or it resolves the variable natively.
-   */
-  supportsEnvAuth: boolean;
   /** Absent when the agent has no rules mechanism. */
   rule?: McpRuleSpec;
   /** Paths whose existence means the agent is installed. */
@@ -176,7 +164,6 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
         { type: 'http', url: FIRECRAWL_MCP_URL },
         ENV_HEADER.shell
       ),
-    supportsEnvAuth: true,
     rule: {
       kind: 'file',
       content: RULE_BODY,
@@ -196,7 +183,6 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
     projectConfigPath: (ctx) => path.join(ctx.cwd, '.cursor', 'mcp.json'),
     buildEntry: (ctx) =>
       withEnvAuth(ctx, { url: FIRECRAWL_MCP_URL }, ENV_HEADER.editor),
-    supportsEnvAuth: true,
     rule: {
       kind: 'file',
       content: CURSOR_RULE,
@@ -220,7 +206,6 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
         { type: 'http', url: FIRECRAWL_MCP_URL },
         ENV_HEADER.editor
       ),
-    supportsEnvAuth: true,
     rule: {
       kind: 'file',
       content: VSCODE_RULE,
@@ -249,7 +234,6 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
       ctx.auth === 'env'
         ? { url: FIRECRAWL_MCP_URL, bearer_token_env_var: API_KEY_ENV_VAR }
         : { url: FIRECRAWL_MCP_URL },
-    supportsEnvAuth: true,
     rule: {
       kind: 'append',
       content: RULE_BODY,
@@ -272,7 +256,6 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
         { type: 'remote', url: FIRECRAWL_MCP_URL, enabled: true },
         ENV_HEADER.brace
       ),
-    supportsEnvAuth: true,
     rule: {
       kind: 'append',
       content: RULE_BODY,
@@ -282,33 +265,6 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
     },
     detectPaths: (ctx) => [path.join(ctx.home, '.config', 'opencode')],
   },
-  windsurf: {
-    id: 'windsurf',
-    name: 'Windsurf',
-    format: 'json',
-    serversKey: 'mcpServers',
-    // Windsurf has no project-level MCP config; it always gets the global one.
-    globalConfigPath: (ctx) =>
-      path.join(ctx.home, '.codeium', 'windsurf', 'mcp_config.json'),
-    buildEntry: () => ({ serverUrl: FIRECRAWL_MCP_URL }),
-    // No verified env-reference syntax, so this agent stays keyless.
-    supportsEnvAuth: false,
-    rule: {
-      kind: 'append',
-      content: RULE_BODY,
-      globalPath: (ctx) =>
-        path.join(
-          ctx.home,
-          '.codeium',
-          'windsurf',
-          'memories',
-          'global_rules.md'
-        ),
-      projectPath: (ctx) =>
-        path.join(ctx.cwd, '.windsurf', 'rules', 'firecrawl.md'),
-    },
-    detectPaths: (ctx) => [path.join(ctx.home, '.codeium', 'windsurf')],
-  },
 };
 
 export const ALL_MCP_CLIENT_IDS: readonly McpClientId[] = [
@@ -317,7 +273,6 @@ export const ALL_MCP_CLIENT_IDS: readonly McpClientId[] = [
   'vscode',
   'codex',
   'opencode',
-  'windsurf',
 ];
 
 export const MCP_LAUNCHER_NAMES: Record<McpLauncherId, string> = {
@@ -400,7 +355,6 @@ const CLIENT_ALIASES: Record<string, McpClientId> = {
   'codex-gui': 'codex',
   opencode: 'opencode',
   'open-code': 'opencode',
-  windsurf: 'windsurf',
 };
 
 export function resolveMcpClientId(agent: string): McpClientId | undefined {

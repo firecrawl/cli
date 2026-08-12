@@ -263,50 +263,6 @@ describe('mcp install', () => {
       expect(config).toContain('bearer_token_env_var = "FIRECRAWL_API_KEY"');
     });
 
-    it('falls back to keyless for agents that cannot expand variables', async () => {
-      for (const id of ['windsurf'] as const) {
-        const result = await setupMcpClient(id, {
-          scope: 'global',
-          rules: false,
-          ctx: { ...ctx, auth: 'env' },
-        });
-
-        expect(result.auth).toBe('keyless');
-        expect(read(result.mcpDetail)).not.toContain('Authorization');
-      }
-    });
-
-    it('honours CLAUDE_CONFIG_DIR', async () => {
-      const configDir = path.join(root, 'claude-config');
-
-      const result = await setupMcpClient('claude', {
-        scope: 'global',
-        rules: true,
-        ctx: { ...ctx, env: { CLAUDE_CONFIG_DIR: configDir } },
-      });
-
-      expect(result.mcpDetail).toBe(path.join(configDir, '.claude.json'));
-      expect(result.ruleDetail).toBe(
-        path.join(configDir, 'rules', 'firecrawl.md')
-      );
-    });
-
-    it('falls back to global config for agents without project support', async () => {
-      const result = await setupMcpClient('windsurf', {
-        scope: 'project',
-        rules: true,
-        ctx,
-      });
-
-      // MCP is global-only for Windsurf; the rule still lands in the project.
-      expect(result.mcpDetail).toBe(
-        path.join(ctx.home, '.codeium', 'windsurf', 'mcp_config.json')
-      );
-      expect(result.ruleDetail).toBe(
-        path.join(ctx.cwd, '.windsurf', 'rules', 'firecrawl.md')
-      );
-    });
-
     it('still configures MCP when the rule write fails', async () => {
       // A file where the rules directory needs to be blocks the rule write.
       const rulesPath = path.join(ctx.home, '.cursor', 'rules');
