@@ -11,7 +11,7 @@ npm install -g firecrawl-cli
 Or set up everything in one command (install CLI globally, authenticate, and add skills across all detected coding editors):
 
 ```bash
-npx -y firecrawl-cli@1.19.6 init -y --browser
+npx -y firecrawl-cli@latest init -y --browser
 ```
 
 - `-y` runs setup non-interactively
@@ -846,7 +846,7 @@ firecrawl --status
 ```
 
 ```
-  🔥 firecrawl cli v1.19.6
+  🔥 firecrawl cli v1.20.0
 
   ● Authenticated via stored credentials
   Concurrency: 0/100 jobs (parallel scrape limit)
