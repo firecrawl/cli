@@ -167,8 +167,14 @@ async function fileHasFirecrawlMcp(filePath: string): Promise<boolean> {
 }
 
 /**
- * Walk a parsed JSON config looking for an `mcpServers` (or `mcp.servers`)
- * map that contains a `firecrawl` key. Exported for testing.
+ * Keys under which agents store their MCP server map: `mcpServers` for Claude
+ * Code, Cursor, and Windsurf, `servers` for VS Code, `context_servers` for Zed.
+ */
+const SERVER_MAP_KEYS = new Set(['mcpServers', 'servers', 'context_servers']);
+
+/**
+ * Walk a parsed JSON config looking for a server map (or `mcp.servers`) that
+ * contains a `firecrawl` key. Exported for testing.
  */
 export function hasFirecrawlMcpEntry(value: unknown): boolean {
   if (!value || typeof value !== 'object') return false;
@@ -176,7 +182,7 @@ export function hasFirecrawlMcpEntry(value: unknown): boolean {
 
   for (const key of Object.keys(obj)) {
     const child = obj[key];
-    if (key === 'mcpServers' && child && typeof child === 'object') {
+    if (SERVER_MAP_KEYS.has(key) && child && typeof child === 'object') {
       if (Object.prototype.hasOwnProperty.call(child, 'firecrawl')) {
         return true;
       }

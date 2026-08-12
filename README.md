@@ -93,11 +93,39 @@ firecrawl setup build
 firecrawl setup workflows
 ```
 
-To install the Firecrawl MCP server into your editors (Cursor, Claude Code, VS Code, etc.):
+To install the Firecrawl MCP server into your coding agents:
 
 ```bash
 firecrawl setup mcp
 ```
+
+This detects which agents you have installed, pre-selects them in a picker, and
+asks whether to add rules telling those agents to prefer Firecrawl for web
+search and scraping. Supported agents are Claude Code, Cursor, VS Code, Codex,
+OpenCode, Windsurf, Zed, Hermes Agent, and OpenClaw.
+
+Pass agent flags to skip the picker, `-y` to configure every detected agent
+(MCP only), or `--project` to write to the current project instead of your
+global agent settings:
+
+```bash
+firecrawl setup mcp --claude --cursor    # skip the picker
+firecrawl setup mcp -y                   # every detected agent, MCP only
+firecrawl setup mcp -y --rules           # ...and install the rules too
+firecrawl setup mcp --project --cursor   # write project config
+```
+
+Rerun the command any time to update an existing setup or add another agent; it
+edits only the Firecrawl entry and leaves the rest of each config alone.
+
+Your API key is never written into an agent config. When `FIRECRAWL_API_KEY` is
+exported in the environment your agents run under, each agent gets a reference
+to that variable in the syntax it understands. Otherwise setup stays keyless,
+which still serves search, scrape, and parse under an anonymous rate limit. Use
+`--keyless` to force the anonymous path even when a key is available.
+
+Not every agent supports project-level MCP configuration. Those agents always
+receive the global configuration.
 
 To make Firecrawl the default web provider for supported AI agents:
 

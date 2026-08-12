@@ -1,0 +1,339 @@
+/**
+ * Writes the Firecrawl MCP server into an agent's config, and optionally the
+ * rule that tells that agent to reach for Firecrawl on web work.
+ *
+ * Agent configs belong to the user, not to us, so edits are surgical: JSON is
+ * patched through a JSONC-aware editor that keeps comments and formatting
+ * intact (Zed and VS Code ship commented settings, which plain `JSON.parse`
+ * rejects outright), TOML tables are replaced line by line, and shared rule
+ * files get a marker-fenced section rather than a rewrite.
+ */
+
+import { promises as fs } from 'fs';
+import path from 'path';
+import { applyEdits, modify, parse, type ParseError } from 'jsonc-parser';
+import {
+  MCP_CLIENTS,
+  MCP_SERVER_NAME,
+  RULE_MARKER,
+  type McpAuthMode,
+  type McpClient,
+  type McpClientId,
+  type McpContext,
+  type McpScope,
+  type McpTargetId,
+} from './mcp-clients';
+
+export type McpStatus = 'configured' | 'reconfigured' | 'failed';
+export type RuleStatus =
+  | 'installed'
+  | 'updated'
+  | 'skipped'
+  | 'unsupported'
+  | 'failed';
+
+export interface McpClientResult {
+  id: McpTargetId;
+  name: string;
+  mcpStatus: McpStatus;
+  /** Config path on success, error message on failure. */
+  mcpDetail: string;
+  /** How this agent ended up authenticating, after any keyless fallback. */
+  auth: McpAuthMode;
+  ruleStatus: RuleStatus;
+  /** Rule path when one was written, error message on failure, else empty. */
+  ruleDetail: string;
+}
+
+function isEnoent(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException | null)?.code === 'ENOENT';
+}
+
+async function readIfExists(filePath: string): Promise<string | undefined> {
+  try {
+    return await fs.readFile(filePath, 'utf8');
+  } catch (error) {
+    if (isEnoent(error)) return undefined;
+    throw error;
+  }
+}
+
+async function writeFileEnsuringDir(
+  filePath: string,
+  content: string
+): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, content, 'utf8');
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Insert or replace `serversKey.serverName` without disturbing the rest of the
+ * file. Throws when the existing file is not parseable, so a malformed config
+ * is reported rather than overwritten.
+ */
+export async function writeJsonServerEntry(
+  filePath: string,
+  serversKey: string,
+  serverName: string,
+  entry: Record<string, unknown>
+): Promise<{ status: 'configured' | 'reconfigured' }> {
+  const raw = await readIfExists(filePath);
+
+  if (raw === undefined || raw.trim() === '') {
+    const fresh = { [serversKey]: { [serverName]: entry } };
+    await writeFileEnsuringDir(filePath, `${JSON.stringify(fresh, null, 2)}\n`);
+    return { status: 'configured' };
+  }
+
+  const errors: ParseError[] = [];
+  const parsed = parse(raw, errors, { allowTrailingComma: true });
+  if (
+    errors.length > 0 ||
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    Array.isArray(parsed)
+  ) {
+    throw new Error(`could not parse existing config at ${filePath}`);
+  }
+
+  const section = (parsed as Record<string, unknown>)[serversKey];
+  const sectionIsObject =
+    typeof section === 'object' && section !== null && !Array.isArray(section);
+  const alreadyExists =
+    sectionIsObject && serverName in (section as Record<string, unknown>);
+
+  // Patch the leaf when the servers map is usable; otherwise replace the whole
+  // key, which also covers it being missing or holding a non-object.
+  const edits = sectionIsObject
+    ? modify(raw, [serversKey, serverName], entry, {
+        formattingOptions: { insertSpaces: true, tabSize: 2 },
+      })
+    : modify(
+        raw,
+        [serversKey],
+        { [serverName]: entry },
+        { formattingOptions: { insertSpaces: true, tabSize: 2 } }
+      );
+
+  await writeFileEnsuringDir(filePath, applyEdits(raw, edits));
+  return { status: alreadyExists ? 'reconfigured' : 'configured' };
+}
+
+/**
+ * Insert or replace the `[mcp_servers.<name>]` table. Any sub-tables of that
+ * server are consumed too, so a leftover `[mcp_servers.firecrawl.env]` from an
+ * earlier stdio setup cannot collide with the URL we write.
+ *
+ * Values are emitted as TOML strings; the entries we build are flat by design.
+ */
+export function upsertTomlServer(
+  content: string,
+  serverName: string,
+  entry: Record<string, string>
+): { content: string; alreadyExists: boolean } {
+  const block = [
+    `[mcp_servers.${serverName}]`,
+    ...Object.entries(entry).map(
+      ([key, value]) => `${key} = ${JSON.stringify(value)}`
+    ),
+  ];
+
+  const lines = content === '' ? [] : content.split('\n');
+  const escaped = escapeRegExp(serverName);
+  const ownTable = new RegExp(
+    `^[ \\t]*\\[mcp_servers\\.${escaped}(\\.[^\\]]+)?\\][ \\t]*(?:#.*)?$`
+  );
+  const anyTable = /^[ \t]*\[/;
+
+  const start = lines.findIndex((line) => ownTable.test(line));
+
+  if (start === -1) {
+    // Tables must follow root-level keys, so append at the end of the file.
+    const trimmed = [...lines];
+    while (trimmed.length > 0 && trimmed[trimmed.length - 1].trim() === '') {
+      trimmed.pop();
+    }
+    const separator = trimmed.length === 0 ? [] : [''];
+    return {
+      content: [...trimmed, ...separator, ...block, ''].join('\n'),
+      alreadyExists: false,
+    };
+  }
+
+  let end = start + 1;
+  while (end < lines.length) {
+    if (anyTable.test(lines[end]) && !ownTable.test(lines[end])) break;
+    end += 1;
+  }
+
+  const rest = lines.slice(end);
+  // Keep a blank line between our block and whatever follows it.
+  const separator = rest.length > 0 && rest[0].trim() !== '' ? [''] : [];
+  const replaced = [
+    ...lines.slice(0, start),
+    ...block,
+    ...separator,
+    ...rest,
+  ].join('\n');
+
+  // Consuming the old table can swallow the file's final newline; restoring it
+  // keeps repeat runs byte-identical.
+  return {
+    content: replaced.endsWith('\n') ? replaced : `${replaced}\n`,
+    alreadyExists: true,
+  };
+}
+
+/** Rewrite a rule file we own outright. */
+export async function writeRuleFile(
+  filePath: string,
+  content: string
+): Promise<'installed' | 'updated'> {
+  const existed = (await readIfExists(filePath)) !== undefined;
+  await writeFileEnsuringDir(filePath, content);
+  return existed ? 'updated' : 'installed';
+}
+
+/**
+ * Add or refresh a marker-fenced section inside a file the user also writes to,
+ * such as AGENTS.md. Everything outside the markers is left alone.
+ */
+export async function appendRuleSection(
+  filePath: string,
+  content: string
+): Promise<'installed' | 'updated'> {
+  const section = `${RULE_MARKER}\n${content}${RULE_MARKER}`;
+  const existing = (await readIfExists(filePath)) ?? '';
+  const marker = escapeRegExp(RULE_MARKER);
+  const fenced = new RegExp(`${marker}\\n[\\s\\S]*?${marker}`);
+
+  if (fenced.test(existing)) {
+    await writeFileEnsuringDir(filePath, existing.replace(fenced, section));
+    return 'updated';
+  }
+
+  const separator =
+    existing.length === 0 ? '' : existing.endsWith('\n') ? '\n' : '\n\n';
+  await writeFileEnsuringDir(filePath, `${existing}${separator}${section}\n`);
+  return 'installed';
+}
+
+function configPathFor(client: McpClient, scope: McpScope, ctx: McpContext) {
+  // Agents without project support always take the global path.
+  const projectPath = client.projectConfigPath?.(ctx);
+  return scope === 'project' && projectPath
+    ? projectPath
+    : client.globalConfigPath(ctx);
+}
+
+async function writeMcpEntry(
+  client: McpClient,
+  scope: McpScope,
+  ctx: McpContext
+): Promise<{ status: 'configured' | 'reconfigured'; configPath: string }> {
+  const configPath = configPathFor(client, scope, ctx);
+  const entry = client.buildEntry(ctx);
+
+  if (client.format === 'toml') {
+    const existing = (await readIfExists(configPath)) ?? '';
+    const stringEntry: Record<string, string> = {};
+    for (const [key, value] of Object.entries(entry)) {
+      if (typeof value === 'string') stringEntry[key] = value;
+    }
+    const { content, alreadyExists } = upsertTomlServer(
+      existing,
+      MCP_SERVER_NAME,
+      stringEntry
+    );
+    await writeFileEnsuringDir(configPath, content);
+    return {
+      status: alreadyExists ? 'reconfigured' : 'configured',
+      configPath,
+    };
+  }
+
+  const { status } = await writeJsonServerEntry(
+    configPath,
+    client.serversKey,
+    MCP_SERVER_NAME,
+    entry
+  );
+  return { status, configPath };
+}
+
+async function writeRule(
+  client: McpClient,
+  scope: McpScope,
+  ctx: McpContext
+): Promise<{ status: 'installed' | 'updated' | 'unsupported'; path: string }> {
+  const rule = client.rule;
+  if (!rule) return { status: 'unsupported', path: '' };
+
+  const projectPath = rule.projectPath?.(ctx);
+  const rulePath =
+    scope === 'project' && projectPath ? projectPath : rule.globalPath(ctx);
+  const status =
+    rule.kind === 'file'
+      ? await writeRuleFile(rulePath, rule.content)
+      : await appendRuleSection(rulePath, rule.content);
+  return { status, path: rulePath };
+}
+
+/**
+ * Configure one agent. The MCP entry and the rule are written independently so
+ * a rule failure never costs the user a working MCP server.
+ */
+export async function setupMcpClient(
+  id: McpClientId,
+  options: { scope: McpScope; rules: boolean; ctx: McpContext }
+): Promise<McpClientResult> {
+  const client = MCP_CLIENTS[id];
+  // An agent with no verified environment-variable syntax falls back to the
+  // keyless endpoint rather than having a credential written literally.
+  const auth: McpAuthMode =
+    options.ctx.auth === 'env' && client.supportsEnvAuth ? 'env' : 'keyless';
+  const ctx: McpContext = { ...options.ctx, auth };
+
+  const result: McpClientResult = {
+    id,
+    name: client.name,
+    mcpStatus: 'failed',
+    mcpDetail: '',
+    auth,
+    ruleStatus: 'skipped',
+    ruleDetail: '',
+  };
+
+  try {
+    const { status, configPath } = await writeMcpEntry(
+      client,
+      options.scope,
+      ctx
+    );
+    result.mcpStatus = status;
+    result.mcpDetail = configPath;
+  } catch (error) {
+    result.mcpDetail = error instanceof Error ? error.message : String(error);
+  }
+
+  if (!options.rules) return result;
+
+  try {
+    const { status, path: rulePath } = await writeRule(
+      client,
+      options.scope,
+      ctx
+    );
+    result.ruleStatus = status;
+    result.ruleDetail = rulePath;
+  } catch (error) {
+    result.ruleStatus = 'failed';
+    result.ruleDetail = error instanceof Error ? error.message : String(error);
+  }
+
+  return result;
+}

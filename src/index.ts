@@ -60,6 +60,7 @@ import {
 } from './commands/init';
 import { handleMakeDefaultCommand, handleSetupCommand } from './commands/setup';
 import type { SetupSubcommand } from './commands/setup';
+import { ALL_MCP_TARGET_IDS, mcpTargetName } from './utils/mcp-clients';
 import { handleEnvPullCommand } from './commands/env';
 import { handleStatusCommand } from './commands/status';
 import { handleDoctorCommand } from './commands/doctor';
@@ -2233,7 +2234,7 @@ program
     });
   });
 
-program
+const setupCommand = program
   .command('setup')
   .description(
     'Set up individual firecrawl integrations (core, build, workflows, mcp, defaults)'
@@ -2266,9 +2267,32 @@ program
   .option(
     '--undo',
     'Undo setup defaults by re-enabling native web tools where supported'
+  );
+
+// Per-agent flags for `setup mcp`, so scripts can skip the picker.
+for (const id of ALL_MCP_TARGET_IDS) {
+  setupCommand.option(`--${id}`, `Set up ${mcpTargetName(id)} (mcp)`);
+}
+
+setupCommand
+  .option('--rules', 'Install rules that prefer Firecrawl for web work (mcp)')
+  .option('--no-rules', 'Skip the rules prompt and install MCP only (mcp)')
+  .addHelpText(
+    'after',
+    `
+Examples:
+  $ firecrawl setup mcp                      # pick agents, then choose rules
+  $ firecrawl setup mcp --claude --cursor    # skip the picker
+  $ firecrawl setup mcp --yes                # every detected agent, MCP only
+  $ firecrawl setup mcp --yes --rules        # every detected agent, with rules
+  $ firecrawl setup mcp --project --cursor   # write project config
+`
   )
   .action(async (subcommand: SetupSubcommand, options) => {
-    await handleSetupCommand(subcommand, options);
+    await handleSetupCommand(subcommand, {
+      ...options,
+      clients: ALL_MCP_TARGET_IDS.filter((id) => options[id] === true),
+    });
   });
 
 program
