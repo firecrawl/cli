@@ -168,9 +168,9 @@ async function fileHasFirecrawlMcp(filePath: string): Promise<boolean> {
 
 /**
  * Keys under which agents store their MCP server map: `mcpServers` for Claude
- * Code, Cursor, and Windsurf; `servers` for VS Code.
+ * Code, Cursor, and Windsurf; `servers` for VS Code; `mcp` for OpenCode.
  */
-const SERVER_MAP_KEYS = new Set(['mcpServers', 'servers']);
+const SERVER_MAP_KEYS = new Set(['mcpServers', 'servers', 'mcp']);
 
 /**
  * Walk a parsed JSON config looking for a server map (or `mcp.servers`) that

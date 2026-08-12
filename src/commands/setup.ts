@@ -70,6 +70,7 @@ type SetupIntegration = SetupSubcommand;
 
 type ResolvedMcpAgent =
   | { kind: 'clients'; ids?: McpTargetId[] }
+  | { kind: 'launchers' }
   | { kind: 'skills-only'; agent: string }
   | { kind: 'hermes' }
   | { kind: 'openclaw' }
@@ -278,9 +279,10 @@ function resolveMcpAgent(agent: string | undefined): ResolvedMcpAgent {
   switch (normalized) {
     case '*':
     case 'all':
+      return { kind: 'all-launchers' };
     case 'launchers':
     case 'launcher':
-      return { kind: 'all-launchers' };
+      return { kind: 'launchers' };
     case 'hermes':
     case 'hermes-agent':
       return { kind: 'hermes' };
@@ -687,18 +689,21 @@ export async function installMcp(
     return;
   }
 
-  if (resolvedAgent.kind === 'hermes') {
-    await installHermesMcp(runtimeEnv, keyless, Boolean(options.quiet));
+  if (resolvedAgent.kind === 'hermes' || resolvedAgent.kind === 'openclaw') {
+    // Routed through the same reporter as every other target so the keyless
+    // fallback is stated rather than implied by a bare installer log line.
+    await installMcpClients({ ...options, yes: true }, runtimeEnv, [
+      resolvedAgent.kind,
+    ]);
     return;
   }
-  if (resolvedAgent.kind === 'openclaw') {
-    await installOpenClawMcp(runtimeEnv, keyless, Boolean(options.quiet));
+  if (resolvedAgent.kind === 'launchers') {
+    await installMcpClients({ ...options, yes: true }, runtimeEnv, [
+      ...ALL_MCP_LAUNCHER_IDS,
+    ]);
     return;
   }
   if (resolvedAgent.kind === 'all-launchers') {
-    // Fails closed before touching anything: this path reaches launchers that
-    // hand the credential to a subprocess.
-    assertSubprocessSafeCredential(apiKey, runtimeEnv);
     await installMcpClients({ ...options, yes: true }, runtimeEnv, undefined, {
       includeAllLaunchers: true,
     });
@@ -758,12 +763,19 @@ async function setupMcpLauncher(
   };
 
   try {
-    if (id === 'hermes') {
-      await installHermesMcp(runtimeEnv, keyless, true);
-      result.mcpDetail = path.join(ctx.home, '.hermes', 'config.yaml');
-    } else {
-      await installOpenClawMcp(runtimeEnv, keyless, true);
-      result.mcpDetail = 'via the openclaw CLI';
+    switch (id) {
+      case 'hermes':
+        await installHermesMcp(runtimeEnv, keyless, true);
+        result.mcpDetail = path.join(ctx.home, '.hermes', 'config.yaml');
+        break;
+      case 'openclaw':
+        await installOpenClawMcp(runtimeEnv, keyless, true);
+        result.mcpDetail = 'via the openclaw CLI';
+        break;
+      default: {
+        const unreachable: never = id;
+        throw new Error(`No installer for launcher ${String(unreachable)}`);
+      }
     }
     result.mcpStatus = 'configured';
   } catch (error) {

@@ -86,6 +86,8 @@ describe('handleSetupCommand', () => {
   let originalPath: string | undefined;
   let originalUserProfile: string | undefined;
   let originalAppData: string | undefined;
+  let originalCwd: string;
+  let sandboxCwd: string;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -112,12 +114,19 @@ describe('handleSetupCommand', () => {
     originalAppData = process.env.APPDATA;
     process.env.USERPROFILE = sandboxHome;
     process.env.APPDATA = path.join(sandboxHome, 'AppData', 'Roaming');
+    // Project scope writes relative to cwd, so a run must not be able to drop
+    // config files into the repository itself.
+    originalCwd = process.cwd();
+    sandboxCwd = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-cwd-'));
+    process.chdir(sandboxCwd);
     // Launcher detection also looks on PATH, so pin it for the same reason.
     originalPath = process.env.PATH;
     process.env.PATH = '';
   });
 
   afterEach(() => {
+    process.chdir(originalCwd);
+    rmSync(sandboxCwd, { recursive: true, force: true });
     rmSync(sandboxHome, { recursive: true, force: true });
     if (originalPath === undefined) delete process.env.PATH;
     else process.env.PATH = originalPath;
@@ -757,15 +766,29 @@ describe('handleSetupCommand', () => {
     );
   });
 
-  it('rejects stored credentials before configuring any launch integration', async () => {
-    await expect(
-      handleSetupCommand('mcp', {
-        agent: 'all',
-        global: true,
-        yes: true,
-      })
-    ).rejects.toThrow('Export FIRECRAWL_API_KEY');
-    expect(execFileSync).not.toHaveBeenCalled();
+  it('falls back to keyless for a stored key on every launch integration', async () => {
+    // One rule everywhere: a stored key is never written, and --agent all
+    // configures keyless rather than aborting the way it used to.
+    await handleSetupCommand('mcp', { agent: 'all', yes: true });
+
+    const hermes = readFileSync(
+      path.join(sandboxHome, '.hermes', 'config.yaml'),
+      'utf-8'
+    );
+    expect(hermes).toContain('firecrawl:');
+    expect(hermes).not.toContain('fc-test-key');
+    expect(
+      readFileSync(path.join(sandboxHome, '.cursor', 'mcp.json'), 'utf-8')
+    ).not.toContain('fc-test-key');
+  });
+
+  it('treats --agent launchers as the launchers, not as every agent', async () => {
+    await handleSetupCommand('mcp', { agent: 'launchers', yes: true });
+
+    expect(existsSync(path.join(sandboxHome, '.hermes', 'config.yaml'))).toBe(
+      true
+    );
+    expect(existsSync(globalConfigPath('cursor', sandboxHome))).toBe(false);
   });
   it('uses each client native environment binding with --agent all', async () => {
     const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-all-env-test-'));
