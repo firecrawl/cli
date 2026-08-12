@@ -253,11 +253,12 @@ Single format outputs raw content. Multiple formats (e.g., `--format markdown,li
 These patterns are useful when working with file-based output (`-o` flag) for complex tasks:
 
 ```bash
-# Extract URLs from search with their 1-indexed positions (needed for feedback)
-jq -r '.data.web | to_entries[] | "\(.key + 1)\t\(.value.url)"' .firecrawl/search.json
+# Extract URLs with their source and 1-indexed position (needed for feedback).
+# Each group is numbered from 1 independently, so keep the source with it.
+jq -r '.data | to_entries[] | .key as $s | .value | to_entries[] | "\($s):\(.key + 1)\t\(.value.url)"' .firecrawl/search.json
 
-# Get positions, titles, and URLs
-jq -r '.data.web | to_entries[] | "\(.key + 1)\t\(.value.title): \(.value.url)"' .firecrawl/search.json
+# Web results only, with positions, titles, and URLs
+jq -r '.data.web | to_entries[] | "web:\(.key + 1)\t\(.value.title): \(.value.url)"' .firecrawl/search.json
 ```
 
 ## After search: send feedback (refunds 1 credit)
@@ -269,13 +270,13 @@ SEARCH_ID=$(jq -r '.id' .firecrawl/search-react-hooks.json)
 
 firecrawl search-feedback "$SEARCH_ID" \
   --rating good \
-  --valuable-result-positions "1,3" \
+  --valuable-results "web:1,web:3" \
   --missing-content '[{"topic":"useDeferredValue example"},{"topic":"Server Components hooks"}]' \
   --query-suggestions "Boost react.dev for react-hooks queries" \
   --silent &
 ```
 
-The most useful field is `--missing-content`: an _array_ of specific pieces of content you expected to find but didn't. Use one entry per missing topic. Bad/partial feedback with detailed `--missing-content` is just as valuable as good feedback. Mark useful results with `--valuable-result-positions` (1-indexed into `data.web`, list **every** useful one — unlisted results count as not useful); reserve `--valuable-sources` for useful URLs that were not in `data.web`.
+The most useful field is `--missing-content`: an _array_ of specific pieces of content you expected to find but didn't. Use one entry per missing topic. Bad/partial feedback with detailed `--missing-content` is just as valuable as good feedback. Mark useful results with `--valuable-results` as `source:position` (e.g. `web:1,news:2`) — results come back grouped and each group is numbered from 1, so the source is required. List **every** useful one; unlisted results count as not useful. Reserve `--valuable-sources` for useful URLs that were not among the returned results.
 
 **Opt out:** `export FIRECRAWL_NO_SEARCH_FEEDBACK=1` makes the CLI skip every feedback call silently. Respect that flag — do not try to work around it. See [firecrawl-search](../firecrawl-search/SKILL.md) for the full pattern.
 

@@ -13,11 +13,28 @@ export interface MissingContentInput {
   description?: string;
 }
 
+export type SearchResultSource = 'web' | 'images' | 'news';
+
+export const SEARCH_RESULT_SOURCES: readonly SearchResultSource[] = [
+  'web',
+  'images',
+  'news',
+];
+
+// Search results come back grouped — data.web, data.images, data.news — and
+// each group is numbered from 1 independently, so a position is only
+// meaningful alongside the group it indexes into.
+export interface ValuableResultInput {
+  source: SearchResultSource;
+  position: number;
+  reason?: string;
+}
+
 export interface SearchFeedbackOptions {
   searchId: string;
   rating: SearchFeedbackRating;
   valuableSources?: ValuableSourceInput[];
-  valuableResultPositions?: number[];
+  valuableResults?: ValuableResultInput[];
   missingContent?: MissingContentInput[];
   querySuggestions?: string;
   apiKey?: string;
@@ -119,11 +136,8 @@ export async function executeSearchFeedback(
           ...(s.reason ? { reason: s.reason } : {}),
         }));
     }
-    if (
-      options.valuableResultPositions &&
-      options.valuableResultPositions.length > 0
-    ) {
-      body.valuableResultPositions = options.valuableResultPositions;
+    if (options.valuableResults && options.valuableResults.length > 0) {
+      body.valuableResults = options.valuableResults;
     }
     if (options.missingContent && options.missingContent.length > 0) {
       body.missingContent = options.missingContent
@@ -355,6 +369,95 @@ export function parseValuableSourcesArg(
     .map((u) => u.trim())
     .filter((u) => u.length > 0)
     .map((url) => ({ url }));
+}
+
+function isSearchResultSource(value: unknown): value is SearchResultSource {
+  return (
+    typeof value === 'string' &&
+    (SEARCH_RESULT_SOURCES as readonly string[]).includes(value)
+  );
+}
+
+function parsePositionValue(raw: unknown, flag: string): number {
+  const position = typeof raw === 'string' ? Number(raw.trim()) : raw;
+  if (
+    typeof position !== 'number' ||
+    !Number.isInteger(position) ||
+    position < 1
+  ) {
+    throw new Error(`${flag} positions must be integers of 1 or greater.`);
+  }
+  return position;
+}
+
+// Accepts a compact "source:position" list (e.g. "web:1,news:2") or a JSON
+// array of {source, position, reason} entries. The source is always required:
+// results are grouped and each group is numbered from 1, so a bare position
+// does not identify a result.
+export function parseValuableResultsArg(
+  raw: string | undefined,
+  flag = '--valuable-results'
+): ValuableResultInput[] | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+
+  const sourceList = SEARCH_RESULT_SOURCES.join(' | ');
+
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      throw new Error(
+        `${flag} must be valid JSON or a comma-separated "source:position" list.`
+      );
+    }
+
+    const entries = Array.isArray(parsed) ? parsed : [parsed];
+    const cleaned = entries.map((entry: any) => {
+      if (!entry || typeof entry !== 'object') {
+        throw new Error(
+          `${flag} JSON entries must be objects with a source and a position.`
+        );
+      }
+      if (!isSearchResultSource(entry.source)) {
+        throw new Error(`${flag} source must be one of: ${sourceList}.`);
+      }
+      return {
+        source: entry.source,
+        position: parsePositionValue(entry.position, flag),
+        ...(typeof entry.reason === 'string' && entry.reason.trim()
+          ? { reason: entry.reason }
+          : {}),
+      };
+    });
+    return cleaned.length > 0 ? cleaned : undefined;
+  }
+
+  const cleaned = trimmed
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .map((entry) => {
+      const separator = entry.lastIndexOf(':');
+      if (separator === -1) {
+        throw new Error(
+          `${flag} entries must be "source:position" (e.g. web:1) — ` +
+            `results are grouped, so a bare position is ambiguous.`
+        );
+      }
+      const source = entry.slice(0, separator).trim();
+      if (!isSearchResultSource(source)) {
+        throw new Error(`${flag} source must be one of: ${sourceList}.`);
+      }
+      return {
+        source,
+        position: parsePositionValue(entry.slice(separator + 1), flag),
+      };
+    });
+
+  return cleaned.length > 0 ? cleaned : undefined;
 }
 
 // Accepts JSON arrays/objects, "topic: description" strings, comma-

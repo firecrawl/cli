@@ -4,9 +4,11 @@ import { getConfig, isCustomApiUrl, validateConfig } from '../utils/config';
 import { getClient } from '../utils/client';
 import {
   parseMissingContentArg,
+  parseValuableResultsArg,
   parseValuableSourcesArg,
   type MissingContentInput,
   type SearchFeedbackRating,
+  type ValuableResultInput,
   type ValuableSourceInput,
 } from './search-feedback';
 
@@ -20,7 +22,7 @@ export interface EndpointFeedbackOptions {
   tags?: string[];
   note?: string;
   valuableSources?: ValuableSourceInput[];
-  valuableResultPositions?: number[];
+  valuableResults?: ValuableResultInput[];
   missingContent?: MissingContentInput[];
   querySuggestions?: string;
   url?: string;
@@ -112,9 +114,8 @@ export function parseFeedbackListArg(
   return normalizeList(trimmed.split(','));
 }
 
-function parsePositiveIntArrayArg(
-  raw: string | undefined,
-  flag: string
+export function parsePageNumbersArg(
+  raw: string | undefined
 ): number[] | undefined {
   if (!raw) return undefined;
   const trimmed = raw.trim();
@@ -125,12 +126,12 @@ function parsePositiveIntArrayArg(
     try {
       const parsed = JSON.parse(trimmed);
       if (!Array.isArray(parsed)) {
-        throw new Error(`${flag} must be a JSON array.`);
+        throw new Error('--page-numbers must be a JSON array.');
       }
       values = parsed;
     } catch {
       throw new Error(
-        `${flag} must be a comma-separated list or valid JSON array.`
+        '--page-numbers must be a comma-separated list or valid JSON array.'
       );
     }
   } else {
@@ -144,18 +145,6 @@ function parsePositiveIntArrayArg(
     .filter((value) => Number.isInteger(value) && value > 0);
 
   return numbers.length > 0 ? numbers : undefined;
-}
-
-export function parsePageNumbersArg(
-  raw: string | undefined
-): number[] | undefined {
-  return parsePositiveIntArrayArg(raw, '--page-numbers');
-}
-
-export function parseValuableResultPositionsArg(
-  raw: string | undefined
-): number[] | undefined {
-  return parsePositiveIntArrayArg(raw, '--valuable-result-positions');
 }
 
 export function parseMetadataArg(
@@ -221,7 +210,7 @@ export function parseEndpointFeedbackCliOptions(options: {
   metadata?: string;
   metadataFile?: string;
   valuableSources?: string;
-  valuableResultPositions?: string;
+  valuableResults?: string;
   missingContent?: string | string[];
   rating?: string;
 }) {
@@ -232,9 +221,7 @@ export function parseEndpointFeedbackCliOptions(options: {
     pageNumbers: parsePageNumbersArg(options.pageNumbers),
     metadata: parseMetadataArg(options.metadata, options.metadataFile),
     valuableSources: parseValuableSourcesArg(options.valuableSources),
-    valuableResultPositions: parseValuableResultPositionsArg(
-      options.valuableResultPositions
-    ),
+    valuableResults: parseValuableResultsArg(options.valuableResults),
     missingContent: parseMissingContentArg(options.missingContent),
   };
 }
@@ -279,7 +266,7 @@ export async function executeEndpointFeedback(
       ['tags', normalizeList(options.tags)],
       ['note', options.note],
       ['valuableSources', options.valuableSources],
-      ['valuableResultPositions', options.valuableResultPositions],
+      ['valuableResults', options.valuableResults],
       ['missingContent', options.missingContent],
       ['querySuggestions', options.querySuggestions],
       ['url', options.url],
