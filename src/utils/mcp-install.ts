@@ -81,11 +81,19 @@ export async function writeJsonServerEntry(
   serverName: string,
   entry: Record<string, unknown>
 ): Promise<{ status: 'configured' | 'reconfigured' }> {
-  const raw = await readIfExists(filePath);
+  const stored = await readIfExists(filePath);
+  // A byte order mark is reported as a parse error even though the document is
+  // valid, and editors on Windows write one routinely. Keep it off the parse
+  // and put it back on write.
+  const bom = stored?.startsWith('\uFEFF') ? '\uFEFF' : '';
+  const raw = bom ? stored!.slice(1) : stored;
 
   if (raw === undefined || raw.trim() === '') {
     const fresh = { [serversKey]: { [serverName]: entry } };
-    await writeFileEnsuringDir(filePath, `${JSON.stringify(fresh, null, 2)}\n`);
+    await writeFileEnsuringDir(
+      filePath,
+      `${bom}${JSON.stringify(fresh, null, 2)}\n`
+    );
     return { status: 'configured' };
   }
 
@@ -119,7 +127,7 @@ export async function writeJsonServerEntry(
         { formattingOptions: { insertSpaces: true, tabSize: 2 } }
       );
 
-  await writeFileEnsuringDir(filePath, applyEdits(raw, edits));
+  await writeFileEnsuringDir(filePath, `${bom}${applyEdits(raw, edits)}`);
   return { status: alreadyExists ? 'reconfigured' : 'configured' };
 }
 
@@ -142,7 +150,10 @@ export function upsertTomlServer(
     ),
   ];
 
-  const lines = content === '' ? [] : content.split('\n');
+  // Preserve the file's existing line ending; a CRLF config must not be
+  // treated as one unmatchable line per table.
+  const eol = content.includes('\r\n') ? '\r\n' : '\n';
+  const lines = content === '' ? [] : content.split(/\r?\n/);
   const escaped = escapeRegExp(serverName);
   const ownTable = new RegExp(
     `^[ \\t]*\\[mcp_servers\\.${escaped}(\\.[^\\]]+)?\\][ \\t]*(?:#.*)?$`
@@ -159,7 +170,7 @@ export function upsertTomlServer(
     }
     const separator = trimmed.length === 0 ? [] : [''];
     return {
-      content: [...trimmed, ...separator, ...block, ''].join('\n'),
+      content: [...trimmed, ...separator, ...block, ''].join(eol),
       alreadyExists: false,
     };
   }
@@ -168,6 +179,11 @@ export function upsertTomlServer(
   while (end < lines.length) {
     if (anyTable.test(lines[end]) && !ownTable.test(lines[end])) break;
     end += 1;
+  }
+  // Comments and blank lines directly above the next table introduce it, so
+  // they belong to the user's content rather than to the block being replaced.
+  while (end - 1 > start && /^[ \t]*(#.*)?$/.test(lines[end - 1])) {
+    end -= 1;
   }
 
   const rest = lines.slice(end);
@@ -178,12 +194,12 @@ export function upsertTomlServer(
     ...block,
     ...separator,
     ...rest,
-  ].join('\n');
+  ].join(eol);
 
   // Consuming the old table can swallow the file's final newline; restoring it
   // keeps repeat runs byte-identical.
   return {
-    content: replaced.endsWith('\n') ? replaced : `${replaced}\n`,
+    content: replaced.endsWith(eol) ? replaced : `${replaced}${eol}`,
     alreadyExists: true,
   };
 }
@@ -209,10 +225,15 @@ export async function appendRuleSection(
   const section = `${RULE_MARKER}\n${content}${RULE_MARKER}`;
   const existing = (await readIfExists(filePath)) ?? '';
   const marker = escapeRegExp(RULE_MARKER);
-  const fenced = new RegExp(`${marker}\\n[\\s\\S]*?${marker}`);
+  const fenced = new RegExp(`${marker}\\r?\\n[\\s\\S]*?${marker}`);
 
   if (fenced.test(existing)) {
-    await writeFileEnsuringDir(filePath, existing.replace(fenced, section));
+    // Replace via a function so nothing in the rule body is read as a
+    // replacement pattern.
+    await writeFileEnsuringDir(
+      filePath,
+      existing.replace(fenced, () => section)
+    );
     return 'updated';
   }
 

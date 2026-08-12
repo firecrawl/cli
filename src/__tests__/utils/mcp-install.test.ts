@@ -86,6 +86,24 @@ describe('mcp install', () => {
       expect(result).toContain(MCP_URL);
     });
 
+    it('accepts a config that starts with a byte order mark', async () => {
+      const file = path.join(root, 'bom.json');
+      writeFileSync(
+        file,
+        '\uFEFF{ "mcpServers": { "own": { "url": "https://x" } } }'
+      );
+
+      const { status } = await writeJsonServerEntry(file, 'mcpServers', 'fc', {
+        url: MCP_URL,
+      });
+
+      const result = read(file);
+      expect(status).toBe('configured');
+      expect(result.startsWith('\uFEFF')).toBe(true);
+      expect(result).toContain('"own"');
+      expect(result).toContain(MCP_URL);
+    });
+
     it('reports reconfigured when the server is already present', async () => {
       const file = path.join(root, 'mcp.json');
       writeFileSync(
@@ -170,6 +188,41 @@ describe('mcp install', () => {
       expect(content).toContain(`url = "${MCP_URL}"`);
     });
 
+    it('matches an existing table in a CRLF file instead of duplicating it', () => {
+      const crlf =
+        'model = "gpt-5"\r\n\r\n[mcp_servers.firecrawl]\r\nurl = "https://old"\r\n';
+
+      const { content, alreadyExists } = upsertTomlServer(crlf, 'firecrawl', {
+        url: MCP_URL,
+      });
+
+      expect(alreadyExists).toBe(true);
+      expect(content.match(/\[mcp_servers\.firecrawl\]/g)).toHaveLength(1);
+      expect(content).toContain('\r\n');
+      expect(
+        upsertTomlServer(content, 'firecrawl', { url: MCP_URL }).content
+      ).toBe(content);
+    });
+
+    it('keeps comments that introduce the following table', () => {
+      const existing = [
+        '[mcp_servers.firecrawl]',
+        'url = "https://old"',
+        '',
+        '# notes about the next server',
+        '[mcp_servers.other]',
+        'url = "https://example.com/mcp"',
+        '',
+      ].join('\n');
+
+      const { content } = upsertTomlServer(existing, 'firecrawl', {
+        url: MCP_URL,
+      });
+
+      expect(content).toContain('# notes about the next server');
+      expect(content).toContain('[mcp_servers.other]');
+    });
+
     it('is stable across repeated writes', () => {
       const first = upsertTomlServer('', 'firecrawl', { url: MCP_URL }).content;
       const second = upsertTomlServer(first, 'firecrawl', {
@@ -194,6 +247,20 @@ describe('mcp install', () => {
       expect(result).toContain('second');
       expect(result).not.toContain('first');
       expect(result.match(/<!-- firecrawl -->/g)).toHaveLength(2);
+    });
+  });
+
+  describe('appendRuleSection line endings', () => {
+    it('replaces its section after the file is converted to CRLF', async () => {
+      const file = path.join(root, 'AGENTS.md');
+
+      expect(await appendRuleSection(file, 'first\n')).toBe('installed');
+      writeFileSync(file, read(file).replace(/\n/g, '\r\n'));
+
+      expect(await appendRuleSection(file, 'second\n')).toBe('updated');
+      const result = read(file);
+      expect(result.match(/<!-- firecrawl -->/g)).toHaveLength(2);
+      expect(result).not.toContain('first');
     });
   });
 

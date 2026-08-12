@@ -519,6 +519,36 @@ describe('handleSetupCommand', () => {
     ).toBe(MCP_URL);
   });
 
+  it('surfaces total failure even in quiet mode', async () => {
+    mkdirSync(path.join(sandboxHome, '.cursor'), { recursive: true });
+    writeFileSync(path.join(sandboxHome, '.cursor', 'mcp.json'), '{ broken');
+
+    // init and launch both pass quiet, and must not report success when
+    // nothing was written.
+    await expect(
+      installMcp({ clients: ['cursor'], yes: true, quiet: true, keyless: true })
+    ).rejects.toThrow('Failed to configure Firecrawl MCP');
+  });
+
+  it('configures every client with --agent all, detected or not', async () => {
+    await handleSetupCommand('mcp', {
+      agent: 'all',
+      global: true,
+      yes: true,
+      keyless: true,
+    });
+
+    for (const id of [
+      'claude',
+      'cursor',
+      'codex',
+      'vscode',
+      'opencode',
+    ] as const) {
+      expect(existsSync(globalConfigPath(id, sandboxHome))).toBe(true);
+    }
+  });
+
   it('rejects a stored key before writing Hermes MCP config', async () => {
     const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-hermes-test-'));
     process.env.HOME = home;
