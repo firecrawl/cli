@@ -65,23 +65,21 @@ describe('mcp install', () => {
       writeFileSync(
         file,
         [
-          '// Zed settings',
+          '// editor settings',
           '{',
           '  "theme": "One Dark",',
           '  // keep me',
           '  "buffer_font_size": 15,',
-          '  "context_servers": { "other": { "url": "https://example.com" } }',
+          '  "servers": { "other": { "url": "https://example.com" } }',
           '}',
           '',
         ].join('\n')
       );
 
-      await writeJsonServerEntry(file, 'context_servers', 'fc', {
-        url: MCP_URL,
-      });
+      await writeJsonServerEntry(file, 'servers', 'fc', { url: MCP_URL });
 
       const result = read(file);
-      expect(result).toContain('// Zed settings');
+      expect(result).toContain('// editor settings');
       expect(result).toContain('// keep me');
       expect(result).toContain('"theme": "One Dark"');
       expect(result).toContain('"other"');
@@ -266,7 +264,7 @@ describe('mcp install', () => {
     });
 
     it('falls back to keyless for agents that cannot expand variables', async () => {
-      for (const id of ['zed', 'windsurf'] as const) {
+      for (const id of ['windsurf'] as const) {
         const result = await setupMcpClient(id, {
           scope: 'global',
           rules: false,
@@ -307,17 +305,6 @@ describe('mcp install', () => {
       expect(result.ruleDetail).toBe(
         path.join(ctx.cwd, '.windsurf', 'rules', 'firecrawl.md')
       );
-    });
-
-    it('marks rules unsupported for agents without a rules mechanism', async () => {
-      const result = await setupMcpClient('zed', {
-        scope: 'global',
-        rules: true,
-        ctx,
-      });
-
-      expect(result.mcpStatus).toBe('configured');
-      expect(result.ruleStatus).toBe('unsupported');
     });
 
     it('still configures MCP when the rule write fails', async () => {

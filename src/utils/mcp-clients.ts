@@ -26,8 +26,7 @@ export type McpClientId =
   | 'vscode'
   | 'codex'
   | 'opencode'
-  | 'windsurf'
-  | 'zed';
+  | 'windsurf';
 
 export type McpScope = 'global' | 'project';
 
@@ -151,11 +150,6 @@ function claudeGlobalConfigPath(ctx: McpContext): string {
 
 function vscodeUserDir(ctx: McpContext): string {
   return path.join(appSupportDir(ctx, 'Code'), 'User');
-}
-
-function zedUserDir(ctx: McpContext): string {
-  if (ctx.platform === 'win32') return appSupportDir(ctx, 'Zed');
-  return path.join(ctx.home, '.config', 'zed');
 }
 
 /** Attach the agent's env-reference header when authenticating that way. */
@@ -315,20 +309,6 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
     },
     detectPaths: (ctx) => [path.join(ctx.home, '.codeium', 'windsurf')],
   },
-  zed: {
-    id: 'zed',
-    name: 'Zed',
-    format: 'json',
-    serversKey: 'context_servers',
-    globalConfigPath: (ctx) => path.join(zedUserDir(ctx), 'settings.json'),
-    projectConfigPath: (ctx) => path.join(ctx.cwd, '.zed', 'settings.json'),
-    buildEntry: () => ({ url: FIRECRAWL_MCP_URL }),
-    // Zed sends header values verbatim without expanding variables, so an
-    // indirect reference would not resolve. Keyless is the only safe option.
-    supportsEnvAuth: false,
-    // Zed has no rules mechanism.
-    detectPaths: (ctx) => [zedUserDir(ctx)],
-  },
 };
 
 export const ALL_MCP_CLIENT_IDS: readonly McpClientId[] = [
@@ -338,7 +318,6 @@ export const ALL_MCP_CLIENT_IDS: readonly McpClientId[] = [
   'codex',
   'opencode',
   'windsurf',
-  'zed',
 ];
 
 export const MCP_LAUNCHER_NAMES: Record<McpLauncherId, string> = {
@@ -422,7 +401,6 @@ const CLIENT_ALIASES: Record<string, McpClientId> = {
   opencode: 'opencode',
   'open-code': 'opencode',
   windsurf: 'windsurf',
-  zed: 'zed',
 };
 
 export function resolveMcpClientId(agent: string): McpClientId | undefined {

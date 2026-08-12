@@ -714,6 +714,9 @@ async function pickMcpClients(
   return checkbox<McpTargetId>({
     message: 'Which agents do you want to set up?',
     loop: false,
+    // Show every agent at once; the default page size would scroll the last
+    // ones out of view.
+    pageSize: ALL_MCP_TARGET_IDS.length,
     choices: ALL_MCP_TARGET_IDS.map((id) => ({
       name: mcpTargetName(id),
       value: id,

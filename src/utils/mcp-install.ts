@@ -4,7 +4,7 @@
  *
  * Agent configs belong to the user, not to us, so edits are surgical: JSON is
  * patched through a JSONC-aware editor that keeps comments and formatting
- * intact (Zed and VS Code ship commented settings, which plain `JSON.parse`
+ * intact (several agents ship commented settings, which plain `JSON.parse`
  * rejects outright), TOML tables are replaced line by line, and shared rule
  * files get a marker-fenced section rather than a rewrite.
  */
