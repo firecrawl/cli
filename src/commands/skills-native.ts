@@ -195,6 +195,11 @@ function resolveAgentConfig(agent: string): AgentConfig | undefined {
   return AGENTS.find((candidate) => candidate.name === normalized);
 }
 
+/** True when this name is a supported skills target, whatever else supports it. */
+export function isSkillsAgentName(agent: string): boolean {
+  return resolveAgentConfig(agent) !== undefined;
+}
+
 /**
  * Discover all skills in a directory tree by finding SKILL.md files.
  */

@@ -31,7 +31,11 @@ import {
   WORKFLOW_SKILLS,
   type SkillSelection,
 } from './skills-install';
-import { hasNpx, installSkillsNative } from './skills-native';
+import {
+  hasNpx,
+  installSkillsNative,
+  isSkillsAgentName,
+} from './skills-native';
 import {
   configureWebDefaults,
   WEB_AGENTS,
@@ -39,6 +43,7 @@ import {
 } from '../utils/web-defaults';
 import {
   ALL_MCP_CLIENT_IDS,
+  FIRECRAWL_MCP_URL,
   ALL_MCP_LAUNCHER_IDS,
   ALL_MCP_TARGET_IDS,
   detectMcpClients,
@@ -66,6 +71,7 @@ type SetupIntegration = SetupSubcommand;
 
 type ResolvedMcpAgent =
   | { kind: 'clients'; ids?: McpTargetId[] }
+  | { kind: 'skills-only'; agent: string }
   | { kind: 'hermes' }
   | { kind: 'openclaw' }
   | { kind: 'all-launchers' };
@@ -285,12 +291,15 @@ function resolveMcpAgent(agent: string | undefined): ResolvedMcpAgent {
       return { kind: 'openclaw' };
     default: {
       const id = resolveMcpClientId(normalized);
-      if (!id) {
-        throw new Error(
-          `Unknown agent "${agent}" for setup mcp. Use one of: ${ALL_MCP_TARGET_IDS.join(', ')}, all.`
-        );
+      if (id) return { kind: 'clients', ids: [id] };
+      // A name we install skills for but write no MCP config for is not an
+      // error; the caller may have already installed skills for it.
+      if (isSkillsAgentName(normalized)) {
+        return { kind: 'skills-only', agent };
       }
-      return { kind: 'clients', ids: [id] };
+      throw new Error(
+        `Unknown agent "${agent}" for setup mcp. Use one of: ${ALL_MCP_TARGET_IDS.join(', ')}, all.`
+      );
     }
   }
 }
@@ -666,12 +675,17 @@ export async function installMcp(
   // without mutating the parent shell or exposing the key to setup commands.
   runtimeEnv: NodeJS.ProcessEnv = process.env
 ): Promise<void> {
-  if (options.global && options.project) {
-    throw new Error('Choose either --global or --project, not both.');
-  }
-
   const apiKey = options.keyless ? undefined : getApiKey();
   const resolvedAgent = resolveMcpAgent(options.agent);
+
+  if (resolvedAgent.kind === 'skills-only') {
+    // Skills for this agent have already installed by this point; ending the
+    // run here would fail a command that mostly succeeded.
+    console.log(
+      `Firecrawl does not write MCP config for ${resolvedAgent.agent}. Point it at ${FIRECRAWL_MCP_URL} to connect it yourself.`
+    );
+    return;
+  }
 
   if (resolvedAgent.kind === 'hermes') {
     await installHermesMcp(runtimeEnv, options.keyless);

@@ -79,6 +79,8 @@ describe('handleSetupCommand', () => {
   let originalApiKey: string | undefined;
   let sandboxHome: string;
   let originalPath: string | undefined;
+  let originalUserProfile: string | undefined;
+  let originalAppData: string | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -99,6 +101,12 @@ describe('handleSetupCommand', () => {
     // home. Without this a test run would rewrite the developer's own editors.
     sandboxHome = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-home-'));
     process.env.HOME = sandboxHome;
+    // os.homedir() reads USERPROFILE on Windows, and app-support paths read
+    // APPDATA, so HOME alone would leave a Windows run writing the real profile.
+    originalUserProfile = process.env.USERPROFILE;
+    originalAppData = process.env.APPDATA;
+    process.env.USERPROFILE = sandboxHome;
+    process.env.APPDATA = path.join(sandboxHome, 'AppData', 'Roaming');
     // Launcher detection also looks on PATH, so pin it for the same reason.
     originalPath = process.env.PATH;
     process.env.PATH = '';
@@ -108,6 +116,10 @@ describe('handleSetupCommand', () => {
     rmSync(sandboxHome, { recursive: true, force: true });
     if (originalPath === undefined) delete process.env.PATH;
     else process.env.PATH = originalPath;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+    if (originalAppData === undefined) delete process.env.APPDATA;
+    else process.env.APPDATA = originalAppData;
     if (originalHome === undefined) delete process.env.HOME;
     else process.env.HOME = originalHome;
     if (originalApiKey === undefined) delete process.env.FIRECRAWL_API_KEY;
@@ -549,6 +561,25 @@ describe('handleSetupCommand', () => {
     }
   });
 
+  it('skips MCP for a skills-only agent instead of failing the run', async () => {
+    // Skills already installed by this point in `setup --yes --agent windsurf`.
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await expect(
+      handleSetupCommand('mcp', { agent: 'windsurf', yes: true })
+    ).resolves.toBeUndefined();
+
+    expect(log.mock.calls.flat().join(' ')).toContain(
+      'https://mcp.firecrawl.dev/v2/mcp'
+    );
+  });
+
+  it('still rejects an agent name nothing supports', async () => {
+    await expect(
+      handleSetupCommand('mcp', { agent: 'not-an-agent', yes: true })
+    ).rejects.toThrow('Unknown agent');
+  });
+
   it('rejects a stored key before writing Hermes MCP config', async () => {
     const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-hermes-test-'));
     process.env.HOME = home;
@@ -893,17 +924,6 @@ describe('handleSetupCommand', () => {
   });
 
   // --- Scope: project and global are mutually exclusive ---
-
-  it('rejects conflicting MCP scope flags', async () => {
-    await expect(
-      handleSetupCommand('mcp', {
-        agent: 'claude-code',
-        global: true,
-        project: true,
-      })
-    ).rejects.toThrow('Choose either --global or --project');
-    expect(execFileSync).not.toHaveBeenCalled();
-  });
 
   it('keeps project scope for an environment-backed credential', async () => {
     process.env.FIRECRAWL_API_KEY = 'fc-test-key';

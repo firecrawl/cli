@@ -104,9 +104,10 @@ asks whether to add rules telling those agents to prefer Firecrawl for web
 search and scraping. Supported agents are Claude Code, Cursor, VS Code, Codex,
 OpenCode, Hermes Agent, and OpenClaw.
 
+Setup writes to your global agent settings by default, so one command puts
+Firecrawl on every agent you already use rather than only the current checkout.
 Pass agent flags to skip the picker, `-y` to configure every detected agent
-(MCP only), or `--project` to write to the current project instead of your
-global agent settings:
+(MCP only), or `--project` to scope the change to this repository:
 
 ```bash
 firecrawl setup mcp --claude --cursor    # skip the picker
