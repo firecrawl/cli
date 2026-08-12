@@ -968,11 +968,11 @@ function createSearchCommand(): Command {
     )
     .option('--api-url <url>', 'API URL (overrides global --api-url)')
     .option('-o, --output <path>', 'Output file path (default: stdout)')
-    // .option(
-    //   '-p, --pretty',
-    //   'Output as pretty JSON (default: human-readable)',
-    //   false
-    // )
+    .option(
+      '-p, --pretty',
+      'Output as pretty JSON (default: human-readable)',
+      false
+    )
     .option('--json', 'Output as compact JSON', false)
     .action(async (query, options) => {
       // Parse sources
