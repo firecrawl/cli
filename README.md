@@ -123,6 +123,18 @@ to that variable in the syntax it understands. Otherwise setup stays keyless,
 which still serves search, scrape, and parse under an anonymous rate limit. Use
 `--keyless` to force the anonymous path even when a key is available.
 
+To sign in from the agent instead of carrying a key, use `--oauth`:
+
+```bash
+firecrawl setup mcp --oauth              # sign in from each agent's browser
+```
+
+This writes the sign-in endpoint rather than a credential, and each agent starts
+the browser flow itself the first time it connects. Setup prints the step each
+agent needs, since they differ: `/mcp` in Claude Code, `codex mcp login
+firecrawl` for Codex, Cursor Settings, and a browser on first use elsewhere.
+`--oauth` and `--keyless` are different endpoints, so pass only one.
+
 To make Firecrawl the default web provider for supported AI agents:
 
 ```bash

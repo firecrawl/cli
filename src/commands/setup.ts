@@ -41,7 +41,10 @@ import {
   ALL_MCP_TARGET_IDS,
   detectMcpClients,
   detectMcpLaunchers,
+  FIRECRAWL_MCP_OAUTH_URL,
   isMcpLauncherId,
+  MCP_CLIENTS,
+  MCP_LAUNCHER_OAUTH,
   MCP_LAUNCHER_RULES,
   mcpTargetName,
   resolveMcpClientId,
@@ -89,6 +92,8 @@ export interface SetupOptions {
   browser?: boolean;
   /** Internal: bundle flow defers the auth offer until every step ran. */
   skipAuthOffer?: boolean;
+  /** Point agents at the sign-in endpoint instead of sending a credential. */
+  oauth?: boolean;
   /** Agents chosen by flag (`--claude`, `--cursor`, ...); skips the picker. */
   clients?: McpTargetId[];
   /** Force the Firecrawl web rules on or off instead of prompting. */
@@ -213,8 +218,8 @@ function runClientCommand(
   execFileSync(comspec, ['/d', '/s', '/c', `"${line}"`], windowsOptions);
 }
 
-function firecrawlHostedMcpUrl(): string {
-  return 'https://mcp.firecrawl.dev/v2/mcp';
+function firecrawlHostedMcpUrl(oauth = false): string {
+  return oauth ? FIRECRAWL_MCP_OAUTH_URL : FIRECRAWL_MCP_URL;
 }
 
 function isEnvironmentBackedApiKey(
@@ -760,7 +765,12 @@ async function setupMcpLauncher(
   try {
     switch (id) {
       case 'openclaw':
-        await installOpenClawMcp(runtimeEnv, keyless, true);
+        await installOpenClawMcp(
+          runtimeEnv,
+          keyless,
+          true,
+          ctx.auth === 'oauth'
+        );
         result.mcpDetail = 'via the openclaw CLI';
         break;
       default: {
@@ -811,12 +821,22 @@ async function installMcpClients(
   explicitIds?: McpTargetId[],
   { includeAllLaunchers = false } = {}
 ): Promise<void> {
-  const apiKey = options.keyless ? undefined : getApiKey();
-  // A stored key cannot be written into agent config, so authenticated setup
-  // requires the variable to be exported where the agent will read it.
-  const auth: McpAuthMode = isEnvironmentBackedApiKey(apiKey, runtimeEnv)
-    ? 'env'
-    : 'keyless';
+  if (options.oauth && options.keyless) {
+    throw new Error(
+      'Choose either --oauth or --keyless. Signing in and running anonymously are different endpoints.'
+    );
+  }
+
+  const apiKey = options.oauth || options.keyless ? undefined : getApiKey();
+  // Sign-in is a different endpoint rather than a different credential, so it
+  // overrides the key lookup entirely. Otherwise a stored key cannot be written
+  // into agent config, so authenticated setup requires the variable to be
+  // exported where the agent will read it.
+  const auth: McpAuthMode = options.oauth
+    ? 'oauth'
+    : isEnvironmentBackedApiKey(apiKey, runtimeEnv)
+      ? 'env'
+      : 'keyless';
 
   const ctx: McpContext = {
     // Resolved so path comparisons hold even for an unnormalized HOME.
@@ -908,6 +928,12 @@ function authNotes(
   const succeeded = results.filter((result) => result.mcpStatus !== 'failed');
   if (succeeded.length === 0) return [];
 
+  if (ctx.auth === 'oauth') {
+    return [
+      'Each agent signs in through your browser the first time it connects.',
+    ];
+  }
+
   if (!hasApiKey) {
     return [
       `Running keyless (search, scrape, parse). Export ${ENV_API_KEY} where your agents run, then rerun to authenticate.`,
@@ -921,6 +947,22 @@ function authNotes(
   }
 
   return [];
+}
+
+/**
+ * What the person still has to do for this agent. Setup can register the
+ * server but no agent signs in on its behalf, and each one starts the flow
+ * differently, so a single footer would leave most agents unexplained.
+ */
+function signInLine(
+  result: McpClientResult,
+  ctx: McpContext
+): string | undefined {
+  if (ctx.auth !== 'oauth' || result.mcpStatus === 'failed') return undefined;
+  const spec = isMcpLauncherId(result.id)
+    ? MCP_LAUNCHER_OAUTH[result.id]
+    : MCP_CLIENTS[result.id].oauth;
+  return spec ? `  Sign in ${dim}${spec.nextStep}${reset}` : undefined;
 }
 
 function reportMcpResults(
@@ -955,6 +997,8 @@ function reportMcpResults(
         ? `  ${red}MCP failed${reset} ${result.mcpDetail}`
         : `  MCP ${result.mcpStatus} ${dim}${displayPath(result.mcpDetail, ctx)}${reset}`
     );
+    const signIn = signInLine(result, ctx);
+    if (signIn) console.log(signIn);
     const rules = ruleLine(result, ctx);
     if (rules) console.log(rules);
   }
@@ -975,14 +1019,15 @@ function reportMcpResults(
 function firecrawlMcpConfig(
   agent?: string,
   runtimeEnv: NodeJS.ProcessEnv = process.env,
-  keyless = false
+  keyless = false,
+  oauth = false
 ): {
   url: string;
   headers?: Record<string, string>;
   transport?: string;
 } {
   return {
-    url: firecrawlHostedMcpUrl(),
+    url: firecrawlHostedMcpUrl(oauth),
     headers: firecrawlMcpHeaders(
       agent,
       keyless ? undefined : getApiKey(),
@@ -995,11 +1040,13 @@ export async function installOpenClawMcp(
   runtimeEnv: NodeJS.ProcessEnv = process.env,
   keyless = false,
   /** Suppress standalone logging when a caller renders its own summary. */
-  quiet = false
+  quiet = false,
+  oauth = false
 ): Promise<void> {
   const config = {
-    ...firecrawlMcpConfig('openclaw', runtimeEnv, keyless),
+    ...firecrawlMcpConfig('openclaw', runtimeEnv, keyless, oauth),
     transport: 'streamable-http',
+    ...(oauth ? MCP_LAUNCHER_OAUTH.openclaw?.entry : undefined),
   };
   if (!quiet) console.log('Configuring Firecrawl MCP for OpenClaw...\n');
 

@@ -369,7 +369,11 @@ async function writeMcpEntry(
   ctx: McpContext
 ): Promise<{ status: 'configured' | 'reconfigured'; configPath: string }> {
   const configPath = client.globalConfigPath(ctx);
-  const entry = client.buildEntry(ctx);
+  // Some agents will not start the sign-in flow from a URL alone.
+  const entry =
+    ctx.auth === 'oauth' && client.oauth?.entry
+      ? { ...client.buildEntry(ctx), ...client.oauth.entry }
+      : client.buildEntry(ctx);
 
   if (client.format === 'yaml') {
     const existing = (await readIfExists(configPath)) ?? '';

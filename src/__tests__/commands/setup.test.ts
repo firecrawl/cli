@@ -878,6 +878,63 @@ describe('handleSetupCommand', () => {
     }
   });
 
+  it('points every agent at the sign-in endpoint with --oauth', async () => {
+    process.env.FIRECRAWL_API_KEY = 'fc-test-key';
+    for (const dir of ['.claude', '.cursor', '.codex', '.hermes']) {
+      mkdirSync(path.join(sandboxHome, dir), { recursive: true });
+    }
+
+    await handleSetupCommand('mcp', { oauth: true, yes: true } as never);
+
+    const claude = readFileSync(
+      path.join(sandboxHome, '.claude.json'),
+      'utf-8'
+    );
+    expect(claude).toContain('/v2/mcp-oauth');
+    // Sign-in replaces the credential rather than travelling beside it.
+    expect(claude).not.toContain('Authorization');
+    expect(claude).not.toContain('fc-test-key');
+
+    // Codex takes a bare URL; its sign-in is a separate login command.
+    expect(
+      readFileSync(path.join(sandboxHome, '.codex', 'config.toml'), 'utf-8')
+    ).toContain('/v2/mcp-oauth');
+  });
+
+  it('arms the sign-in flow for agents that need more than a URL', async () => {
+    mkdirSync(path.join(sandboxHome, '.hermes'), { recursive: true });
+
+    await handleSetupCommand('mcp', {
+      clients: ['hermes', 'openclaw'],
+      oauth: true,
+      yes: true,
+    } as never);
+
+    // Hermes only starts the flow when the entry opts in.
+    expect(
+      readFileSync(path.join(sandboxHome, '.hermes', 'config.yaml'), 'utf-8')
+    ).toContain('auth: oauth');
+
+    // OpenClaw ignores a static header once this is set, and its login
+    // command only runs for servers configured with it.
+    const config = vi.mocked(execFileSync).mock.calls[0]?.[1]?.[3] as string;
+    expect(JSON.parse(config)).toMatchObject({
+      url: `${MCP_URL}-oauth`,
+      auth: 'oauth',
+    });
+  });
+
+  it('refuses to combine sign-in with keyless', async () => {
+    await expect(
+      handleSetupCommand('mcp', {
+        clients: ['cursor'],
+        oauth: true,
+        keyless: true,
+        yes: true,
+      } as never)
+    ).rejects.toThrow(/either --oauth or --keyless/);
+  });
+
   it('uses each client native environment binding with --agent all', async () => {
     const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-all-env-test-'));
     // Make several agents detectable so --agent all has editors to configure.
