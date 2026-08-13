@@ -78,6 +78,14 @@ describe('hasFirecrawlMcpEntry', () => {
       })
     ).toBe(true);
   });
+
+  it('ignores a nested servers map that is not the agent MCP config', () => {
+    expect(
+      hasFirecrawlMcpEntry({
+        'someExtension.config': { servers: { firecrawl: {} } },
+      })
+    ).toBe(false);
+  });
 });
 
 describe('runChecks', () => {

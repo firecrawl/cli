@@ -130,6 +130,60 @@ export async function writeJsonServerEntry(
   return { status: alreadyExists ? 'reconfigured' : 'configured' };
 }
 
+/** Advance past a single-line basic or literal string, escapes included. */
+function skipQuoted(line: string, start: number, quote: string): number {
+  let index = start + 1;
+  while (index < line.length) {
+    // Only basic strings honour backslash escapes; literal strings have none.
+    if (quote === '"' && line[index] === '\\') {
+      index += 2;
+      continue;
+    }
+    if (line[index] === quote) return index + 1;
+    index += 1;
+  }
+  return line.length;
+}
+
+/**
+ * Mark the lines that begin outside a multi-line string, so a `[table]` written
+ * inside one is not mistaken for a real table header. Throws when a multi-line
+ * string is still open at the end, which is malformed TOML: editing a file this
+ * scan cannot follow would corrupt it while reporting success.
+ */
+function linesOutsideStrings(lines: string[]): boolean[] {
+  const outside: boolean[] = [];
+  let fence: '"""' | "'''" | null = null;
+
+  for (const line of lines) {
+    outside.push(fence === null);
+    let index = 0;
+    while (index < line.length) {
+      if (fence) {
+        const close = line.indexOf(fence, index);
+        if (close === -1) break;
+        index = close + fence.length;
+        fence = null;
+        continue;
+      }
+      if (line[index] === '#') break;
+      if (line.startsWith('"""', index) || line.startsWith("'''", index)) {
+        fence = line[index] === '"' ? '"""' : "'''";
+        index += 3;
+        continue;
+      }
+      if (line[index] === '"' || line[index] === "'") {
+        index = skipQuoted(line, index, line[index]);
+        continue;
+      }
+      index += 1;
+    }
+  }
+
+  if (fence) throw new Error('unterminated multi-line string');
+  return outside;
+}
+
 /**
  * Insert or replace the `[mcp_servers.<name>]` table. Any sub-tables of that
  * server are consumed too, so a leftover `[mcp_servers.firecrawl.env]` from an
@@ -158,8 +212,11 @@ export function upsertTomlServer(
     `^[ \\t]*\\[mcp_servers\\.${escaped}(\\.[^\\]]+)?\\][ \\t]*(?:#.*)?$`
   );
   const anyTable = /^[ \t]*\[/;
+  const outside = linesOutsideStrings(lines);
 
-  const start = lines.findIndex((line) => ownTable.test(line));
+  const start = lines.findIndex(
+    (line, index) => outside[index] && ownTable.test(line)
+  );
 
   if (start === -1) {
     // Tables must follow root-level keys, so append at the end of the file.
@@ -176,7 +233,13 @@ export function upsertTomlServer(
 
   let end = start + 1;
   while (end < lines.length) {
-    if (anyTable.test(lines[end]) && !ownTable.test(lines[end])) break;
+    if (
+      outside[end] &&
+      anyTable.test(lines[end]) &&
+      !ownTable.test(lines[end])
+    ) {
+      break;
+    }
     end += 1;
   }
   // Comments and blank lines directly above the next table introduce it, so
@@ -255,11 +318,16 @@ async function writeMcpEntry(
     for (const [key, value] of Object.entries(entry)) {
       if (typeof value === 'string') stringEntry[key] = value;
     }
-    const { content, alreadyExists } = upsertTomlServer(
-      existing,
-      MCP_SERVER_NAME,
-      stringEntry
-    );
+    let patched: { content: string; alreadyExists: boolean };
+    try {
+      patched = upsertTomlServer(existing, MCP_SERVER_NAME, stringEntry);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `could not parse existing config at ${configPath}: ${reason}`
+      );
+    }
+    const { content, alreadyExists } = patched;
     await writeFileEnsuringDir(configPath, content);
     return {
       status: alreadyExists ? 'reconfigured' : 'configured',

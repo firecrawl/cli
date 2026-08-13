@@ -200,7 +200,12 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
       globalPath: (ctx) =>
         path.join(vscodeUserDir(ctx), 'prompts', 'firecrawl.instructions.md'),
     },
-    detectPaths: (ctx) => [vscodeUserDir(ctx)],
+    // `User` is created on first launch, so requiring it misses an install
+    // that has only been unpacked. These are the markers doctor already uses.
+    detectPaths: (ctx) => [
+      appSupportDir(ctx, 'Code'),
+      path.join(ctx.home, '.vscode'),
+    ],
   },
   codex: {
     id: 'codex',
@@ -335,7 +340,13 @@ const CLIENT_ALIASES: Record<string, McpClientId> = {
 };
 
 export function resolveMcpClientId(agent: string): McpClientId | undefined {
-  return CLIENT_ALIASES[agent.trim().toLowerCase()];
+  const alias = agent.trim().toLowerCase();
+  // An object literal inherits `__proto__` and `constructor`, so looking either
+  // one up returns something truthy. Without this guard those two names read as
+  // a resolved agent and crash later instead of being rejected as unknown.
+  return Object.prototype.hasOwnProperty.call(CLIENT_ALIASES, alias)
+    ? CLIENT_ALIASES[alias]
+    : undefined;
 }
 
 async function pathExists(target: string): Promise<boolean> {

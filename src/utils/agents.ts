@@ -166,43 +166,49 @@ async function fileHasFirecrawlMcp(filePath: string): Promise<boolean> {
   }
 }
 
-/**
- * Keys under which agents store their MCP server map: `mcpServers` for Claude
- * Code, Cursor, and Windsurf; `servers` for VS Code; `mcp` for OpenCode.
- */
-const SERVER_MAP_KEYS = new Set(['mcpServers', 'servers', 'mcp']);
+/** True when `value` is a server map holding an entry named `firecrawl`. */
+function isFirecrawlServerMap(value: unknown): boolean {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    Object.prototype.hasOwnProperty.call(value, 'firecrawl')
+  );
+}
 
 /**
- * Walk a parsed JSON config looking for a server map (or `mcp.servers`) that
- * contains a `firecrawl` key. Exported for testing.
+ * Claude Code keeps a per-project server map under `projects`, so `mcpServers`
+ * is the one key that has to be matched at any depth.
+ */
+function hasNestedMcpServers(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const obj = value as Record<string, unknown>;
+
+  if (isFirecrawlServerMap(obj.mcpServers)) return true;
+  return Object.values(obj).some(hasNestedMcpServers);
+}
+
+/**
+ * Walk a parsed JSON config looking for a server map that contains a
+ * `firecrawl` key. Exported for testing.
  */
 export function hasFirecrawlMcpEntry(value: unknown): boolean {
   if (!value || typeof value !== 'object') return false;
   const obj = value as Record<string, unknown>;
 
-  for (const key of Object.keys(obj)) {
-    const child = obj[key];
-    if (SERVER_MAP_KEYS.has(key) && child && typeof child === 'object') {
-      if (Object.prototype.hasOwnProperty.call(child, 'firecrawl')) {
-        return true;
-      }
-    }
-    if (key === 'mcp' && child && typeof child === 'object') {
-      const mcp = child as Record<string, unknown>;
-      const servers = mcp.servers;
-      if (
-        servers &&
-        typeof servers === 'object' &&
-        Object.prototype.hasOwnProperty.call(servers, 'firecrawl')
-      ) {
-        return true;
-      }
-    }
-    if (child && typeof child === 'object') {
-      if (hasFirecrawlMcpEntry(child)) return true;
+  // VS Code (`servers`, or `mcp.servers` in settings.json) and OpenCode (`mcp`)
+  // both keep their map at the root. Matching those keys at any depth would let
+  // an unrelated nested object that happens to hold a `firecrawl` property
+  // report the server as registered when it is not.
+  if (isFirecrawlServerMap(obj.servers) || isFirecrawlServerMap(obj.mcp)) {
+    return true;
+  }
+  if (obj.mcp && typeof obj.mcp === 'object') {
+    if (isFirecrawlServerMap((obj.mcp as Record<string, unknown>).servers)) {
+      return true;
     }
   }
-  return false;
+
+  return hasNestedMcpServers(obj);
 }
 
 /**

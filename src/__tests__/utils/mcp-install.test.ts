@@ -231,6 +231,37 @@ describe('mcp install', () => {
 
       expect(second).toBe(first);
     });
+
+    it('ignores table syntax written inside a multi-line string', () => {
+      const existing = [
+        'instructions = """',
+        '[mcp_servers.firecrawl]',
+        'url = "https://not-a-table"',
+        '"""',
+        '',
+      ].join('\n');
+
+      const { content, alreadyExists } = upsertTomlServer(
+        existing,
+        'firecrawl',
+        { url: MCP_URL }
+      );
+
+      // The string keeps its contents and the real table is appended after it.
+      expect(alreadyExists).toBe(false);
+      expect(content).toContain('url = "https://not-a-table"');
+      expect(content).toMatch(
+        new RegExp(`\\[mcp_servers\\.firecrawl\\]\\nurl = ".*"\\n$`)
+      );
+    });
+
+    it('refuses a config whose multi-line string is never closed', () => {
+      expect(() =>
+        upsertTomlServer('instructions = """\nstill open\n', 'firecrawl', {
+          url: MCP_URL,
+        })
+      ).toThrow('unterminated multi-line string');
+    });
   });
 
   describe('appendRuleSection', () => {
@@ -383,6 +414,12 @@ describe('mcp install', () => {
 
       expect(await detectMcpClients(ctx)).toEqual(['claude']);
     });
+
+    it('detects VS Code from ~/.vscode without its User directory', async () => {
+      mkdirSync(path.join(ctx.home, '.vscode'), { recursive: true });
+
+      expect(await detectMcpClients(ctx)).toEqual(['vscode']);
+    });
   });
 
   describe('resolveMcpClientId', () => {
@@ -391,6 +428,11 @@ describe('mcp install', () => {
       expect(resolveMcpClientId('Codex-App')).toBe('codex');
       expect(resolveMcpClientId('vs-code')).toBe('vscode');
       expect(resolveMcpClientId('nope')).toBeUndefined();
+    });
+
+    it('rejects names inherited from the alias table prototype', () => {
+      expect(resolveMcpClientId('__proto__')).toBeUndefined();
+      expect(resolveMcpClientId('constructor')).toBeUndefined();
     });
   });
 });
