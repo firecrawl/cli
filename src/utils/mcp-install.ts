@@ -130,6 +130,18 @@ export async function writeJsonServerEntry(
   return { status: alreadyExists ? 'reconfigured' : 'configured' };
 }
 
+/**
+ * True when the character at `index` is escaped. Backslashes escape each other,
+ * so only an odd run of them before the position leaves it escaped.
+ */
+function isEscaped(line: string, index: number): boolean {
+  let backslashes = 0;
+  for (let at = index - 1; at >= 0 && line[at] === '\\'; at -= 1) {
+    backslashes += 1;
+  }
+  return backslashes % 2 === 1;
+}
+
 /** Advance past a single-line basic or literal string, escapes included. */
 function skipQuoted(line: string, start: number, quote: string): number {
   let index = start + 1;
@@ -160,7 +172,13 @@ function linesOutsideStrings(lines: string[]): boolean[] {
     let index = 0;
     while (index < line.length) {
       if (fence) {
-        const close = line.indexOf(fence, index);
+        let close = line.indexOf(fence, index);
+        // A basic string honours escapes, so `\"""` is an escaped quote
+        // followed by two literal ones rather than the terminator. Literal
+        // strings have no escapes, so their fence always closes.
+        while (close !== -1 && fence === '"""' && isEscaped(line, close)) {
+          close = line.indexOf(fence, close + 1);
+        }
         if (close === -1) break;
         index = close + fence.length;
         fence = null;

@@ -255,6 +255,53 @@ describe('mcp install', () => {
       );
     });
 
+    it('does not end a basic string on an escaped fence', () => {
+      const existing = [
+        'instructions = """',
+        String.raw`he said \""" loudly`,
+        '[mcp_servers.firecrawl]',
+        'url = "https://not-a-table"',
+        '"""',
+        '',
+      ].join('\n');
+
+      const { content, alreadyExists } = upsertTomlServer(
+        existing,
+        'firecrawl',
+        { url: MCP_URL }
+      );
+
+      // Everything above stays string content, so nothing in it is replaced.
+      expect(alreadyExists).toBe(false);
+      expect(content).toContain(String.raw`he said \""" loudly`);
+      expect(content).toContain('url = "https://not-a-table"');
+      expect(content).toMatch(
+        new RegExp(`\\[mcp_servers\\.firecrawl\\]\\nurl = "${MCP_URL}"\\n$`)
+      );
+    });
+
+    it('closes a basic string when the fence follows an escaped backslash', () => {
+      const existing = [
+        'instructions = """',
+        String.raw`trailing slash \\"""`,
+        '[mcp_servers.firecrawl]',
+        'url = "https://old"',
+        '',
+      ].join('\n');
+
+      const { content, alreadyExists } = upsertTomlServer(
+        existing,
+        'firecrawl',
+        { url: MCP_URL }
+      );
+
+      // The run of backslashes is even, so the fence really does terminate and
+      // the table below it is a real one to replace.
+      expect(alreadyExists).toBe(true);
+      expect(content).toContain(`url = "${MCP_URL}"`);
+      expect(content).not.toContain('https://old');
+    });
+
     it('refuses a config whose multi-line string is never closed', () => {
       expect(() =>
         upsertTomlServer('instructions = """\nstill open\n', 'firecrawl', {
