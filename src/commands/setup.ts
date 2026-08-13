@@ -741,6 +741,38 @@ async function pickMcpClients(
 }
 
 /**
+ * Ask OpenClaw where its workspace is. Config can move it, the environment can
+ * move it, and a profile changes it again, but that config file is JSON5 and
+ * out of reach here, so the launcher itself is the authority. Falls back to the
+ * documented defaults whenever the CLI cannot answer.
+ */
+function openclawConfiguredWorkspace(
+  runtimeEnv: NodeJS.ProcessEnv,
+  id: McpLauncherId
+): string | undefined {
+  if (id !== 'openclaw') return undefined;
+  try {
+    const stdout = execFileSync(
+      'openclaw',
+      ['config', 'get', 'agents.defaults.workspace', '--json'],
+      {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        env: cleanNpmEnv(),
+      }
+    );
+    const value: unknown = JSON.parse(stdout);
+    if (typeof value !== 'string' || value === '') return undefined;
+    const expanded = value.startsWith('~')
+      ? path.join(os.homedir(), value.slice(1))
+      : value;
+    return path.join(expanded, 'AGENTS.md');
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Launchers own their MCP configuration, so they are installed through their
  * own routine instead of a config write. Failures stay scoped to the one
  * launcher: a missing binary must not cost the user the agents that worked.
@@ -784,9 +816,15 @@ async function setupMcpLauncher(
   }
 
   const rule = MCP_LAUNCHER_RULES[id];
-  if (!rules || !rule) return result;
+  if (!rule) return result;
+  if (!rules) {
+    // The launcher does take rules; the run just did not ask for them.
+    result.ruleStatus = 'skipped';
+    return result;
+  }
 
-  const rulePath = rule.globalPath(ctx);
+  const rulePath =
+    openclawConfiguredWorkspace(runtimeEnv, id) ?? rule.globalPath(ctx);
   // The launcher creates this file itself on first run, seeded with its own
   // instructions. Creating it here first would leave the user with our section
   // and none of that, so the rule waits for a workspace that exists.

@@ -156,7 +156,13 @@ export function upsertYamlServer(
   // assigning a plain object leaves the same error one level down. An absent
   // key needs none of this, since setIn creates the path itself.
   if (doc.getIn([serversKey]) === null) {
-    doc.setIn([serversKey], doc.createNode({}));
+    const empty = doc.getIn([serversKey], true) as { comment?: string | null };
+    const section = doc.createNode({});
+    // That comment belongs to the null value being replaced. A block map has
+    // no inline slot on its key, so it moves to the head of the section
+    // rather than being dropped with the node it was attached to.
+    if (empty?.comment) section.commentBefore = empty.comment;
+    doc.setIn([serversKey], section);
   }
   doc.setIn([serversKey, serverName], entry);
 
@@ -343,8 +349,11 @@ export async function appendRuleSection(
   filePath: string,
   content: string
 ): Promise<'installed' | 'updated'> {
-  const section = `${RULE_MARKER}\n${content}${RULE_MARKER}`;
   const existing = (await readIfExists(filePath)) ?? '';
+  // The file belongs to the user, so the section adopts its line endings
+  // instead of mixing LF into a CRLF document.
+  const eol = existing.includes('\r\n') ? '\r\n' : '\n';
+  const section = `${RULE_MARKER}${eol}${content.replace(/\r?\n/g, eol)}${RULE_MARKER}`;
   const marker = escapeRegExp(RULE_MARKER);
   const fenced = new RegExp(`${marker}\\r?\\n[\\s\\S]*?${marker}`);
 
@@ -359,8 +368,11 @@ export async function appendRuleSection(
   }
 
   const separator =
-    existing.length === 0 ? '' : existing.endsWith('\n') ? '\n' : '\n\n';
-  await writeFileEnsuringDir(filePath, `${existing}${separator}${section}\n`);
+    existing.length === 0 ? '' : existing.endsWith('\n') ? eol : `${eol}${eol}`;
+  await writeFileEnsuringDir(
+    filePath,
+    `${existing}${separator}${section}${eol}`
+  );
   return 'installed';
 }
 

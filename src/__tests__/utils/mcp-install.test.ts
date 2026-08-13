@@ -383,6 +383,21 @@ describe('mcp install', () => {
       });
     });
 
+    it('keeps a comment that sat on the empty section', () => {
+      const { content } = upsertYamlServer(
+        'model: opus\nmcp_servers: # servers live here\n',
+        'mcp_servers',
+        'firecrawl',
+        { url: MCP_URL }
+      );
+
+      expect(content).toContain('# servers live here');
+      expect(parseYaml(content)).toEqual({
+        model: 'opus',
+        mcp_servers: { firecrawl: { url: MCP_URL } },
+      });
+    });
+
     it('keeps a byte order mark and CRLF line endings', () => {
       const existing =
         '\uFEFFmodel: opus\r\nterminal:\r\n  backend: docker\r\n';
@@ -444,6 +459,18 @@ describe('mcp install', () => {
       expect(result.match(/<!-- firecrawl -->/g)).toHaveLength(2);
       expect(result).not.toContain('first');
     });
+  });
+
+  it('keeps the line endings of a CRLF rule file', async () => {
+    const file = path.join(root, 'AGENTS.md');
+    writeFileSync(file, '# Title\r\n\r\nBody line.\r\n');
+
+    await appendRuleSection(file, 'RULE ONE\nRULE TWO\n');
+
+    const written = read(file);
+    expect(written).toContain('\r\n');
+    expect(/[^\r]\n/.test(written)).toBe(false);
+    expect(written).toContain('Body line.');
   });
 
   describe('setupMcpClient', () => {
