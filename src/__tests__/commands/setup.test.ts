@@ -32,7 +32,11 @@ import { configureWebDefaults } from '../../utils/web-defaults';
 import { getApiKey } from '../../utils/config';
 import { browserLogin, isAuthenticated } from '../../utils/auth';
 import { saveCredentials } from '../../utils/credentials';
-import { MCP_CLIENTS, type McpClientId } from '../../utils/mcp-clients';
+import {
+  MCP_CLIENTS,
+  RULE_MARKER,
+  type McpClientId,
+} from '../../utils/mcp-clients';
 
 const MCP_URL = 'https://mcp.firecrawl.dev/v2/mcp';
 
@@ -811,6 +815,69 @@ describe('handleSetupCommand', () => {
       false
     );
   });
+  it('fences the rule into an existing OpenClaw workspace AGENTS.md', async () => {
+    const workspace = path.join(sandboxHome, '.openclaw', 'workspace');
+    mkdirSync(workspace, { recursive: true });
+    const agentsFile = path.join(workspace, 'AGENTS.md');
+    writeFileSync(agentsFile, '# My workspace\n\nKeep this text.\n');
+
+    await handleSetupCommand('mcp', {
+      clients: ['openclaw'],
+      yes: true,
+      rules: true,
+    } as never);
+
+    const written = readFileSync(agentsFile, 'utf-8');
+    expect(written).toContain('# My workspace');
+    expect(written).toContain('Keep this text.');
+    expect(written).toContain('firecrawl_search');
+
+    // A rerun replaces the fenced section rather than adding a second copy.
+    await handleSetupCommand('mcp', {
+      clients: ['openclaw'],
+      yes: true,
+      rules: true,
+    } as never);
+    const rerun = readFileSync(agentsFile, 'utf-8');
+    expect(rerun.match(new RegExp(RULE_MARKER, 'g'))).toHaveLength(2);
+    expect(rerun).toBe(written);
+  });
+
+  it('leaves the OpenClaw rule alone until its workspace exists', async () => {
+    await handleSetupCommand('mcp', {
+      clients: ['openclaw'],
+      yes: true,
+      rules: true,
+    } as never);
+
+    // Creating AGENTS.md before OpenClaw bootstraps it would cost the user the
+    // instructions the launcher seeds that file with.
+    expect(
+      existsSync(path.join(sandboxHome, '.openclaw', 'workspace', 'AGENTS.md'))
+    ).toBe(false);
+  });
+
+  it('follows OPENCLAW_WORKSPACE_DIR when the workspace has moved', async () => {
+    const moved = path.join(sandboxHome, 'elsewhere');
+    mkdirSync(moved, { recursive: true });
+    writeFileSync(path.join(moved, 'AGENTS.md'), '# Moved\n');
+    process.env.OPENCLAW_WORKSPACE_DIR = moved;
+
+    try {
+      await handleSetupCommand('mcp', {
+        clients: ['openclaw'],
+        yes: true,
+        rules: true,
+      } as never);
+
+      expect(readFileSync(path.join(moved, 'AGENTS.md'), 'utf-8')).toContain(
+        'firecrawl_search'
+      );
+    } finally {
+      delete process.env.OPENCLAW_WORKSPACE_DIR;
+    }
+  });
+
   it('uses each client native environment binding with --agent all', async () => {
     const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-all-env-test-'));
     // Make several agents detectable so --agent all has editors to configure.

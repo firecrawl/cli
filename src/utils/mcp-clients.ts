@@ -294,6 +294,33 @@ export const MCP_LAUNCHER_NAMES: Record<McpLauncherId, string> = {
   openclaw: 'OpenClaw',
 };
 
+/**
+ * OpenClaw keeps its bootstrap files in a workspace directory, which the user
+ * can move. An explicit config value wins over the environment, but that config
+ * is JSON5 and out of reach here, so this covers the documented defaults only.
+ */
+function openclawWorkspaceDir(ctx: McpContext): string {
+  const explicit = ctx.env.OPENCLAW_WORKSPACE_DIR;
+  if (explicit && explicit !== '') return explicit;
+  const profile = ctx.env.OPENCLAW_PROFILE;
+  const suffix =
+    profile && profile !== '' && profile !== 'default' ? `-${profile}` : '';
+  return path.join(ctx.home, '.openclaw', `workspace${suffix}`);
+}
+
+/**
+ * A launcher owns its MCP registration but can still read an instruction file
+ * we write. OpenClaw injects its workspace `AGENTS.md` into the system prompt
+ * on every turn, so the rule belongs there, fenced like any shared file.
+ */
+export const MCP_LAUNCHER_RULES: Partial<Record<McpLauncherId, McpRuleSpec>> = {
+  openclaw: {
+    kind: 'append',
+    content: RULE_BODY,
+    globalPath: (ctx) => path.join(openclawWorkspaceDir(ctx), 'AGENTS.md'),
+  },
+};
+
 export const ALL_MCP_LAUNCHER_IDS: readonly McpLauncherId[] = ['openclaw'];
 
 export const ALL_MCP_TARGET_IDS: readonly McpTargetId[] = [
