@@ -151,8 +151,24 @@ export function upsertYamlServer(
   }
 
   const alreadyExists = doc.hasIn([serversKey, serverName]);
+  // A key with nothing under it parses as a null scalar, and setting a path
+  // through that refuses to descend. It has to become a collection node:
+  // assigning a plain object leaves the same error one level down. An absent
+  // key needs none of this, since setIn creates the path itself.
+  if (doc.getIn([serversKey]) === null) {
+    doc.setIn([serversKey], doc.createNode({}));
+  }
   doc.setIn([serversKey, serverName], entry);
-  return { content: doc.toString(), alreadyExists };
+
+  // Serialising the tree drops a byte order mark and normalises line endings.
+  // Both belong to the user's file, so they are restored on the way out.
+  const bom = content.startsWith('\uFEFF') ? '\uFEFF' : '';
+  const eol = content.includes('\r\n') ? '\r\n' : '\n';
+  const serialized = doc.toString().replace(/^\uFEFF/, '');
+  return {
+    content: `${bom}${serialized.replace(/\r?\n/g, eol)}`,
+    alreadyExists,
+  };
 }
 
 /**

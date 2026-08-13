@@ -368,6 +368,41 @@ describe('mcp install', () => {
       expect(content).not.toContain('https://old');
     });
 
+    it('fills in a server section that exists but is empty', () => {
+      const { content, alreadyExists } = upsertYamlServer(
+        'model: opus\nmcp_servers:\n',
+        'mcp_servers',
+        'firecrawl',
+        { url: MCP_URL }
+      );
+
+      expect(alreadyExists).toBe(false);
+      expect(parseYaml(content)).toEqual({
+        model: 'opus',
+        mcp_servers: { firecrawl: { url: MCP_URL } },
+      });
+    });
+
+    it('keeps a byte order mark and CRLF line endings', () => {
+      const existing =
+        '\uFEFFmodel: opus\r\nterminal:\r\n  backend: docker\r\n';
+
+      const { content } = upsertYamlServer(
+        existing,
+        'mcp_servers',
+        'firecrawl',
+        { url: MCP_URL }
+      );
+
+      expect(content.startsWith('\uFEFF')).toBe(true);
+      expect(content).toContain('\r\n');
+      expect(/[^\r]\n/.test(content)).toBe(false);
+      expect(parseYaml(content.slice(1))).toMatchObject({
+        model: 'opus',
+        mcp_servers: { firecrawl: { url: MCP_URL } },
+      });
+    });
+
     it('refuses a config that does not parse', () => {
       expect(() =>
         upsertYamlServer(
