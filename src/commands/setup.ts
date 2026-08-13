@@ -4,17 +4,10 @@
  */
 
 import { execFileSync, execSync } from 'child_process';
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from 'fs';
+import { existsSync } from 'fs';
 import os from 'os';
 import path from 'path';
 import readline from 'readline';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { getApiKey, updateConfig } from '../utils/config';
 import { browserLogin, isAuthenticated } from '../utils/auth';
 import { saveCredentials } from '../utils/credentials';
@@ -72,7 +65,6 @@ type ResolvedMcpAgent =
   | { kind: 'clients'; ids?: McpTargetId[] }
   | { kind: 'launchers' }
   | { kind: 'skills-only'; agent: string }
-  | { kind: 'hermes' }
   | { kind: 'openclaw' }
   | { kind: 'all-launchers' };
 
@@ -283,9 +275,6 @@ function resolveMcpAgent(agent: string | undefined): ResolvedMcpAgent {
     case 'launchers':
     case 'launcher':
       return { kind: 'launchers' };
-    case 'hermes':
-    case 'hermes-agent':
-      return { kind: 'hermes' };
     case 'openclaw':
       return { kind: 'openclaw' };
     default: {
@@ -689,7 +678,7 @@ export async function installMcp(
     return;
   }
 
-  if (resolvedAgent.kind === 'hermes' || resolvedAgent.kind === 'openclaw') {
+  if (resolvedAgent.kind === 'openclaw') {
     // Routed through the same reporter as every other target so the keyless
     // fallback is stated rather than implied by a bare installer log line.
     await installMcpClients({ ...options, yes: true }, runtimeEnv, [
@@ -764,10 +753,6 @@ async function setupMcpLauncher(
 
   try {
     switch (id) {
-      case 'hermes':
-        await installHermesMcp(runtimeEnv, keyless, true);
-        result.mcpDetail = path.join(ctx.home, '.hermes', 'config.yaml');
-        break;
       case 'openclaw':
         await installOpenClawMcp(runtimeEnv, keyless, true);
         result.mcpDetail = 'via the openclaw CLI';
@@ -977,39 +962,6 @@ function firecrawlMcpConfig(
       runtimeEnv
     ),
   };
-}
-
-export async function installHermesMcp(
-  runtimeEnv: NodeJS.ProcessEnv = process.env,
-  keyless = false,
-  /** Suppress standalone logging when a caller renders its own summary. */
-  quiet = false
-): Promise<void> {
-  const config = firecrawlMcpConfig('hermes', runtimeEnv, keyless);
-  const configPath = path.join(os.homedir(), '.hermes', 'config.yaml');
-  mkdirSync(path.dirname(configPath), { recursive: true });
-
-  const existing = existsSync(configPath)
-    ? readFileSync(configPath, 'utf-8')
-    : '';
-  const root = (parseYaml(existing || '{}') ?? {}) as Record<string, unknown>;
-  const mcpServers =
-    typeof root.mcp_servers === 'object' &&
-    root.mcp_servers !== null &&
-    !Array.isArray(root.mcp_servers)
-      ? (root.mcp_servers as Record<string, unknown>)
-      : {};
-
-  mcpServers.firecrawl = config;
-  root.mcp_servers = mcpServers;
-  writeFileSync(configPath, stringifyYaml(root), {
-    encoding: 'utf-8',
-    mode: 0o600,
-  });
-  if (process.platform !== 'win32') {
-    chmodSync(configPath, 0o600);
-  }
-  if (!quiet) console.log(`Hermes Agent MCP configured at ${configPath}.`);
 }
 
 export async function installOpenClawMcp(

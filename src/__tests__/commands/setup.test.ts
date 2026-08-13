@@ -15,7 +15,6 @@ import {
   handleMakeDefaultCommand,
   handleSetupCommand,
   installMcp,
-  installHermesMcp,
   installOpenClawMcp,
   installSkillsForAgent,
 } from '../../commands/setup';
@@ -550,7 +549,7 @@ describe('handleSetupCommand', () => {
   });
 
   it('detects an installed launcher so the picker can pre-select it', async () => {
-    mkdirSync(path.join(sandboxHome, '.hermes'), { recursive: true });
+    mkdirSync(path.join(sandboxHome, '.openclaw'), { recursive: true });
 
     const { detectMcpLaunchers } = await import('../../utils/mcp-clients');
     expect(
@@ -561,7 +560,26 @@ describe('handleSetupCommand', () => {
         env: { PATH: '' },
         auth: 'keyless',
       })
-    ).toContain('hermes');
+    ).toContain('openclaw');
+  });
+
+  it('detects Hermes as a config-file client, not a launcher', async () => {
+    mkdirSync(path.join(sandboxHome, '.hermes'), { recursive: true });
+
+    const { detectMcpClients, detectMcpLaunchers } =
+      await import('../../utils/mcp-clients');
+    const ctx = {
+      home: sandboxHome,
+      cwd: process.cwd(),
+      platform: process.platform,
+      // Hermes is matched on its config directory alone. An unrelated
+      // JavaScript engine of the same name ships on many machines.
+      env: { PATH: '' },
+      auth: 'keyless' as const,
+    };
+
+    expect(await detectMcpClients(ctx)).toContain('hermes');
+    expect(detectMcpLaunchers(ctx)).not.toContain('hermes');
   });
 
   it('keeps a failing launcher from taking down the other agents', async () => {
@@ -674,7 +692,7 @@ describe('handleSetupCommand', () => {
     process.env.FIRECRAWL_API_KEY = 'fc-test-key';
 
     try {
-      await installHermesMcp();
+      await installMcp({ agent: 'hermes' });
 
       const config = readFileSync(
         path.join(home, '.hermes', 'config.yaml'),
@@ -785,10 +803,13 @@ describe('handleSetupCommand', () => {
   it('treats --agent launchers as the launchers, not as every agent', async () => {
     await handleSetupCommand('mcp', { agent: 'launchers', yes: true });
 
-    expect(existsSync(path.join(sandboxHome, '.hermes', 'config.yaml'))).toBe(
-      true
-    );
+    // OpenClaw is the only launcher; it is configured through its own CLI.
+    const config = vi.mocked(execFileSync).mock.calls[0]?.[1]?.[3] as string;
+    expect(config).toContain(MCP_URL);
     expect(existsSync(globalConfigPath('cursor', sandboxHome))).toBe(false);
+    expect(existsSync(path.join(sandboxHome, '.hermes', 'config.yaml'))).toBe(
+      false
+    );
   });
   it('uses each client native environment binding with --agent all', async () => {
     const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-all-env-test-'));

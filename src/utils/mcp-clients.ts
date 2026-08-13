@@ -19,13 +19,23 @@ export const FIRECRAWL_MCP_URL = 'https://mcp.firecrawl.dev/v2/mcp';
 export const MCP_SERVER_NAME = 'firecrawl';
 export const API_KEY_ENV_VAR = 'FIRECRAWL_API_KEY';
 
-export type McpClientId = 'claude' | 'cursor' | 'vscode' | 'codex' | 'opencode';
+export type McpClientId =
+  | 'claude'
+  | 'cursor'
+  | 'vscode'
+  | 'codex'
+  | 'opencode'
+  | 'hermes';
 
 /**
  * Agent launchers that own their MCP configuration rather than reading a file
  * we write. They are offered alongside the editors but installed differently.
+ *
+ * OpenClaw is the only one: its config is JSON5, which the editor we patch JSON
+ * with cannot read, and `openclaw mcp set` is the vendor-documented path that
+ * also normalises the entry. Hermes reads plain YAML, so it is a client.
  */
-export type McpLauncherId = 'hermes' | 'openclaw';
+export type McpLauncherId = 'openclaw';
 
 export type McpTargetId = McpClientId | McpLauncherId;
 
@@ -58,10 +68,15 @@ export interface McpRuleSpec {
 export interface McpClient {
   id: McpClientId;
   name: string;
-  format: 'json' | 'toml';
+  format: 'json' | 'toml' | 'yaml';
   /** Key of the map holding MCP servers in this agent's config. */
   serversKey: string;
   globalConfigPath: (ctx: McpContext) => string;
+  /**
+   * Mode for a config file we create. Only applied on creation, so a file the
+   * user already owns keeps the permissions they gave it.
+   */
+  createMode?: number;
   buildEntry: (ctx: McpContext) => Record<string, unknown>;
   /** Absent when the agent has no rules mechanism. */
   rule?: McpRuleSpec;
@@ -247,6 +262,23 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
     },
     detectPaths: (ctx) => [path.join(ctx.home, '.config', 'opencode')],
   },
+  hermes: {
+    id: 'hermes',
+    name: 'Hermes Agent',
+    format: 'yaml',
+    serversKey: 'mcp_servers',
+    globalConfigPath: (ctx) => path.join(ctx.home, '.hermes', 'config.yaml'),
+    // Hermes keeps secrets in ~/.hermes/.env rather than here, but the rest of
+    // this file is the user's, so a file we create starts owner-only.
+    createMode: 0o600,
+    // Documented HTTP server shape: `url` plus a `headers` mapping. Hermes
+    // expands `${VAR}` in any string value in a server entry.
+    buildEntry: (ctx) =>
+      withEnvAuth(ctx, { url: FIRECRAWL_MCP_URL }, ENV_HEADER.shell),
+    // No `rule`: Hermes reads AGENTS.md from the project directory, and setup
+    // only ever writes global config, so there is no global rule file to own.
+    detectPaths: (ctx) => [path.join(ctx.home, '.hermes')],
+  },
 };
 
 export const ALL_MCP_CLIENT_IDS: readonly McpClientId[] = [
@@ -255,17 +287,14 @@ export const ALL_MCP_CLIENT_IDS: readonly McpClientId[] = [
   'vscode',
   'codex',
   'opencode',
+  'hermes',
 ];
 
 export const MCP_LAUNCHER_NAMES: Record<McpLauncherId, string> = {
-  hermes: 'Hermes Agent',
   openclaw: 'OpenClaw',
 };
 
-export const ALL_MCP_LAUNCHER_IDS: readonly McpLauncherId[] = [
-  'hermes',
-  'openclaw',
-];
+export const ALL_MCP_LAUNCHER_IDS: readonly McpLauncherId[] = ['openclaw'];
 
 export const ALL_MCP_TARGET_IDS: readonly McpTargetId[] = [
   ...ALL_MCP_CLIENT_IDS,
@@ -306,12 +335,11 @@ function binaryOnPath(name: string, ctx: McpContext): boolean {
  * lists agents that look installed, so a miss means the user passes a flag
  * (`--cursor`) instead of seeing an agent they do not have.
  *
- * `hermes` is therefore matched on its config directory alone. The name is also
- * used by an unrelated JavaScript engine that ships with common toolchains, so
- * a PATH lookup reports it present on machines that do not have this agent.
+ * Hermes is detected by its config directory alone, through `detectPaths`. Its
+ * name is also used by an unrelated JavaScript engine that ships with common
+ * toolchains, so a PATH lookup reports it present on machines without it.
  */
 const LAUNCHER_DETECT: Record<McpLauncherId, (ctx: McpContext) => boolean> = {
-  hermes: (ctx) => existsSync(path.join(ctx.home, '.hermes')),
   openclaw: (ctx) =>
     existsSync(path.join(ctx.home, '.openclaw')) ||
     binaryOnPath('openclaw', ctx),
@@ -337,6 +365,8 @@ const CLIENT_ALIASES: Record<string, McpClientId> = {
   'codex-gui': 'codex',
   opencode: 'opencode',
   'open-code': 'opencode',
+  hermes: 'hermes',
+  'hermes-agent': 'hermes',
 };
 
 export function resolveMcpClientId(agent: string): McpClientId | undefined {
