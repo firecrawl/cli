@@ -924,6 +924,22 @@ describe('handleSetupCommand', () => {
     });
   });
 
+  it('keeps credential configuration off the sign-in endpoint', async () => {
+    process.env.FIRECRAWL_API_KEY = 'fc-test-key';
+
+    // Called directly with sign-in but without keyless, the shape a caller
+    // outside this file could reach.
+    await installOpenClawMcp(process.env, false, true, true);
+
+    const config = vi.mocked(execFileSync).mock.calls[0]?.[1]?.[3] as string;
+    expect(JSON.parse(config)).toEqual({
+      url: `${MCP_URL}-oauth`,
+      transport: 'streamable-http',
+      auth: 'oauth',
+    });
+    expect(config).not.toContain('Authorization');
+  });
+
   it('refuses to combine sign-in with keyless', async () => {
     await expect(
       handleSetupCommand('mcp', {

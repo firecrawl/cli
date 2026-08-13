@@ -1066,9 +1066,13 @@ function firecrawlMcpConfig(
 } {
   return {
     url: firecrawlHostedMcpUrl(oauth),
+    // Sign-in replaces the credential rather than travelling beside it, so the
+    // key is dropped here too. Callers already choose one or the other, but a
+    // helper this public must not put credential configuration on the sign-in
+    // endpoint just because it was called directly.
     headers: firecrawlMcpHeaders(
       agent,
-      keyless ? undefined : getApiKey(),
+      keyless || oauth ? undefined : getApiKey(),
       runtimeEnv
     ),
   };
