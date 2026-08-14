@@ -643,7 +643,7 @@ firecrawl agent <job-id> --wait
 | Option                      | Description                                                   |
 | --------------------------- | ------------------------------------------------------------- |
 | `--urls <urls>`             | Comma-separated URLs to focus extraction on                   |
-| `--model <model>`           | `spark-1-mini` (default, cheaper) or `spark-1-pro` (accurate) |
+| `--model <model>`           | `spark-1-pro` (default, accurate) or `spark-1-mini` (cheaper) |
 | `--schema <json>`           | JSON schema for structured output (inline JSON string)        |
 | `--schema-file <path>`      | Path to JSON schema file for structured output                |
 | `--max-credits <number>`    | Maximum credits to spend (job fails if exceeded)              |

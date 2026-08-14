@@ -11,7 +11,7 @@ export type AgentStatus = 'processing' | 'completed' | 'failed' | 'cancelled';
 export interface AgentOptions {
   /** Natural language prompt describing the data to extract */
   prompt: string;
-  /** Model to use: spark-1-mini (default, cheaper) or spark-1-pro (higher accuracy) */
+  /** Model to use: spark-1-pro (default, higher accuracy) or spark-1-mini (cheaper) */
   model?: AgentModel;
   /** Specific URLs to focus extraction on */
   urls?: string[];

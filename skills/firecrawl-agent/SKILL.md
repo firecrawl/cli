@@ -35,7 +35,7 @@ firecrawl agent "get feature list" --urls "<url>" --wait -o .firecrawl/features.
 | Option                 | Description                               |
 | ---------------------- | ----------------------------------------- |
 | `--urls <urls>`        | Starting URLs for the agent               |
-| `--model <model>`      | Model to use: spark-1-mini or spark-1-pro |
+| `--model <model>`      | Model: spark-1-pro (default) or spark-1-mini |
 | `--schema <json>`      | JSON schema for structured output         |
 | `--schema-file <path>` | Path to JSON schema file                  |
 | `--max-credits <n>`    | Credit limit for this agent run           |
