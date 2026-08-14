@@ -625,6 +625,34 @@ describe('handleSetupCommand', () => {
     expect(existsSync(path.join(sandboxHome, '.claude.json'))).toBe(true);
   });
 
+  it('asks about rules for --agent all just like a single agent', async () => {
+    mkdirSync(path.join(sandboxHome, '.cursor'), { recursive: true });
+    const { confirm } = await import('@inquirer/prompts');
+    vi.mocked(confirm).mockResolvedValue(true);
+
+    const originalIsTTY = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, 'isTTY', {
+      configurable: true,
+      value: true,
+    });
+
+    try {
+      // Naming the agents skips the picker on its own; it must not also
+      // decide the rules question on the user's behalf.
+      await handleSetupCommand('mcp', { agent: 'all' });
+
+      expect(confirm).toHaveBeenCalledOnce();
+      expect(
+        existsSync(path.join(sandboxHome, '.cursor', 'rules', 'firecrawl.mdc'))
+      ).toBe(true);
+    } finally {
+      Object.defineProperty(process.stdin, 'isTTY', {
+        configurable: true,
+        value: originalIsTTY,
+      });
+    }
+  });
+
   it('surfaces total failure even in quiet mode', async () => {
     mkdirSync(path.join(sandboxHome, '.cursor'), { recursive: true });
     writeFileSync(path.join(sandboxHome, '.cursor', 'mcp.json'), '{ broken');

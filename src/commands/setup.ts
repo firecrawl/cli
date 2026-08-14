@@ -699,19 +699,15 @@ export async function installMcp(
   if (resolvedAgent.kind === 'openclaw') {
     // Routed through the same reporter as every other target so the keyless
     // fallback is stated rather than implied by a bare installer log line.
-    await installMcpClients({ ...options, yes: true }, runtimeEnv, [
-      resolvedAgent.kind,
-    ]);
+    await installMcpClients(options, runtimeEnv, [resolvedAgent.kind]);
     return;
   }
   if (resolvedAgent.kind === 'launchers') {
-    await installMcpClients({ ...options, yes: true }, runtimeEnv, [
-      ...ALL_MCP_LAUNCHER_IDS,
-    ]);
+    await installMcpClients(options, runtimeEnv, [...ALL_MCP_LAUNCHER_IDS]);
     return;
   }
   if (resolvedAgent.kind === 'all-launchers') {
-    await installMcpClients({ ...options, yes: true }, runtimeEnv, undefined, {
+    await installMcpClients(options, runtimeEnv, undefined, {
       includeAllLaunchers: true,
     });
     return;
@@ -889,6 +885,8 @@ async function installMcpClients(
   // Prompts only make sense when someone is there to answer them.
   const nonInteractive = Boolean(options.yes) || !process.stdin.isTTY;
 
+  // Naming targets is what skips the picker below; nothing here needs `yes`,
+  // which would also answer the rules prompt on the user's behalf.
   let selected = includeAllLaunchers
     ? [...ALL_MCP_CLIENT_IDS]
     : (explicitIds ?? options.clients);
