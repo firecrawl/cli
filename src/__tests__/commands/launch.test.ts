@@ -317,6 +317,52 @@ describe('handleLaunchCommand', () => {
     expect(installSkillsForAgent).not.toHaveBeenCalled();
   });
 
+  it('does not claim MCP for a target Firecrawl does not configure', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await handleLaunchCommand('hermes', { install: true, skipSkills: true });
+
+      const output = log.mock.calls.flat().join(' ');
+      expect(output).toContain('Hermes Agent is set up.');
+      expect(output).not.toContain('configured with Firecrawl MCP');
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('still claims MCP for a target it does configure', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await handleLaunchCommand('codex', { install: true, skipSkills: true });
+
+      expect(log.mock.calls.flat().join(' ')).toContain(
+        'Codex is configured with Firecrawl MCP.'
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('does not claim MCP when the run skipped it', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await handleLaunchCommand('codex', {
+        install: true,
+        skipMcp: true,
+        skipSkills: true,
+      });
+
+      expect(log.mock.calls.flat().join(' ')).not.toContain(
+        'configured with Firecrawl MCP'
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it('configures Hermes MCP and skills, then launches Hermes Agent', async () => {
     await handleLaunchCommand('hermes');
 

@@ -545,13 +545,6 @@ export async function installMcp(
     );
   }
 
-  // A flag naming an agent we support but do not configure is answered with
-  // the URL rather than treated as an error.
-  if (options.urlOnly?.length) {
-    reportUrlOnly(options.urlOnly, options);
-    if (!options.clients?.length && !options.agent) return;
-  }
-
   const resolvedAgent = resolveMcpAgent(options.agent);
 
   if (resolvedAgent.kind === 'skills-only') {
@@ -563,10 +556,6 @@ export async function installMcp(
     return;
   }
 
-  if (resolvedAgent.kind === 'url-only') {
-    reportUrlOnly(resolvedAgent.ids, options);
-    return;
-  }
   if (resolvedAgent.kind === 'all') {
     // `all` covers the agents we do not configure too, and their URL is the
     // whole answer for them. A writer failing must not swallow it, so the
@@ -581,7 +570,20 @@ export async function installMcp(
     return;
   }
 
-  await installMcpClients(options, runtimeEnv, resolvedAgent.ids);
+  // Every agent named this run that setup does not configure, whichever flag
+  // form named it. Reported once, and never in place of the rest of the run.
+  const urlOnly = [
+    ...(options.urlOnly ?? []),
+    ...(resolvedAgent.kind === 'url-only' ? resolvedAgent.ids : []),
+  ].filter((id, index, all) => all.indexOf(id) === index);
+  if (urlOnly.length > 0) reportUrlOnly(urlOnly, options);
+
+  const explicitIds =
+    resolvedAgent.kind === 'clients' ? resolvedAgent.ids : undefined;
+  // The URL was the whole request only when nothing else was named.
+  if (urlOnly.length > 0 && !explicitIds && !options.clients?.length) return;
+
+  await installMcpClients(options, runtimeEnv, explicitIds);
 }
 
 /** Shorten a path for display: relative inside the project, `~` under home. */
@@ -660,7 +662,7 @@ async function installMcpClients(
     const detected: McpClientId[] = await detectMcpClients(ctx);
     if (detected.length === 0) {
       throw new Error(
-        'No coding agents detected. Pass an agent flag such as --claude or --cursor.'
+        `No coding agents detected. Pass an agent flag such as --claude or --cursor, or point one at ${mcpUrlFor(options)} yourself.`
       );
     }
     if (nonInteractive) {

@@ -719,6 +719,19 @@ describe('handleSetupCommand', () => {
     }
   });
 
+  it('configures the writers named beside an unwritten agent', async () => {
+    mkdirSync(path.join(sandboxHome, '.cursor'), { recursive: true });
+
+    // --agent names one we do not configure; the flag names one we do.
+    await handleSetupCommand('mcp', {
+      agent: 'hermes',
+      clients: ['cursor'],
+      yes: true,
+    } as never);
+
+    expect(existsSync(globalConfigPath('cursor', sandboxHome))).toBe(true);
+  });
+
   it('still configures the writers when both kinds are named', async () => {
     mkdirSync(path.join(sandboxHome, '.cursor'), { recursive: true });
 
