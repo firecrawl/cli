@@ -537,6 +537,14 @@ export async function installMcp(
   // without mutating the parent shell or exposing the key to setup commands.
   runtimeEnv: NodeJS.ProcessEnv = process.env
 ): Promise<void> {
+  // Checked before anything else reports or returns, so an agent we only print
+  // a URL for cannot accept a combination the writers reject.
+  if (options.oauth && options.keyless) {
+    throw new Error(
+      'Choose either --oauth or --keyless. Signing in and running anonymously are different endpoints.'
+    );
+  }
+
   // A flag naming an agent we support but do not configure is answered with
   // the URL rather than treated as an error.
   if (options.urlOnly?.length) {
@@ -619,12 +627,6 @@ async function installMcpClients(
   explicitIds?: McpClientId[],
   { includeAllLaunchers = false } = {}
 ): Promise<void> {
-  if (options.oauth && options.keyless) {
-    throw new Error(
-      'Choose either --oauth or --keyless. Signing in and running anonymously are different endpoints.'
-    );
-  }
-
   const apiKey = options.oauth || options.keyless ? undefined : getApiKey();
   // Sign-in is a different endpoint rather than a different credential, so it
   // overrides the key lookup entirely. Otherwise a stored key cannot be written

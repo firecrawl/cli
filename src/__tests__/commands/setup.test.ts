@@ -639,6 +639,18 @@ describe('handleSetupCommand', () => {
     ).rejects.toThrow(/either --oauth or --keyless/);
   });
 
+  it('rejects that combination for an agent it only prints a URL for', async () => {
+    // This path returns early, so the check has to run ahead of it.
+    await expect(
+      handleSetupCommand('mcp', {
+        urlOnly: ['hermes'],
+        oauth: true,
+        keyless: true,
+        yes: true,
+      } as never)
+    ).rejects.toThrow(/either --oauth or --keyless/);
+  });
+
   it('prints the server URL for an agent it does not configure', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 

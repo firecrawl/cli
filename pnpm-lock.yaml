@@ -20,9 +20,6 @@ importers:
       jsonc-parser:
         specifier: 3.3.1
         version: 3.3.1
-      yaml:
-        specifier: ^2.9.0
-        version: 2.9.0
       zod-to-json-schema:
         specifier: 3.24.6
         version: 3.24.6(zod@3.25.76)
