@@ -642,7 +642,10 @@ async function stepIntegrations(
           apiKey && process.env.FIRECRAWL_API_KEY === apiKey
         );
         try {
-          await installMcp({
+          // Setup reports each agent itself, and a run where only some of them
+          // landed resolves rather than throwing, so claim success only when it
+          // says every agent was configured.
+          mcpInstalled = await installMcp({
             global: options.global,
             agent: options.agent ?? (environmentBacked ? 'all' : undefined),
             yes: true,
@@ -652,8 +655,11 @@ async function stepIntegrations(
             // credential continues through the authenticated setup path.
             keyless: !environmentBacked,
           });
-          console.log(`  ${green}✓${reset} MCP server installed`);
-          mcpInstalled = true;
+          console.log(
+            mcpInstalled
+              ? `  ${green}✓${reset} MCP server installed`
+              : `  ${dim}Run "firecrawl setup mcp" later to finish the rest.${reset}`
+          );
         } catch (error) {
           const message =
             error instanceof Error

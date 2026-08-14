@@ -680,6 +680,31 @@ describe('handleSetupCommand', () => {
     ).rejects.toThrow('Failed to configure Firecrawl MCP');
   });
 
+  it('reports a partial run rather than throwing in quiet mode', async () => {
+    // OpenClaw is registered through its own CLI, which is not on PATH here.
+    vi.mocked(execFileSync).mockImplementation(() => {
+      throw new Error('openclaw missing');
+    });
+
+    const configured = await installMcp({
+      clients: ['cursor', 'openclaw'],
+      yes: true,
+      quiet: true,
+      keyless: true,
+    });
+
+    // Cursor landed, so this stays a success for the run as a whole, and a
+    // quiet caller has to learn about OpenClaw from the return value.
+    expect(configured).toBe(false);
+    expect(existsSync(globalConfigPath('cursor', sandboxHome))).toBe(true);
+  });
+
+  it('reports a clean run when every agent was configured', async () => {
+    await expect(
+      installMcp({ clients: ['cursor'], yes: true, quiet: true, keyless: true })
+    ).resolves.toBe(true);
+  });
+
   it('configures every client with --agent all, detected or not', async () => {
     await handleSetupCommand('mcp', {
       agent: 'all',
@@ -958,6 +983,54 @@ describe('handleSetupCommand', () => {
       'firecrawl_search'
     );
     expect(readFileSync(defaultAgents, 'utf-8')).toBe('# Default\n');
+  });
+
+  it('expands a ~/ workspace reported by the CLI against this home', async () => {
+    const moved = path.join(sandboxHome, 'tilde-workspace');
+    mkdirSync(moved, { recursive: true });
+    writeFileSync(path.join(moved, 'AGENTS.md'), '# Tilde\n');
+
+    vi.mocked(execFileSync).mockImplementation((_cmd, args) => {
+      const haystack = Array.isArray(args) ? args.join(' ') : String(args);
+      return haystack.includes('config') && haystack.includes('get')
+        ? JSON.stringify('~/tilde-workspace')
+        : '';
+    });
+
+    await handleSetupCommand('mcp', {
+      clients: ['openclaw'],
+      yes: true,
+      rules: true,
+    } as never);
+
+    expect(readFileSync(path.join(moved, 'AGENTS.md'), 'utf-8')).toContain(
+      'firecrawl_search'
+    );
+  });
+
+  it('does not read a ~other workspace as a path under this home', async () => {
+    // `~other/ws` is another account's home to a shell. Treating the tilde as
+    // ours would write the rule into $HOME/other/ws instead.
+    const lookalike = path.join(sandboxHome, 'other', 'ws');
+    mkdirSync(lookalike, { recursive: true });
+    writeFileSync(path.join(lookalike, 'AGENTS.md'), '# Someone else\n');
+
+    vi.mocked(execFileSync).mockImplementation((_cmd, args) => {
+      const haystack = Array.isArray(args) ? args.join(' ') : String(args);
+      return haystack.includes('config') && haystack.includes('get')
+        ? JSON.stringify('~other/ws')
+        : '';
+    });
+
+    await handleSetupCommand('mcp', {
+      clients: ['openclaw'],
+      yes: true,
+      rules: true,
+    } as never);
+
+    expect(readFileSync(path.join(lookalike, 'AGENTS.md'), 'utf-8')).toBe(
+      '# Someone else\n'
+    );
   });
 
   it('leaves the OpenClaw rule alone until its workspace exists', async () => {

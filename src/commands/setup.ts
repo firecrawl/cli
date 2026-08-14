@@ -670,7 +670,10 @@ export async function installMcp(
   // client it starts. This lets MCP config keep an indirect env reference
   // without mutating the parent shell or exposing the key to setup commands.
   runtimeEnv: NodeJS.ProcessEnv = process.env
-): Promise<void> {
+  // True only when every agent this run targeted was configured. Quiet callers
+  // report their own outcome and are not told about a partial run by an
+  // exception, so they have to be told by the return value.
+): Promise<boolean> {
   // Checked before anything else reports or returns, so no branch can accept a
   // combination the writers reject.
   if (options.oauth && options.keyless) {
@@ -691,27 +694,24 @@ export async function installMcp(
     console.log(
       `Firecrawl does not write MCP config for ${resolvedAgent.agent}. Point it at ${FIRECRAWL_MCP_URL} to connect it yourself.`
     );
-    return;
+    return false;
   }
 
   if (resolvedAgent.kind === 'openclaw') {
     // Routed through the same reporter as every other target so the keyless
     // fallback is stated rather than implied by a bare installer log line.
-    await installMcpClients(options, runtimeEnv, [resolvedAgent.kind]);
-    return;
+    return installMcpClients(options, runtimeEnv, [resolvedAgent.kind]);
   }
   if (resolvedAgent.kind === 'launchers') {
-    await installMcpClients(options, runtimeEnv, [...ALL_MCP_LAUNCHER_IDS]);
-    return;
+    return installMcpClients(options, runtimeEnv, [...ALL_MCP_LAUNCHER_IDS]);
   }
   if (resolvedAgent.kind === 'all-launchers') {
-    await installMcpClients(options, runtimeEnv, undefined, {
+    return installMcpClients(options, runtimeEnv, undefined, {
       includeAllLaunchers: true,
     });
-    return;
   }
 
-  await installMcpClients(options, runtimeEnv, resolvedAgent.ids);
+  return installMcpClients(options, runtimeEnv, resolvedAgent.ids);
 }
 
 /** Shorten a path for display: relative inside the project, `~` under home. */
@@ -743,13 +743,29 @@ async function pickMcpClients(
 }
 
 /**
+ * The path under this user's home when `value` names one, matching the only
+ * two forms a shell expands against the current user. `~other/ws` names another
+ * account's home, which is not ours to guess, so it stays a literal path
+ * instead of silently becoming `$HOME/other/ws`.
+ */
+function homeRelativeSuffix(
+  value: string,
+  platform: NodeJS.Platform
+): string | undefined {
+  if (value === '~') return '';
+  if (value.startsWith('~/')) return value.slice(2);
+  if (platform === 'win32' && value.startsWith('~\\')) return value.slice(2);
+  return undefined;
+}
+
+/**
  * Ask OpenClaw where its workspace is. Config can move it, the environment can
  * move it, and a profile changes it again, but that config file is JSON5 and
  * out of reach here, so the launcher itself is the authority. Falls back to the
  * documented defaults whenever the CLI cannot answer.
  */
 function openclawConfiguredWorkspace(
-  runtimeEnv: NodeJS.ProcessEnv,
+  ctx: McpContext,
   id: McpLauncherId
 ): string | undefined {
   if (id !== 'openclaw') return undefined;
@@ -768,9 +784,8 @@ function openclawConfiguredWorkspace(
     );
     const value: unknown = JSON.parse(String(stdout));
     if (typeof value !== 'string' || value === '') return undefined;
-    const expanded = value.startsWith('~')
-      ? path.join(os.homedir(), value.slice(1))
-      : value;
+    const suffix = homeRelativeSuffix(value, ctx.platform);
+    const expanded = suffix === undefined ? value : path.join(ctx.home, suffix);
     return path.join(expanded, 'AGENTS.md');
   } catch {
     return undefined;
@@ -829,8 +844,7 @@ async function setupMcpLauncher(
     return result;
   }
 
-  const rulePath =
-    openclawConfiguredWorkspace(runtimeEnv, id) ?? rule.globalPath(ctx);
+  const rulePath = openclawConfiguredWorkspace(ctx, id) ?? rule.globalPath(ctx);
   // The launcher creates this file itself on first run, seeded with its own
   // instructions. Creating it here first would leave the user with our section
   // and none of that, so the rule waits for a workspace that exists.
@@ -864,7 +878,7 @@ async function installMcpClients(
   runtimeEnv: NodeJS.ProcessEnv,
   explicitIds?: McpTargetId[],
   { includeAllLaunchers = false } = {}
-): Promise<void> {
+): Promise<boolean> {
   const apiKey = options.oauth || options.keyless ? undefined : getApiKey();
   // Sign-in is a different endpoint rather than a different credential, so it
   // overrides the key lookup entirely. Otherwise a stored key cannot be written
@@ -908,7 +922,7 @@ async function installMcpClients(
       selected = await pickMcpClients(detected);
       if (selected.length === 0) {
         console.log('No agents selected. Nothing changed.');
-        return;
+        return false;
       }
     }
   }
@@ -937,6 +951,7 @@ async function installMcpClients(
   }
 
   reportMcpResults(results, ctx, options, Boolean(apiKey));
+  return results.every((result) => result.mcpStatus !== 'failed');
 }
 
 function ruleLine(
