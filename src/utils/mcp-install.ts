@@ -415,7 +415,10 @@ export async function setupMcpClient(
     result.mcpDetail = error instanceof Error ? error.message : String(error);
   }
 
-  if (!options.rules) return result;
+  // The rule tells an agent to prefer Firecrawl tools. Writing one for an agent
+  // whose server entry failed would point it at tools it does not have, so the
+  // dependency runs this way only: a failed rule still leaves MCP working.
+  if (!options.rules || result.mcpStatus === 'failed') return result;
 
   try {
     const { status, path: rulePath } = await writeRule(client, ctx);

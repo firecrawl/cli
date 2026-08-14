@@ -543,6 +543,22 @@ describe('handleSetupCommand', () => {
     }
   });
 
+  it('fails the run when only some of the chosen agents worked', async () => {
+    mkdirSync(path.join(sandboxHome, '.cursor'), { recursive: true });
+    mkdirSync(path.join(sandboxHome, '.claude'), { recursive: true });
+    writeFileSync(globalConfigPath('cursor', sandboxHome), '{ oops');
+
+    // Claude is still configured; the command reports that Cursor was not.
+    await expect(
+      handleSetupCommand('mcp', {
+        clients: ['cursor', 'claude'],
+        yes: true,
+      } as never)
+    ).rejects.toThrow(/Cursor/);
+
+    expect(existsSync(path.join(sandboxHome, '.claude.json'))).toBe(true);
+  });
+
   it('surfaces total failure even in quiet mode', async () => {
     mkdirSync(path.join(sandboxHome, '.cursor'), { recursive: true });
     writeFileSync(path.join(sandboxHome, '.cursor', 'mcp.json'), '{ broken');

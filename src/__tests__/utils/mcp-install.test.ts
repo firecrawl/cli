@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  existsSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -442,6 +443,21 @@ describe('mcp install', () => {
 
       expect(result.mcpStatus).toBe('configured');
       expect(result.ruleStatus).toBe('failed');
+    });
+
+    it('writes no rule for an agent whose MCP entry failed', async () => {
+      const file = path.join(ctx.home, '.cursor', 'mcp.json');
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(file, '{ oops');
+
+      const result = await setupMcpClient('cursor', { rules: true, ctx });
+
+      // A rule without a server points the agent at tools it does not have.
+      expect(result.mcpStatus).toBe('failed');
+      expect(result.ruleStatus).toBe('skipped');
+      expect(
+        existsSync(path.join(ctx.home, '.cursor', 'rules', 'firecrawl.mdc'))
+      ).toBe(false);
     });
 
     it('reports failure without touching an unparseable config', async () => {

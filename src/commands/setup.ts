@@ -791,7 +791,13 @@ function reportMcpResults(
     console.log(`${dim}${note}${reset}`);
   }
 
-  if (succeeded.length === 0) {
-    throw new Error('Failed to configure Firecrawl MCP.');
+  // Every agent that could be configured was, but the caller asked for these
+  // agents and did not get them all. Quiet mode is embedded in a larger command
+  // that reports its own outcome, so it still fails only when nothing landed.
+  const failed = results.filter((result) => result.mcpStatus === 'failed');
+  if (failed.length > 0) {
+    throw new Error(
+      `Firecrawl MCP failed for ${failed.map((result) => result.name).join(', ')}.`
+    );
   }
 }
