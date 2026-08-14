@@ -568,10 +568,16 @@ export async function installMcp(
     return;
   }
   if (resolvedAgent.kind === 'all') {
-    await installMcpClients({ ...options, yes: true }, runtimeEnv, [
-      ...ALL_MCP_CLIENT_IDS,
-    ]);
-    reportUrlOnly([...MCP_URL_ONLY_IDS], options);
+    // `all` covers the agents we do not configure too, and their URL is the
+    // whole answer for them. A writer failing must not swallow it, so the
+    // report runs before the failure leaves this function.
+    try {
+      await installMcpClients({ ...options, yes: true }, runtimeEnv, [
+        ...ALL_MCP_CLIENT_IDS,
+      ]);
+    } finally {
+      reportUrlOnly([...MCP_URL_ONLY_IDS], options);
+    }
     return;
   }
 

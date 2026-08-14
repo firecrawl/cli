@@ -559,6 +559,26 @@ describe('handleSetupCommand', () => {
     expect(existsSync(path.join(sandboxHome, '.claude.json'))).toBe(true);
   });
 
+  it('still shows the unwritten agents when --agent all partly fails', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    mkdirSync(path.join(sandboxHome, '.cursor'), { recursive: true });
+    writeFileSync(globalConfigPath('cursor', sandboxHome), '{ oops');
+
+    try {
+      // The URL is the whole answer for those agents, so a writer failing
+      // must not swallow it.
+      await expect(
+        handleSetupCommand('mcp', { agent: 'all', yes: true })
+      ).rejects.toThrow(/Cursor/);
+
+      const output = log.mock.calls.flat().join(' ');
+      expect(output).toContain('Hermes Agent');
+      expect(output).toContain('OpenClaw');
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it('surfaces total failure even in quiet mode', async () => {
     mkdirSync(path.join(sandboxHome, '.cursor'), { recursive: true });
     writeFileSync(path.join(sandboxHome, '.cursor', 'mcp.json'), '{ broken');
