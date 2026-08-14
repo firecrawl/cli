@@ -239,6 +239,36 @@ describe('detectAgents', () => {
     expect(hermes?.mcpRegistered).toBe(false);
   });
 
+  it('detects OpenClaw from a runnable PATH binary without ~/.openclaw', async () => {
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-openclaw-bin-'));
+    const binary = path.join(
+      bin,
+      process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw'
+    );
+    fs.writeFileSync(binary, '');
+    if (process.platform !== 'win32') fs.chmodSync(binary, 0o755);
+    const previousPath = process.env.PATH;
+    process.env.PATH = bin;
+    vi.mocked(execFileSync).mockReturnValue(
+      JSON.stringify({
+        name: 'firecrawl',
+        url: 'https://mcp.firecrawl.dev/v2/mcp',
+      })
+    );
+
+    try {
+      const openclaw = (await detectAgents(tmpHome)).find(
+        (agent) => agent.id === 'openclaw'
+      );
+      expect(openclaw?.installed).toBe(true);
+      expect(openclaw?.mcpRegistered).toBe(true);
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+      fs.rmSync(bin, { recursive: true, force: true });
+    }
+  });
+
   it('reports OpenClaw registered via openclaw mcp show --json', async () => {
     fs.mkdirSync(path.join(tmpHome, '.openclaw'), { recursive: true });
     vi.mocked(execFileSync).mockReturnValue(

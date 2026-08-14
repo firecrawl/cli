@@ -275,10 +275,30 @@ export function upsertTomlServer(
     return finish(`${trimmed}${eol}${eol}${block}${eol}`, false);
   }
 
-  const start = Math.min(...tables.map((table) => table.range[0]));
-  const end = Math.max(...tables.map((table) => table.range[1]));
-  const replaced = `${raw.slice(0, start)}${block}${raw.slice(end)}`;
+  const ordered = [...tables].sort(
+    (left, right) => left.range[0] - right.range[0]
+  );
+  const insertAt = ordered[0].range[0];
+  let next = raw;
+  for (const table of [...ordered].reverse()) {
+    // The block goes in without a trailing newline, so whatever follows the
+    // first table has to keep supplying one. Taking it here would run the last
+    // value straight into the next line: `url = "..."[mcp_servers.other]`.
+    const end =
+      table === ordered[0]
+        ? table.range[1]
+        : tableRangeEnd(next, table.range[1]);
+    next = `${next.slice(0, table.range[0])}${next.slice(end)}`;
+  }
+  const replaced = `${next.slice(0, insertAt)}${block}${next.slice(insertAt)}`;
   return finish(replaced.endsWith('\n') ? replaced : `${replaced}${eol}`, true);
+}
+
+/** Include the table's terminating newline so a hole is not left behind. */
+function tableRangeEnd(raw: string, end: number): number {
+  if (raw.startsWith('\r\n', end)) return end + 2;
+  if (raw[end] === '\n') return end + 1;
+  return end;
 }
 
 /** Rewrite a rule file we own outright. */

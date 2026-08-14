@@ -8,7 +8,6 @@
  * `openclaw mcp show firecrawl --json`.
  */
 
-import { execFileSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -16,11 +15,13 @@ import { parse as parseJsonc } from 'jsonc-parser';
 import { parseDocument } from 'yaml';
 import {
   createMcpContext,
+  detectMcpLaunchers,
   MCP_CLIENTS,
   type McpClientId,
   type McpContext,
 } from './mcp-clients';
 import { tomlHasServer } from './mcp-install';
+import { runClientCommand } from './run-client-command';
 
 export type AgentId =
   | 'cursor'
@@ -51,6 +52,8 @@ interface AgentSpec {
   presencePaths: () => string[];
   /** Config files to scan for a Firecrawl MCP server entry. */
   mcpConfigPaths: (cwd: string) => string[];
+  /** When set, used instead of scanning presencePaths. */
+  isInstalled?: () => boolean;
   /** When set, used instead of scanning mcpConfigPaths. */
   probeRegistered?: () => boolean;
 }
@@ -104,7 +107,7 @@ function fromClient(
  */
 export function openclawFirecrawlRegistered(): boolean {
   try {
-    const stdout = execFileSync(
+    const stdout = runClientCommand(
       'openclaw',
       ['mcp', 'show', 'firecrawl', '--json'],
       {
@@ -113,7 +116,7 @@ export function openclawFirecrawlRegistered(): boolean {
         stdio: ['ignore', 'pipe', 'ignore'],
       }
     );
-    const parsed: unknown = JSON.parse(stdout);
+    const parsed: unknown = JSON.parse(String(stdout));
     if (!parsed || typeof parsed !== 'object') return false;
     return (parsed as { ok?: unknown }).ok !== false;
   } catch {
@@ -164,6 +167,7 @@ const SPECS: AgentSpec[] = [
     id: 'openclaw',
     name: 'OpenClaw',
     presencePaths: () => [path.join(homedir(), '.openclaw')],
+    isInstalled: () => detectMcpLaunchers(doctorContext()).includes('openclaw'),
     mcpConfigPaths: () => [],
     probeRegistered: openclawFirecrawlRegistered,
   },
@@ -264,8 +268,11 @@ export async function detectAgents(
 ): Promise<AgentDetection[]> {
   return Promise.all(
     SPECS.map(async (spec) => {
-      const presence = await Promise.all(spec.presencePaths().map(pathExists));
-      const installed = presence.some(Boolean);
+      const installed = spec.isInstalled
+        ? spec.isInstalled()
+        : (await Promise.all(spec.presencePaths().map(pathExists))).some(
+            Boolean
+          );
 
       const configPaths = spec.mcpConfigPaths(cwd);
       let mcpRegistered = false;

@@ -166,6 +166,92 @@ describe('mcp install', () => {
       );
     });
 
+    it('does not delete an unrelated table between a server and its sub-table', () => {
+      const existing = [
+        '[mcp_servers.firecrawl]',
+        'command = "npx"',
+        '',
+        '[mcp_servers.other]',
+        'url = "https://example.com/mcp"',
+        '',
+        '[mcp_servers.firecrawl.env]',
+        'FIRECRAWL_API_KEY = "fc-old"',
+        '',
+      ].join('\n');
+
+      const { content, alreadyExists } = upsertTomlServer(
+        existing,
+        'firecrawl',
+        { url: MCP_URL }
+      );
+
+      expect(alreadyExists).toBe(true);
+      expect(content).toContain('[mcp_servers.other]');
+      expect(content).toContain('https://example.com/mcp');
+      expect(content).not.toContain('mcp_servers.firecrawl.env');
+      expect(content).not.toContain('fc-old');
+      expect(content).toContain(`url = "${MCP_URL}"`);
+    });
+
+    it('rewrites a table that the next table follows without a blank line', () => {
+      // Nothing requires the blank line the other fixtures have, and a config
+      // written by hand or by another tool often does without it.
+      const existing = [
+        '[mcp_servers.firecrawl]',
+        'command = "npx"',
+        '[mcp_servers.other]',
+        'url = "https://example.com/mcp"',
+        '',
+      ].join('\n');
+
+      const { content } = upsertTomlServer(existing, 'firecrawl', {
+        url: MCP_URL,
+      });
+
+      expect(content).toBe(
+        `[mcp_servers.firecrawl]\nurl = "${MCP_URL}"\n[mcp_servers.other]\nurl = "https://example.com/mcp"\n`
+      );
+    });
+
+    it('rewrites a stdio entry whose sub-table sits on the next line', () => {
+      // The documented stdio layout: the env sub-table directly under it.
+      const existing = [
+        '[mcp_servers.firecrawl]',
+        'command = "npx"',
+        '[mcp_servers.firecrawl.env]',
+        'FIRECRAWL_API_KEY = "fc-old"',
+        '[mcp_servers.other]',
+        'url = "https://example.com/mcp"',
+        '',
+      ].join('\n');
+
+      const { content } = upsertTomlServer(existing, 'firecrawl', {
+        url: MCP_URL,
+      });
+
+      expect(content).toBe(
+        `[mcp_servers.firecrawl]\nurl = "${MCP_URL}"\n[mcp_servers.other]\nurl = "https://example.com/mcp"\n`
+      );
+      expect(content).not.toContain('fc-old');
+    });
+
+    it('keeps a comment that follows the table on its own line', () => {
+      const existing = [
+        '[mcp_servers.firecrawl]',
+        'command = "npx"',
+        '# keep me',
+        '[other]',
+        'x = 1',
+        '',
+      ].join('\n');
+
+      const { content } = upsertTomlServer(existing, 'firecrawl', {
+        url: MCP_URL,
+      });
+
+      expect(content).toContain(`url = "${MCP_URL}"\n# keep me`);
+    });
+
     it('replaces a stale stdio entry along with its sub-tables', () => {
       const existing = [
         'model = "gpt-5"',
