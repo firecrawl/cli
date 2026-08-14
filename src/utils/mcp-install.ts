@@ -5,13 +5,14 @@
  * Agent configs belong to the user, not to us, so edits are surgical: JSON is
  * patched through a JSONC-aware editor that keeps comments and formatting
  * intact (several agents ship commented settings, which plain `JSON.parse`
- * rejects outright), TOML tables are replaced line by line, and shared rule
- * files get a marker-fenced section rather than a rewrite.
+ * rejects outright), TOML tables are replaced by AST source range, and shared
+ * rule files get a marker-fenced section rather than a rewrite.
  */
 
 import { promises as fs } from 'fs';
 import path from 'path';
 import { applyEdits, modify, parse, type ParseError } from 'jsonc-parser';
+import { getStaticTOMLValue, parseTOML, type AST } from 'toml-eslint-parser';
 import { isMap, isScalar, parseDocument } from 'yaml';
 import {
   MCP_CLIENTS,
@@ -21,6 +22,7 @@ import {
   type McpClient,
   type McpClientId,
   type McpContext,
+  type McpRuleSpec,
   type McpTargetId,
 } from './mcp-clients';
 
@@ -182,82 +184,55 @@ export function upsertYamlServer(
   };
 }
 
-/**
- * True when the character at `index` is escaped. Backslashes escape each other,
- * so only an odd run of them before the position leaves it escaped.
- */
-function isEscaped(line: string, index: number): boolean {
-  let backslashes = 0;
-  for (let at = index - 1; at >= 0 && line[at] === '\\'; at -= 1) {
-    backslashes += 1;
-  }
-  return backslashes % 2 === 1;
+function stripBom(content: string): { bom: string; raw: string } {
+  return content.startsWith('\uFEFF')
+    ? { bom: '\uFEFF', raw: content.slice(1) }
+    : { bom: '', raw: content };
 }
 
-/** Advance past a single-line basic or literal string, escapes included. */
-function skipQuoted(line: string, start: number, quote: string): number {
-  let index = start + 1;
-  while (index < line.length) {
-    // Only basic strings honour backslash escapes; literal strings have none.
-    if (quote === '"' && line[index] === '\\') {
-      index += 2;
-      continue;
-    }
-    if (line[index] === quote) return index + 1;
-    index += 1;
+function parseTomlDocument(raw: string): AST.TOMLProgram {
+  try {
+    return parseTOML(raw);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(reason);
   }
-  return line.length;
 }
 
-/**
- * Mark the lines that begin outside a multi-line string, so a `[table]` written
- * inside one is not mistaken for a real table header. Throws when a multi-line
- * string is still open at the end, which is malformed TOML: editing a file this
- * scan cannot follow would corrupt it while reporting success.
- */
-function linesOutsideStrings(lines: string[]): boolean[] {
-  const outside: boolean[] = [];
-  let fence: '"""' | "'''" | null = null;
+function isFirecrawlTable(node: AST.TOMLTable, serverName: string): boolean {
+  return (
+    node.resolvedKey[0] === 'mcp_servers' &&
+    String(node.resolvedKey[1]) === serverName
+  );
+}
 
-  for (const line of lines) {
-    outside.push(fence === null);
-    let index = 0;
-    while (index < line.length) {
-      if (fence) {
-        let close = line.indexOf(fence, index);
-        // A basic string honours escapes, so `\"""` is an escaped quote
-        // followed by two literal ones rather than the terminator. Literal
-        // strings have no escapes, so their fence always closes.
-        while (close !== -1 && fence === '"""' && isEscaped(line, close)) {
-          close = line.indexOf(fence, close + 1);
-        }
-        if (close === -1) break;
-        index = close + fence.length;
-        fence = null;
-        continue;
-      }
-      if (line[index] === '#') break;
-      if (line.startsWith('"""', index) || line.startsWith("'''", index)) {
-        fence = line[index] === '"' ? '"""' : "'''";
-        index += 3;
-        continue;
-      }
-      if (line[index] === '"' || line[index] === "'") {
-        index = skipQuoted(line, index, line[index]);
-        continue;
-      }
-      index += 1;
-    }
+function staticHasServer(value: unknown, serverName: string): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const servers = (value as Record<string, unknown>).mcp_servers;
+  return (
+    !!servers &&
+    typeof servers === 'object' &&
+    Object.prototype.hasOwnProperty.call(servers, serverName)
+  );
+}
+
+/** True when a TOML document already defines `mcp_servers.<name>`. */
+export function tomlHasServer(content: string, serverName: string): boolean {
+  const { raw } = stripBom(content);
+  if (raw.trim() === '') return false;
+  try {
+    return staticHasServer(getStaticTOMLValue(parseTOML(raw)), serverName);
+  } catch {
+    return false;
   }
-
-  if (fence) throw new Error('unterminated multi-line string');
-  return outside;
 }
 
 /**
- * Insert or replace the `[mcp_servers.<name>]` table. Any sub-tables of that
- * server are consumed too, so a leftover `[mcp_servers.firecrawl.env]` from an
- * earlier stdio setup cannot collide with the URL we write.
+ * Insert or replace the `[mcp_servers.<name>]` table. Matching uses the TOML
+ * AST `resolvedKey`, so quoted, spaced, and BOM-prefixed headers are the same
+ * table. Sub-tables of that server are consumed too, so a leftover
+ * `[mcp_servers.firecrawl.env]` from an earlier stdio setup cannot collide
+ * with the URL we write.
  *
  * Values are emitted as TOML strings; the entries we build are flat by design.
  */
@@ -266,74 +241,44 @@ export function upsertTomlServer(
   serverName: string,
   entry: Record<string, string>
 ): { content: string; alreadyExists: boolean } {
+  const { bom, raw } = stripBom(content);
+  const eol = raw.includes('\r\n') ? '\r\n' : '\n';
   const block = [
     `[mcp_servers.${serverName}]`,
     ...Object.entries(entry).map(
       ([key, value]) => `${key} = ${JSON.stringify(value)}`
     ),
-  ];
-
-  // Preserve the file's existing line ending; a CRLF config must not be
-  // treated as one unmatchable line per table.
-  const eol = content.includes('\r\n') ? '\r\n' : '\n';
-  const lines = content === '' ? [] : content.split(/\r?\n/);
-  const escaped = escapeRegExp(serverName);
-  const ownTable = new RegExp(
-    `^[ \\t]*\\[mcp_servers\\.${escaped}(\\.[^\\]]+)?\\][ \\t]*(?:#.*)?$`
-  );
-  const anyTable = /^[ \t]*\[/;
-  const outside = linesOutsideStrings(lines);
-
-  const start = lines.findIndex(
-    (line, index) => outside[index] && ownTable.test(line)
-  );
-
-  if (start === -1) {
-    // Tables must follow root-level keys, so append at the end of the file.
-    const trimmed = [...lines];
-    while (trimmed.length > 0 && trimmed[trimmed.length - 1].trim() === '') {
-      trimmed.pop();
-    }
-    const separator = trimmed.length === 0 ? [] : [''];
-    return {
-      content: [...trimmed, ...separator, ...block, ''].join(eol),
-      alreadyExists: false,
-    };
-  }
-
-  let end = start + 1;
-  while (end < lines.length) {
-    if (
-      outside[end] &&
-      anyTable.test(lines[end]) &&
-      !ownTable.test(lines[end])
-    ) {
-      break;
-    }
-    end += 1;
-  }
-  // Comments and blank lines directly above the next table introduce it, so
-  // they belong to the user's content rather than to the block being replaced.
-  while (end - 1 > start && /^[ \t]*(#.*)?$/.test(lines[end - 1])) {
-    end -= 1;
-  }
-
-  const rest = lines.slice(end);
-  // Keep a blank line between our block and whatever follows it.
-  const separator = rest.length > 0 && rest[0].trim() !== '' ? [''] : [];
-  const replaced = [
-    ...lines.slice(0, start),
-    ...block,
-    ...separator,
-    ...rest,
   ].join(eol);
 
-  // Consuming the old table can swallow the file's final newline; restoring it
-  // keeps repeat runs byte-identical.
-  return {
-    content: replaced.endsWith(eol) ? replaced : `${replaced}${eol}`,
-    alreadyExists: true,
+  const finish = (next: string, alreadyExists: boolean) => {
+    parseTomlDocument(next);
+    return { content: `${bom}${next}`, alreadyExists };
   };
+
+  if (raw.trim() === '') {
+    return finish(`${block}${eol}`, false);
+  }
+
+  const ast = parseTomlDocument(raw);
+  const tables = ast.body[0].body.filter(
+    (node): node is AST.TOMLTable =>
+      node.type === 'TOMLTable' && isFirecrawlTable(node, serverName)
+  );
+
+  if (tables.length === 0) {
+    if (staticHasServer(getStaticTOMLValue(ast), serverName)) {
+      throw new Error(
+        `Firecrawl is defined inline under mcp_servers; convert it to a [mcp_servers.${serverName}] table first`
+      );
+    }
+    const trimmed = raw.replace(/(?:\r?\n)+$/, '');
+    return finish(`${trimmed}${eol}${eol}${block}${eol}`, false);
+  }
+
+  const start = Math.min(...tables.map((table) => table.range[0]));
+  const end = Math.max(...tables.map((table) => table.range[1]));
+  const replaced = `${raw.slice(0, start)}${block}${raw.slice(end)}`;
+  return finish(replaced.endsWith('\n') ? replaced : `${replaced}${eol}`, true);
 }
 
 /** Rewrite a rule file we own outright. */
@@ -447,19 +392,38 @@ async function writeMcpEntry(
   return { status, configPath };
 }
 
+export async function writeConfiguredRule(
+  rule: McpRuleSpec,
+  rulePath: string
+): Promise<{ status: 'installed' | 'updated' | 'unsupported'; path: string }> {
+  switch (rule.kind) {
+    case 'manual':
+      return { status: 'unsupported', path: rule.nextStep };
+    case 'file':
+      return {
+        status: await writeRuleFile(rulePath, rule.content),
+        path: rulePath,
+      };
+    case 'append':
+      return {
+        status: await appendRuleSection(rulePath, rule.content),
+        path: rulePath,
+      };
+    default: {
+      const unreachable: never = rule;
+      return unreachable;
+    }
+  }
+}
+
 async function writeRule(
   client: McpClient,
   ctx: McpContext
 ): Promise<{ status: 'installed' | 'updated' | 'unsupported'; path: string }> {
   const rule = client.rule;
   if (!rule) return { status: 'unsupported', path: '' };
-
-  const rulePath = rule.globalPath(ctx);
-  const status =
-    rule.kind === 'file'
-      ? await writeRuleFile(rulePath, rule.content)
-      : await appendRuleSection(rulePath, rule.content);
-  return { status, path: rulePath };
+  const rulePath = rule.kind === 'manual' ? '' : rule.globalPath(ctx);
+  return writeConfiguredRule(rule, rulePath);
 }
 
 /**

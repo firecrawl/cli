@@ -91,6 +91,8 @@ describe('handleSetupCommand', () => {
   let originalAppData: string | undefined;
   let originalOpenclawWorkspace: string | undefined;
   let originalOpenclawProfile: string | undefined;
+  let originalCodexHome: string | undefined;
+  let originalHermesHome: string | undefined;
   let originalCwd: string;
   let sandboxCwd: string;
 
@@ -129,8 +131,12 @@ describe('handleSetupCommand', () => {
     process.env.PATH = '';
     originalOpenclawWorkspace = process.env.OPENCLAW_WORKSPACE_DIR;
     originalOpenclawProfile = process.env.OPENCLAW_PROFILE;
+    originalCodexHome = process.env.CODEX_HOME;
+    originalHermesHome = process.env.HERMES_HOME;
     delete process.env.OPENCLAW_WORKSPACE_DIR;
     delete process.env.OPENCLAW_PROFILE;
+    delete process.env.CODEX_HOME;
+    delete process.env.HERMES_HOME;
   });
 
   afterEach(() => {
@@ -149,6 +155,10 @@ describe('handleSetupCommand', () => {
     } else {
       process.env.OPENCLAW_PROFILE = originalOpenclawProfile;
     }
+    if (originalCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = originalCodexHome;
+    if (originalHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = originalHermesHome;
     if (originalUserProfile === undefined) delete process.env.USERPROFILE;
     else process.env.USERPROFILE = originalUserProfile;
     if (originalAppData === undefined) delete process.env.APPDATA;
@@ -669,6 +679,7 @@ describe('handleSetupCommand', () => {
     mkdirSync(path.join(sandboxHome, '.cursor'), { recursive: true });
     const { confirm } = await import('@inquirer/prompts');
     vi.mocked(confirm).mockResolvedValue(true);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     const originalIsTTY = process.stdin.isTTY;
     Object.defineProperty(process.stdin, 'isTTY', {
@@ -682,15 +693,81 @@ describe('handleSetupCommand', () => {
       await handleSetupCommand('mcp', { agent: 'all' });
 
       expect(confirm).toHaveBeenCalledOnce();
+      expect(log.mock.calls.flat().join('\n')).toContain('Customize → Rules');
       expect(
         existsSync(path.join(sandboxHome, '.cursor', 'rules', 'firecrawl.mdc'))
-      ).toBe(true);
+      ).toBe(false);
     } finally {
+      log.mockRestore();
       Object.defineProperty(process.stdin, 'isTTY', {
         configurable: true,
         value: originalIsTTY,
       });
     }
+  });
+
+  it('tells the user how to add a Cursor User Rule instead of writing one', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await handleSetupCommand('mcp', {
+      clients: ['cursor'],
+      yes: true,
+      rules: true,
+    });
+
+    const output = log.mock.calls.flat().join('\n');
+    expect(output).toContain('not supported by this agent');
+    expect(output).toContain('Customize → Rules');
+    expect(
+      existsSync(path.join(sandboxHome, '.cursor', 'rules', 'firecrawl.mdc'))
+    ).toBe(false);
+  });
+
+  it('writes VS Code instructions to ~/.copilot/instructions', async () => {
+    await handleSetupCommand('mcp', {
+      clients: ['vscode'],
+      yes: true,
+      rules: true,
+    });
+
+    const written = readFileSync(
+      path.join(
+        sandboxHome,
+        '.copilot',
+        'instructions',
+        'firecrawl.instructions.md'
+      ),
+      'utf-8'
+    );
+    expect(written).toContain("applyTo: '**'");
+  });
+
+  it('writes Codex config and rules under CODEX_HOME', async () => {
+    const override = path.join(sandboxHome, 'codex-override');
+    process.env.CODEX_HOME = override;
+
+    await handleSetupCommand('mcp', {
+      clients: ['codex'],
+      yes: true,
+      rules: true,
+    });
+
+    expect(existsSync(path.join(override, 'config.toml'))).toBe(true);
+    expect(existsSync(path.join(override, 'AGENTS.md'))).toBe(true);
+    expect(existsSync(path.join(sandboxHome, '.codex'))).toBe(false);
+  });
+
+  it('writes Hermes config under HERMES_HOME', async () => {
+    const override = path.join(sandboxHome, 'hermes-override');
+    process.env.HERMES_HOME = override;
+
+    await handleSetupCommand('mcp', {
+      clients: ['hermes'],
+      yes: true,
+    });
+
+    expect(existsSync(path.join(override, 'config.yaml'))).toBe(true);
+    expect(existsSync(path.join(sandboxHome, '.hermes'))).toBe(false);
   });
 
   it('surfaces total failure even in quiet mode', async () => {

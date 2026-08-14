@@ -6,13 +6,26 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { execFileSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { compareVersions } from '../../utils/npm-registry';
-import { hasFirecrawlMcpEntry } from '../../utils/agents';
+import { detectAgents, hasFirecrawlMcpEntry } from '../../utils/agents';
 import { runChecks, runSupportAsk } from '../../commands/doctor';
 import { initializeConfig, resetConfig } from '../../utils/config';
+import { ALL_MCP_CLIENT_IDS, createMcpContext } from '../../utils/mcp-clients';
+import { setupMcpClient } from '../../utils/mcp-install';
+
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>();
+  return {
+    ...actual,
+    execFileSync: vi.fn(() => {
+      throw new Error('openclaw missing');
+    }),
+  };
+});
 
 const mockFetch = vi.fn();
 global.fetch = mockFetch as unknown as typeof fetch;
@@ -85,6 +98,242 @@ describe('hasFirecrawlMcpEntry', () => {
         'someExtension.config': { servers: { firecrawl: {} } },
       })
     ).toBe(false);
+  });
+
+  it('detects firecrawl under OpenCode top-level mcp', () => {
+    expect(
+      hasFirecrawlMcpEntry({
+        mcp: {
+          firecrawl: {
+            type: 'remote',
+            url: 'https://mcp.firecrawl.dev/v2/mcp',
+          },
+        },
+      })
+    ).toBe(true);
+  });
+});
+
+describe('detectAgents', () => {
+  let tmpHome: string;
+  let homedirSpy: ReturnType<typeof vi.spyOn>;
+  let originalClaudeConfigDir: string | undefined;
+  let originalCodexHome: string | undefined;
+  let originalHermesHome: string | undefined;
+  let originalAppData: string | undefined;
+
+  beforeEach(() => {
+    tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-agents-'));
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(tmpHome);
+    originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    originalCodexHome = process.env.CODEX_HOME;
+    originalHermesHome = process.env.HERMES_HOME;
+    originalAppData = process.env.APPDATA;
+    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.CODEX_HOME;
+    delete process.env.HERMES_HOME;
+    process.env.APPDATA = path.join(tmpHome, 'AppData', 'Roaming');
+    vi.mocked(execFileSync).mockReset();
+    vi.mocked(execFileSync).mockImplementation(() => {
+      throw new Error('openclaw missing');
+    });
+  });
+
+  afterEach(() => {
+    homedirSpy.mockRestore();
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+    if (originalClaudeConfigDir === undefined) {
+      delete process.env.CLAUDE_CONFIG_DIR;
+    } else {
+      process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+    }
+    if (originalCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = originalCodexHome;
+    if (originalHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = originalHermesHome;
+    if (originalAppData === undefined) delete process.env.APPDATA;
+    else process.env.APPDATA = originalAppData;
+  });
+
+  it('reports OpenCode registered from a JSONC config', async () => {
+    const dir = path.join(tmpHome, '.config', 'opencode');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'opencode.json'),
+      `{
+  // remote Firecrawl
+  "mcp": {
+    "firecrawl": {
+      "type": "remote",
+      "url": "https://mcp.firecrawl.dev/v2/mcp",
+      "enabled": true,
+    },
+  },
+}
+`
+    );
+
+    const opencode = (await detectAgents(tmpHome)).find(
+      (agent) => agent.id === 'opencode'
+    );
+    expect(opencode?.installed).toBe(true);
+    expect(opencode?.mcpRegistered).toBe(true);
+  });
+
+  it('reports Hermes registered after setup writes config.yaml', async () => {
+    const dir = path.join(tmpHome, '.hermes');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'config.yaml'),
+      'mcp_servers:\n  firecrawl:\n    url: https://mcp.firecrawl.dev/v2/mcp\n'
+    );
+
+    const hermes = (await detectAgents(tmpHome)).find(
+      (agent) => agent.id === 'hermes'
+    );
+    expect(hermes?.installed).toBe(true);
+    expect(hermes?.mcpRegistered).toBe(true);
+  });
+
+  it('does not treat a YAML comment mentioning firecrawl as registration', async () => {
+    const dir = path.join(tmpHome, '.hermes');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'config.yaml'),
+      '# firecrawl:\nmcp_servers:\n  github:\n    command: npx\n'
+    );
+
+    const hermes = (await detectAgents(tmpHome)).find(
+      (agent) => agent.id === 'hermes'
+    );
+    expect(hermes?.mcpRegistered).toBe(false);
+  });
+
+  it('reports OpenClaw registered via openclaw mcp show --json', async () => {
+    fs.mkdirSync(path.join(tmpHome, '.openclaw'), { recursive: true });
+    vi.mocked(execFileSync).mockReturnValue(
+      JSON.stringify({
+        name: 'firecrawl',
+        url: 'https://mcp.firecrawl.dev/v2/mcp',
+      })
+    );
+
+    const openclaw = (await detectAgents(tmpHome)).find(
+      (agent) => agent.id === 'openclaw'
+    );
+    expect(openclaw?.installed).toBe(true);
+    expect(openclaw?.mcpRegistered).toBe(true);
+    expect(execFileSync).toHaveBeenCalledWith(
+      'openclaw',
+      ['mcp', 'show', 'firecrawl', '--json'],
+      expect.objectContaining({ encoding: 'utf8' })
+    );
+  });
+
+  it('does not treat an OpenClaw config file as registration', async () => {
+    const dir = path.join(tmpHome, '.openclaw');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'openclaw.json'),
+      JSON.stringify({
+        mcp: {
+          servers: {
+            firecrawl: {
+              url: 'https://mcp.firecrawl.dev/v2/mcp',
+            },
+          },
+        },
+      })
+    );
+
+    const openclaw = (await detectAgents(tmpHome)).find(
+      (agent) => agent.id === 'openclaw'
+    );
+    expect(openclaw?.installed).toBe(true);
+    expect(openclaw?.mcpRegistered).toBe(false);
+  });
+
+  it('follows CLAUDE_CONFIG_DIR for Claude Code detection', async () => {
+    const override = path.join(tmpHome, 'custom-claude');
+    fs.mkdirSync(override, { recursive: true });
+    fs.writeFileSync(
+      path.join(override, '.claude.json'),
+      JSON.stringify({
+        mcpServers: {
+          firecrawl: { type: 'http', url: 'https://mcp.firecrawl.dev/v2/mcp' },
+        },
+      })
+    );
+    process.env.CLAUDE_CONFIG_DIR = override;
+
+    const claude = (await detectAgents(tmpHome)).find(
+      (agent) => agent.id === 'claude-code'
+    );
+    expect(claude?.installed).toBe(true);
+    expect(claude?.mcpRegistered).toBe(true);
+  });
+
+  it('follows CODEX_HOME for Codex detection and registration', async () => {
+    const override = path.join(tmpHome, 'custom-codex');
+    fs.mkdirSync(override, { recursive: true });
+    fs.writeFileSync(
+      path.join(override, 'config.toml'),
+      '[mcp_servers."firecrawl"]\nurl = "https://mcp.firecrawl.dev/v2/mcp"\n'
+    );
+    process.env.CODEX_HOME = override;
+
+    const codex = (await detectAgents(tmpHome)).find(
+      (agent) => agent.id === 'codex'
+    );
+    expect(codex?.installed).toBe(true);
+    expect(codex?.mcpRegistered).toBe(true);
+    expect(codex?.configPaths[0]).toBe(path.join(override, 'config.toml'));
+  });
+
+  it('follows HERMES_HOME for Hermes detection and registration', async () => {
+    const override = path.join(tmpHome, 'custom-hermes');
+    fs.mkdirSync(override, { recursive: true });
+    fs.writeFileSync(
+      path.join(override, 'config.yaml'),
+      'mcp_servers:\n  firecrawl:\n    url: https://mcp.firecrawl.dev/v2/mcp\n'
+    );
+    process.env.HERMES_HOME = override;
+
+    const hermes = (await detectAgents(tmpHome)).find(
+      (agent) => agent.id === 'hermes'
+    );
+    expect(hermes?.installed).toBe(true);
+    expect(hermes?.mcpRegistered).toBe(true);
+    expect(hermes?.configPaths[0]).toBe(path.join(override, 'config.yaml'));
+  });
+
+  it('sees every setup client as registered immediately after setup', async () => {
+    const ctx = createMcpContext({
+      home: tmpHome,
+      cwd: tmpHome,
+      env: process.env,
+      auth: 'keyless',
+    });
+
+    for (const id of ALL_MCP_CLIENT_IDS) {
+      const result = await setupMcpClient(id, { rules: false, ctx });
+      expect(result.mcpStatus, id).toBe('configured');
+    }
+
+    const agents = await detectAgents(tmpHome);
+    const doctorIds = [
+      'cursor',
+      'claude-code',
+      'vscode',
+      'codex',
+      'opencode',
+      'hermes',
+    ] as const;
+    for (const id of doctorIds) {
+      const agent = agents.find((entry) => entry.id === id);
+      expect(agent?.installed, id).toBe(true);
+      expect(agent?.mcpRegistered, id).toBe(true);
+    }
   });
 });
 

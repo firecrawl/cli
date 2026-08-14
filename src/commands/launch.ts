@@ -235,6 +235,15 @@ export async function handleLaunchCommand(
     throw new Error('--keyless cannot be combined with --skip-mcp.');
   }
 
+  const installOnly = Boolean(
+    options.config || options.install || options.setup
+  );
+  if (installOnly && options.skipMcp && options.skipSkills) {
+    throw new Error(
+      'Install mode (--install, --setup, --config) cannot be combined with both --skip-mcp and --skip-skills.'
+    );
+  }
+
   if (!targetName && extraArgs.length > 0) {
     throw new Error(
       'Extra launch arguments require an explicit launch target.'
@@ -252,9 +261,6 @@ export async function handleLaunchCommand(
   const targetSupportsSkills = Boolean(target.skillsAgent);
   let installMcpForTarget = targetSupportsMcp && !options.skipMcp;
   let installSkillsForTarget = targetSupportsSkills && !options.skipSkills;
-  const installOnly = Boolean(
-    options.config || options.install || options.setup
-  );
   const apiKey = options.keyless ? undefined : getApiKey();
   const runtimeEnv =
     !installOnly && apiKey && process.env.FIRECRAWL_API_KEY !== apiKey

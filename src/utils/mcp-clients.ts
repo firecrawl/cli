@@ -19,6 +19,7 @@ import {
   promises as fs,
   statSync,
 } from 'fs';
+import os from 'os';
 import path from 'path';
 
 export const FIRECRAWL_MCP_URL = 'https://mcp.firecrawl.dev/v2/mcp';
@@ -67,15 +68,52 @@ export interface McpContext {
   auth: McpAuthMode;
 }
 
-export interface McpRuleSpec {
-  /**
-   * `file` owns a dedicated rule file and rewrites it wholesale. `append`
-   * shares a file with the user's own instructions, so the section is fenced
-   * by markers and replaced in place on rerun.
-   */
-  kind: 'file' | 'append';
-  content: string;
-  globalPath: (ctx: McpContext) => string;
+export type McpRuleSpec =
+  | {
+      /**
+       * `file` owns a dedicated rule file and rewrites it wholesale. `append`
+       * shares a file with the user's own instructions, so the section is fenced
+       * by markers and replaced in place on rerun.
+       */
+      kind: 'file' | 'append';
+      content: string;
+      globalPath: (ctx: McpContext) => string;
+    }
+  | {
+      /**
+       * The agent has global rules, but they are not a file we can write.
+       * `--rules` reports this instead of claiming a filesystem install.
+       */
+      kind: 'manual';
+      nextStep: string;
+    };
+
+/** Process-backed context for setup, detection, and doctor. */
+export function createMcpContext(
+  overrides: Partial<McpContext> = {}
+): McpContext {
+  return {
+    home: overrides.home ?? os.homedir(),
+    cwd: overrides.cwd ?? process.cwd(),
+    platform: overrides.platform ?? process.platform,
+    env: overrides.env ?? process.env,
+    auth: overrides.auth ?? 'keyless',
+  };
+}
+
+function envOverride(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const value = env[name];
+  return value && value !== '' ? value : undefined;
+}
+
+/** Codex reads `$CODEX_HOME` when set, otherwise `~/.codex`. */
+export function codexHome(ctx: McpContext): string {
+  return envOverride(ctx.env, 'CODEX_HOME') ?? path.join(ctx.home, '.codex');
+}
+
+/** Hermes reads `$HERMES_HOME` when set, otherwise `~/.hermes`. */
+export function hermesHome(ctx: McpContext): string {
+  return envOverride(ctx.env, 'HERMES_HOME') ?? path.join(ctx.home, '.hermes');
 }
 
 /**
@@ -121,12 +159,6 @@ const RULE_BODY = `Use Firecrawl tools whenever a task needs content from the li
 /** Fences the rule inside files the user also writes to. */
 export const RULE_MARKER = '<!-- firecrawl -->';
 
-const CURSOR_RULE = `---
-alwaysApply: true
----
-
-${RULE_BODY}`;
-
 const VSCODE_RULE = `---
 applyTo: '**'
 ---
@@ -163,7 +195,7 @@ function appSupportDir(ctx: McpContext, name: string): string {
 }
 
 /** Claude Code relocates its whole config tree when CLAUDE_CONFIG_DIR is set. */
-function claudeConfigDir(ctx: McpContext): string {
+export function claudeConfigDir(ctx: McpContext): string {
   const override = ctx.env.CLAUDE_CONFIG_DIR;
   return override && override !== ''
     ? override
@@ -227,11 +259,11 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
     globalConfigPath: (ctx) => path.join(ctx.home, '.cursor', 'mcp.json'),
     buildEntry: (ctx) =>
       withEnvAuth(ctx, { url: firecrawlMcpUrl(ctx) }, ENV_HEADER.editor),
+    // Cursor documents `.cursor/rules` as project-scoped. Global User Rules
+    // live in Customize → Rules and are not a file we can write.
     rule: {
-      kind: 'file',
-      content: CURSOR_RULE,
-      globalPath: (ctx) =>
-        path.join(ctx.home, '.cursor', 'rules', 'firecrawl.mdc'),
+      kind: 'manual',
+      nextStep: 'Add it in Cursor under Customize → Rules',
     },
     // Cursor marks the server as needing login in its own MCP settings.
     detectPaths: (ctx) => [path.join(ctx.home, '.cursor')],
@@ -252,7 +284,12 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
       kind: 'file',
       content: VSCODE_RULE,
       globalPath: (ctx) =>
-        path.join(vscodeUserDir(ctx), 'prompts', 'firecrawl.instructions.md'),
+        path.join(
+          ctx.home,
+          '.copilot',
+          'instructions',
+          'firecrawl.instructions.md'
+        ),
     },
     // `User` is created on first launch, so requiring it misses an install
     // that has only been unpacked. These are the markers doctor already uses.
@@ -268,7 +305,7 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
     name: 'Codex',
     format: 'toml',
     serversKey: 'mcp_servers',
-    globalConfigPath: (ctx) => path.join(ctx.home, '.codex', 'config.toml'),
+    globalConfigPath: (ctx) => path.join(codexHome(ctx), 'config.toml'),
     // Codex resolves the bearer token from the environment by variable name,
     // so it authenticates without a header template.
     buildEntry: (ctx) =>
@@ -278,7 +315,7 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
     rule: {
       kind: 'append',
       content: RULE_BODY,
-      globalPath: (ctx) => path.join(ctx.home, '.codex', 'AGENTS.md'),
+      globalPath: (ctx) => path.join(codexHome(ctx), 'AGENTS.md'),
     },
     // Codex registers the server but does not start the flow on its own. The
     // desktop app and the IDE extension share this config file and offer an
@@ -286,7 +323,7 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
     oauth: {
       nextStep: 'codex mcp login firecrawl, or Authenticate in Codex settings',
     },
-    detectPaths: (ctx) => [path.join(ctx.home, '.codex')],
+    detectPaths: (ctx) => [codexHome(ctx)],
   },
   opencode: {
     id: 'opencode',
@@ -315,7 +352,7 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
     name: 'Hermes Agent',
     format: 'yaml',
     serversKey: 'mcp_servers',
-    globalConfigPath: (ctx) => path.join(ctx.home, '.hermes', 'config.yaml'),
+    globalConfigPath: (ctx) => path.join(hermesHome(ctx), 'config.yaml'),
     // Hermes keeps secrets in ~/.hermes/.env rather than here, but the rest of
     // this file is the user's, so a file we create starts owner-only.
     createMode: 0o600,
@@ -332,7 +369,7 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
       entry: { auth: 'oauth' },
       nextStep: 'hermes mcp login firecrawl, from a new terminal',
     },
-    detectPaths: (ctx) => [path.join(ctx.home, '.hermes')],
+    detectPaths: (ctx) => [hermesHome(ctx)],
   },
 };
 

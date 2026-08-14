@@ -11,15 +11,19 @@ import {
 import os from 'os';
 import path from 'path';
 import {
+  ALL_MCP_CLIENT_IDS,
   detectMcpClients,
   detectMcpLaunchers,
   resolveMcpClientId,
+  type McpAuthMode,
   type McpContext,
 } from '../../utils/mcp-clients';
+import { parseTOML } from 'toml-eslint-parser';
 import { parse as parseYaml } from 'yaml';
 import {
   appendRuleSection,
   setupMcpClient,
+  tomlHasServer,
   upsertTomlServer,
   upsertYamlServer,
   writeJsonServerEntry,
@@ -312,7 +316,52 @@ describe('mcp install', () => {
         upsertTomlServer('instructions = """\nstill open\n', 'firecrawl', {
           url: MCP_URL,
         })
-      ).toThrow('unterminated multi-line string');
+      ).toThrow(/unterminated string/i);
+    });
+
+    it.each([
+      ['quoted_server', '[mcp_servers."firecrawl"]\nurl = "https://old"\n'],
+      [
+        'single_quoted_server',
+        '[mcp_servers.\'firecrawl\']\nurl = "https://old"\n',
+      ],
+      ['quoted_parent', '["mcp_servers".firecrawl]\nurl = "https://old"\n'],
+      [
+        'whitespace_dotted',
+        '[ mcp_servers . firecrawl ]\nurl = "https://old"\n',
+      ],
+      ['utf8_bom', '\uFEFF[mcp_servers.firecrawl]\nurl = "https://old"\n'],
+    ] as const)(
+      'replaces a %s table instead of appending a duplicate',
+      (_name, existing) => {
+        const { content, alreadyExists } = upsertTomlServer(
+          existing,
+          'firecrawl',
+          { url: MCP_URL }
+        );
+
+        expect(alreadyExists).toBe(true);
+        expect(tomlHasServer(content, 'firecrawl')).toBe(true);
+        expect(content.match(/mcp_servers/g)).toHaveLength(1);
+        expect(content).toContain(`url = "${MCP_URL}"`);
+        expect(content).not.toContain('https://old');
+        expect(() =>
+          parseTOML(content.startsWith('\uFEFF') ? content.slice(1) : content)
+        ).not.toThrow();
+        if (existing.startsWith('\uFEFF')) {
+          expect(content.startsWith('\uFEFF')).toBe(true);
+        }
+      }
+    );
+
+    it('refuses to append when firecrawl already exists as an inline table', () => {
+      expect(() =>
+        upsertTomlServer(
+          'mcp_servers = { firecrawl = { url = "https://old" } }\n',
+          'firecrawl',
+          { url: MCP_URL }
+        )
+      ).toThrow(/inline/);
     });
   });
 
@@ -565,12 +614,12 @@ describe('mcp install', () => {
     });
 
     it('still configures MCP when the rule write fails', async () => {
-      // A file where the rules directory needs to be blocks the rule write.
-      const rulesPath = path.join(ctx.home, '.cursor', 'rules');
-      mkdirSync(path.dirname(rulesPath), { recursive: true });
-      writeFileSync(rulesPath, 'not a directory');
+      // A file where the instructions directory needs to be blocks the write.
+      const instructionsPath = path.join(ctx.home, '.copilot', 'instructions');
+      mkdirSync(path.dirname(instructionsPath), { recursive: true });
+      writeFileSync(instructionsPath, 'not a directory');
 
-      const result = await setupMcpClient('cursor', {
+      const result = await setupMcpClient('vscode', {
         rules: true,
         ctx,
       });
@@ -587,19 +636,110 @@ describe('mcp install', () => {
       expect(result.ruleDetail).toBe('');
     });
 
+    it('does not write a project-scoped Cursor rule as a global install', async () => {
+      const result = await setupMcpClient('cursor', { rules: true, ctx });
+
+      expect(result.mcpStatus).toBe('configured');
+      expect(result.ruleStatus).toBe('unsupported');
+      expect(result.ruleDetail).toContain('Customize → Rules');
+      expect(
+        existsSync(path.join(ctx.home, '.cursor', 'rules', 'firecrawl.mdc'))
+      ).toBe(false);
+    });
+
+    it('writes VS Code instructions under ~/.copilot/instructions', async () => {
+      const result = await setupMcpClient('vscode', { rules: true, ctx });
+      const rulePath = path.join(
+        ctx.home,
+        '.copilot',
+        'instructions',
+        'firecrawl.instructions.md'
+      );
+
+      expect(result.mcpStatus).toBe('configured');
+      expect(result.ruleStatus).toBe('installed');
+      expect(result.ruleDetail).toBe(rulePath);
+      expect(read(rulePath)).toContain("applyTo: '**'");
+    });
+
     it('writes no rule for an agent whose MCP entry failed', async () => {
-      const file = path.join(ctx.home, '.cursor', 'mcp.json');
+      const file = path.join(
+        ctx.home,
+        'Library',
+        'Application Support',
+        'Code',
+        'User',
+        'mcp.json'
+      );
       mkdirSync(path.dirname(file), { recursive: true });
       writeFileSync(file, '{ oops');
 
-      const result = await setupMcpClient('cursor', { rules: true, ctx });
+      const result = await setupMcpClient('vscode', { rules: true, ctx });
 
       // A rule without a server points the agent at tools it does not have.
       expect(result.mcpStatus).toBe('failed');
       expect(result.ruleStatus).toBe('skipped');
       expect(
-        existsSync(path.join(ctx.home, '.cursor', 'rules', 'firecrawl.mdc'))
+        existsSync(
+          path.join(
+            ctx.home,
+            '.copilot',
+            'instructions',
+            'firecrawl.instructions.md'
+          )
+        )
       ).toBe(false);
+    });
+
+    it('honours CODEX_HOME for config, rules, and detection', async () => {
+      const home = path.join(root, 'codex-home');
+      const isolated = { ...ctx, env: { CODEX_HOME: home } };
+
+      const result = await setupMcpClient('codex', {
+        rules: true,
+        ctx: isolated,
+      });
+
+      expect(result.mcpDetail).toBe(path.join(home, 'config.toml'));
+      expect(result.ruleDetail).toBe(path.join(home, 'AGENTS.md'));
+      expect(existsSync(path.join(ctx.home, '.codex'))).toBe(false);
+      expect(await detectMcpClients(isolated)).toEqual(['codex']);
+      expect(await detectMcpClients(ctx)).toEqual([]);
+    });
+
+    it('honours HERMES_HOME for config and detection', async () => {
+      const home = path.join(root, 'hermes-home');
+      const isolated = { ...ctx, env: { HERMES_HOME: home } };
+
+      const result = await setupMcpClient('hermes', {
+        rules: false,
+        ctx: isolated,
+      });
+
+      expect(result.mcpDetail).toBe(path.join(home, 'config.yaml'));
+      expect(existsSync(path.join(ctx.home, '.hermes'))).toBe(false);
+      expect(await detectMcpClients(isolated)).toEqual(['hermes']);
+      expect(await detectMcpClients(ctx)).toEqual([]);
+    });
+
+    it('configures every client in each auth mode without writing a literal key', async () => {
+      const modes: McpAuthMode[] = ['keyless', 'env', 'oauth'];
+      for (const auth of modes) {
+        for (const id of ALL_MCP_CLIENT_IDS) {
+          const isolated: McpContext = {
+            ...ctx,
+            home: path.join(ctx.home, auth, id),
+            auth,
+          };
+          mkdirSync(isolated.home, { recursive: true });
+          const result = await setupMcpClient(id, {
+            rules: false,
+            ctx: isolated,
+          });
+          expect(result.mcpStatus, `${id} ${auth}`).toBe('configured');
+          expect(read(result.mcpDetail)).not.toContain('fc-');
+        }
+      }
     });
 
     it('reports failure without touching an unparseable config', async () => {

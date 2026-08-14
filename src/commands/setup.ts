@@ -54,8 +54,8 @@ import {
   type McpTargetId,
 } from '../utils/mcp-clients';
 import {
-  appendRuleSection,
   setupMcpClient,
+  writeConfiguredRule,
   type McpClientResult,
 } from '../utils/mcp-install';
 
@@ -844,6 +844,13 @@ async function setupMcpLauncher(
     return result;
   }
 
+  if (rule.kind === 'manual') {
+    const written = await writeConfiguredRule(rule, '');
+    result.ruleStatus = written.status;
+    result.ruleDetail = written.path;
+    return result;
+  }
+
   const rulePath = openclawConfiguredWorkspace(ctx, id) ?? rule.globalPath(ctx);
   // The launcher creates this file itself on first run, seeded with its own
   // instructions. Creating it here first would leave the user with our section
@@ -855,8 +862,9 @@ async function setupMcpLauncher(
   }
 
   try {
-    result.ruleStatus = await appendRuleSection(rulePath, rule.content);
-    result.ruleDetail = rulePath;
+    const written = await writeConfiguredRule(rule, rulePath);
+    result.ruleStatus = written.status;
+    result.ruleDetail = written.path;
   } catch (error) {
     result.ruleStatus = 'failed';
     result.ruleDetail = error instanceof Error ? error.message : String(error);
@@ -967,8 +975,11 @@ function ruleLine(
     case 'unsupported':
       // Clients only reach this when rules were requested: setupMcpClient
       // returns `skipped` whenever rules is false. Hermes has no global rule
-      // file, so `--rules` has to say so rather than going silent.
-      return `  Rules ${dim}not supported by this agent${reset}`;
+      // file, so `--rules` has to say so rather than going silent. Cursor's
+      // global rules are manual, and the next step is in ruleDetail.
+      return result.ruleDetail
+        ? `  Rules ${dim}not supported by this agent${reset} ${result.ruleDetail}`
+        : `  Rules ${dim}not supported by this agent${reset}`;
     case 'failed':
       return `  ${red}Rules failed${reset} ${result.ruleDetail}`;
     default: {

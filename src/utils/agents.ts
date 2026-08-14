@@ -3,13 +3,24 @@
  * registered with them. Used by `firecrawl doctor`.
  *
  * Detection is best-effort: presence of the config dir/file is treated as
- * "installed". MCP registration is detected by parsing the JSON config and
- * looking for an entry named `firecrawl` in `mcpServers`.
+ * "installed". MCP registration for setup-supported agents uses the same
+ * path helpers as `mcp-clients.ts`. OpenClaw is verified through
+ * `openclaw mcp show firecrawl --json`.
  */
 
+import { execFileSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { parse as parseJsonc, type ParseError } from 'jsonc-parser';
+import { parseDocument } from 'yaml';
+import {
+  createMcpContext,
+  MCP_CLIENTS,
+  type McpClientId,
+  type McpContext,
+} from './mcp-clients';
+import { tomlHasServer } from './mcp-install';
 
 export type AgentId =
   | 'cursor'
@@ -18,6 +29,9 @@ export type AgentId =
   | 'vscode'
   | 'windsurf'
   | 'codex'
+  | 'opencode'
+  | 'hermes'
+  | 'openclaw'
   | 'continue';
 
 export interface AgentDetection {
@@ -35,14 +49,24 @@ interface AgentSpec {
   name: string;
   /** Files/dirs that indicate the agent is installed. */
   presencePaths: () => string[];
-  /** Config files to scan for an `mcpServers.firecrawl` entry. */
+  /** Config files to scan for a Firecrawl MCP server entry. */
   mcpConfigPaths: (cwd: string) => string[];
+  /** When set, used instead of scanning mcpConfigPaths. */
+  probeRegistered?: () => boolean;
 }
 
-const home = os.homedir();
 const platform = os.platform();
 
+function homedir(): string {
+  return os.homedir();
+}
+
+function doctorContext(): McpContext {
+  return createMcpContext();
+}
+
 function appSupportDir(name: string): string {
+  const home = homedir();
   if (platform === 'darwin') {
     return path.join(home, 'Library', 'Application Support', name);
   }
@@ -55,28 +79,53 @@ function appSupportDir(name: string): string {
   return path.join(home, '.config', name);
 }
 
+function fromClient(
+  id: AgentId,
+  clientId: McpClientId,
+  extraConfigPaths?: (cwd: string, ctx: McpContext) => string[]
+): AgentSpec {
+  return {
+    id,
+    name: MCP_CLIENTS[clientId].name,
+    presencePaths: () => MCP_CLIENTS[clientId].detectPaths(doctorContext()),
+    mcpConfigPaths: (cwd) => {
+      const ctx = doctorContext();
+      return [
+        MCP_CLIENTS[clientId].globalConfigPath(ctx),
+        ...(extraConfigPaths?.(cwd, ctx) ?? []),
+      ];
+    },
+  };
+}
+
+/**
+ * OpenClaw's documented registry interface is the CLI, not the JSON5 config
+ * file. Exit 0 plus a JSON object means the server is registered.
+ */
+export function openclawFirecrawlRegistered(): boolean {
+  try {
+    const stdout = execFileSync(
+      'openclaw',
+      ['mcp', 'show', 'firecrawl', '--json'],
+      {
+        encoding: 'utf8',
+        timeout: 8000,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }
+    );
+    const parsed: unknown = JSON.parse(stdout);
+    if (!parsed || typeof parsed !== 'object') return false;
+    return (parsed as { ok?: unknown }).ok !== false;
+  } catch {
+    return false;
+  }
+}
+
 const SPECS: AgentSpec[] = [
-  {
-    id: 'cursor',
-    name: 'Cursor',
-    presencePaths: () => [path.join(home, '.cursor')],
-    mcpConfigPaths: (cwd) => [
-      path.join(home, '.cursor', 'mcp.json'),
-      path.join(cwd, '.cursor', 'mcp.json'),
-    ],
-  },
-  {
-    id: 'claude-code',
-    name: 'Claude Code',
-    presencePaths: () => [
-      path.join(home, '.claude'),
-      path.join(home, '.claude.json'),
-    ],
-    mcpConfigPaths: (cwd) => [
-      path.join(home, '.claude.json'),
-      path.join(cwd, '.mcp.json'),
-    ],
-  },
+  fromClient('cursor', 'cursor', (cwd) => [
+    path.join(cwd, '.cursor', 'mcp.json'),
+  ]),
+  fromClient('claude-code', 'claude', (cwd) => [path.join(cwd, '.mcp.json')]),
   {
     id: 'claude-desktop',
     name: 'Claude Desktop',
@@ -85,42 +134,45 @@ const SPECS: AgentSpec[] = [
       path.join(appSupportDir('Claude'), 'claude_desktop_config.json'),
     ],
   },
-  {
-    id: 'vscode',
-    name: 'VS Code',
-    presencePaths: () => [appSupportDir('Code'), path.join(home, '.vscode')],
-    mcpConfigPaths: (cwd) => [
-      path.join(appSupportDir('Code'), 'User', 'mcp.json'),
-      path.join(appSupportDir('Code'), 'User', 'settings.json'),
-      path.join(cwd, '.vscode', 'mcp.json'),
-    ],
-  },
+  fromClient('vscode', 'vscode', (cwd, ctx) => [
+    path.join(
+      path.dirname(MCP_CLIENTS.vscode.globalConfigPath(ctx)),
+      'settings.json'
+    ),
+    path.join(cwd, '.vscode', 'mcp.json'),
+  ]),
   {
     id: 'windsurf',
     name: 'Windsurf',
     presencePaths: () => [
-      path.join(home, '.codeium', 'windsurf'),
-      path.join(home, '.windsurf'),
+      path.join(homedir(), '.codeium', 'windsurf'),
+      path.join(homedir(), '.windsurf'),
     ],
     mcpConfigPaths: () => [
-      path.join(home, '.codeium', 'windsurf', 'mcp_config.json'),
+      path.join(homedir(), '.codeium', 'windsurf', 'mcp_config.json'),
     ],
   },
+  fromClient('codex', 'codex', (_cwd, ctx) => [
+    path.join(
+      path.dirname(MCP_CLIENTS.codex.globalConfigPath(ctx)),
+      'mcp.json'
+    ),
+  ]),
+  fromClient('opencode', 'opencode'),
+  fromClient('hermes', 'hermes'),
   {
-    id: 'codex',
-    name: 'Codex',
-    presencePaths: () => [path.join(home, '.codex')],
-    mcpConfigPaths: () => [
-      path.join(home, '.codex', 'config.toml'),
-      path.join(home, '.codex', 'mcp.json'),
-    ],
+    id: 'openclaw',
+    name: 'OpenClaw',
+    presencePaths: () => [path.join(homedir(), '.openclaw')],
+    mcpConfigPaths: () => [],
+    probeRegistered: openclawFirecrawlRegistered,
   },
   {
     id: 'continue',
     name: 'Continue',
-    presencePaths: () => [path.join(home, '.continue')],
+    presencePaths: () => [path.join(homedir(), '.continue')],
     mcpConfigPaths: (cwd) => [
-      path.join(home, '.continue', 'config.json'),
+      path.join(homedir(), '.continue', 'config.json'),
       path.join(cwd, '.continue', 'config.json'),
     ],
   },
@@ -137,29 +189,21 @@ async function pathExists(p: string): Promise<boolean> {
 
 async function fileHasFirecrawlMcp(filePath: string): Promise<boolean> {
   try {
-    const content = await fs.readFile(filePath, 'utf8');
+    const stored = await fs.readFile(filePath, 'utf8');
+    const content = stored.startsWith('\uFEFF') ? stored.slice(1) : stored;
 
-    // TOML configs (Codex) — cheap substring check, good enough for a doctor
-    // check that just needs a yes/no signal.
     if (filePath.endsWith('.toml')) {
-      return /\[mcp_servers?\.firecrawl\]/i.test(content);
+      return tomlHasServer(content, 'firecrawl');
     }
 
-    // JSON-ish configs. Some tools (VS Code settings.json) allow comments —
-    // strip them before parsing.
-    const stripped = content
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/(^|[^:\\])\/\/.*$/gm, '$1');
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(stripped);
-    } catch {
-      // Last resort: substring scan. Avoids false negatives when a config
-      // uses an unusual JSON dialect.
-      return /"firecrawl"\s*:/.test(content) && /mcpServers?/i.test(content);
+    if (filePath.endsWith('.yaml') || filePath.endsWith('.yml')) {
+      const doc = parseDocument(content);
+      return doc.errors.length === 0 && doc.hasIn(['mcp_servers', 'firecrawl']);
     }
 
+    const errors: ParseError[] = [];
+    const parsed = parseJsonc(content, errors, { allowTrailingComma: true });
+    if (errors.length > 0) return false;
     return hasFirecrawlMcpEntry(parsed);
   } catch {
     return false;
@@ -225,11 +269,15 @@ export async function detectAgents(
       const configPaths = spec.mcpConfigPaths(cwd);
       let mcpRegistered = false;
       if (installed) {
-        for (const cfg of configPaths) {
-          // eslint-disable-next-line no-await-in-loop
-          if (await fileHasFirecrawlMcp(cfg)) {
-            mcpRegistered = true;
-            break;
+        if (spec.probeRegistered) {
+          mcpRegistered = spec.probeRegistered();
+        } else {
+          for (const cfg of configPaths) {
+            // eslint-disable-next-line no-await-in-loop
+            if (await fileHasFirecrawlMcp(cfg)) {
+              mcpRegistered = true;
+              break;
+            }
           }
         }
       }
