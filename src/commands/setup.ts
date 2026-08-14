@@ -950,7 +950,9 @@ function ruleLine(
     case 'skipped':
       return '  Rules skipped';
     case 'unsupported':
-      return `  Rules ${dim}not supported by this agent${reset}`;
+      // Nothing was asked for and nothing can be done about it, so saying so
+      // every run is noise. `skipped` still prints: that one was asked for.
+      return undefined;
     case 'failed':
       return `  ${red}Rules failed${reset} ${result.ruleDetail}`;
   }
