@@ -192,21 +192,19 @@ function runClientCommand(
   command: string,
   args: string[],
   options: Parameters<typeof execFileSync>[2]
-): void {
+): ReturnType<typeof execFileSync> {
   rejectCommandControlCharacters(command, 'Command');
   for (const arg of args)
     rejectCommandControlCharacters(arg, 'Command argument');
 
   if (process.platform !== 'win32') {
-    execFileSync(command, args, options);
-    return;
+    return execFileSync(command, args, options);
   }
 
   const env = options?.env ?? process.env;
   const resolved = resolveWindowsCommand(command, env);
   if (!/\.(?:cmd|bat)$/i.test(resolved)) {
-    execFileSync(resolved, args, options);
-    return;
+    return execFileSync(resolved, args, options);
   }
 
   const line = [escapeCmdArg(resolved), ...args.map(escapeCmdArg)].join(' ');
@@ -215,7 +213,7 @@ function runClientCommand(
     ...options,
     windowsVerbatimArguments: true,
   } as Parameters<typeof execFileSync>[2];
-  execFileSync(comspec, ['/d', '/s', '/c', `"${line}"`], windowsOptions);
+  return execFileSync(comspec, ['/d', '/s', '/c', `"${line}"`], windowsOptions);
 }
 
 function firecrawlHostedMcpUrl(oauth = false): string {
@@ -756,7 +754,10 @@ function openclawConfiguredWorkspace(
 ): string | undefined {
   if (id !== 'openclaw') return undefined;
   try {
-    const stdout = execFileSync(
+    // Same launcher as `openclaw mcp set`. A raw execFileSync('openclaw')
+    // throws on Windows .cmd shims, and the catch used to look like a missing
+    // config value, so the rule landed in the default workspace instead.
+    const stdout = runClientCommand(
       'openclaw',
       ['config', 'get', 'agents.defaults.workspace', '--json'],
       {
@@ -765,7 +766,7 @@ function openclawConfiguredWorkspace(
         env: cleanNpmEnv(),
       }
     );
-    const value: unknown = JSON.parse(stdout);
+    const value: unknown = JSON.parse(String(stdout));
     if (typeof value !== 'string' || value === '') return undefined;
     const expanded = value.startsWith('~')
       ? path.join(os.homedir(), value.slice(1))
@@ -821,8 +822,9 @@ async function setupMcpLauncher(
 
   const rule = MCP_LAUNCHER_RULES[id];
   if (!rule) return result;
-  if (!rules) {
-    // The launcher does take rules; the run just did not ask for them.
+  if (!rules || result.mcpStatus === 'failed') {
+    // Same dependency as the file-writing agents: a rule that names Firecrawl
+    // tools is wrong when the server was not registered.
     result.ruleStatus = 'skipped';
     return result;
   }

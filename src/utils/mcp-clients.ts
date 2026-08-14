@@ -12,7 +12,13 @@
  * expand. An agent is only supported once that syntax is verified.
  */
 
-import { existsSync, promises as fs } from 'fs';
+import {
+  accessSync,
+  constants as fsConstants,
+  existsSync,
+  promises as fs,
+  statSync,
+} from 'fs';
 import path from 'path';
 
 export const FIRECRAWL_MCP_URL = 'https://mcp.firecrawl.dev/v2/mcp';
@@ -388,7 +394,23 @@ export function mcpTargetName(id: McpTargetId): string {
  * Look for an executable across PATH without spawning it. Launchers are CLIs,
  * so their presence on PATH is the signal, but running `--version` during a
  * picker would be slow and have side effects.
+ *
+ * Existence is not enough: a leftover non-executable file or a directory of
+ * the same name would put OpenClaw in the picker on a machine that cannot
+ * run it. Windows treats PATHEXT-matched files as launchable; POSIX needs
+ * the execute bit.
  */
+function isRunnablePath(candidate: string, platform: NodeJS.Platform): boolean {
+  try {
+    if (!statSync(candidate).isFile()) return false;
+    if (platform === 'win32') return true;
+    accessSync(candidate, fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function binaryOnPath(name: string, ctx: McpContext): boolean {
   const extensions =
     ctx.platform === 'win32'
@@ -399,7 +421,8 @@ function binaryOnPath(name: string, ctx: McpContext): boolean {
     .filter(Boolean);
   for (const entry of entries) {
     for (const extension of extensions) {
-      if (existsSync(path.join(entry, `${name}${extension}`))) return true;
+      if (isRunnablePath(path.join(entry, `${name}${extension}`), ctx.platform))
+        return true;
     }
   }
   return false;

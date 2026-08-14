@@ -301,7 +301,11 @@ export async function handleLaunchCommand(
   }
 
   if (installOnly) {
-    console.log(`${target.displayName} is configured with Firecrawl MCP.`);
+    if (installMcpForTarget) {
+      console.log(`${target.displayName} is configured with Firecrawl MCP.`);
+    } else if (installSkillsForTarget) {
+      console.log(`${target.displayName} is configured with Firecrawl skills.`);
+    }
     return;
   }
 

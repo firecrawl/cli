@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  chmodSync,
   existsSync,
   mkdtempSync,
   mkdirSync,
@@ -11,6 +12,7 @@ import os from 'os';
 import path from 'path';
 import {
   detectMcpClients,
+  detectMcpLaunchers,
   resolveMcpClientId,
   type McpContext,
 } from '../../utils/mcp-clients';
@@ -429,6 +431,19 @@ describe('mcp install', () => {
         )
       ).toThrow(/quote/i);
     });
+
+    it('refuses a server section that is a scalar or a list', () => {
+      expect(() =>
+        upsertYamlServer('mcp_servers: foo\n', 'mcp_servers', 'firecrawl', {
+          url: MCP_URL,
+        })
+      ).toThrow(/mapping/i);
+      expect(() =>
+        upsertYamlServer('mcp_servers:\n  - a\n', 'mcp_servers', 'firecrawl', {
+          url: MCP_URL,
+        })
+      ).toThrow(/mapping/i);
+    });
   });
 
   describe('appendRuleSection', () => {
@@ -613,6 +628,38 @@ describe('mcp install', () => {
       mkdirSync(path.join(ctx.home, '.vscode'), { recursive: true });
 
       expect(await detectMcpClients(ctx)).toEqual(['vscode']);
+    });
+  });
+
+  describe('detectMcpLaunchers', () => {
+    it('does not treat a directory on PATH as OpenClaw', () => {
+      const bin = path.join(root, 'bin');
+      mkdirSync(path.join(bin, 'openclaw'), { recursive: true });
+      ctx.env = { ...ctx.env, PATH: bin };
+
+      expect(detectMcpLaunchers(ctx)).toEqual([]);
+    });
+
+    it('does not treat a non-executable PATH file as OpenClaw', () => {
+      if (process.platform === 'win32') return;
+
+      const bin = path.join(root, 'bin');
+      mkdirSync(bin, { recursive: true });
+      writeFileSync(path.join(bin, 'openclaw'), '');
+      ctx.env = { ...ctx.env, PATH: bin };
+
+      expect(detectMcpLaunchers(ctx)).toEqual([]);
+    });
+
+    it('detects OpenClaw from an executable on PATH', () => {
+      const bin = path.join(root, 'bin');
+      mkdirSync(bin, { recursive: true });
+      const binary = path.join(bin, 'openclaw');
+      writeFileSync(binary, '');
+      chmodSync(binary, 0o755);
+      ctx.env = { ...ctx.env, PATH: bin };
+
+      expect(detectMcpLaunchers(ctx)).toEqual(['openclaw']);
     });
   });
 

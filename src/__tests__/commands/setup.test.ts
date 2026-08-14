@@ -89,6 +89,8 @@ describe('handleSetupCommand', () => {
   let originalPath: string | undefined;
   let originalUserProfile: string | undefined;
   let originalAppData: string | undefined;
+  let originalOpenclawWorkspace: string | undefined;
+  let originalOpenclawProfile: string | undefined;
   let originalCwd: string;
   let sandboxCwd: string;
 
@@ -125,6 +127,10 @@ describe('handleSetupCommand', () => {
     // Launcher detection also looks on PATH, so pin it for the same reason.
     originalPath = process.env.PATH;
     process.env.PATH = '';
+    originalOpenclawWorkspace = process.env.OPENCLAW_WORKSPACE_DIR;
+    originalOpenclawProfile = process.env.OPENCLAW_PROFILE;
+    delete process.env.OPENCLAW_WORKSPACE_DIR;
+    delete process.env.OPENCLAW_PROFILE;
   });
 
   afterEach(() => {
@@ -133,6 +139,16 @@ describe('handleSetupCommand', () => {
     rmSync(sandboxHome, { recursive: true, force: true });
     if (originalPath === undefined) delete process.env.PATH;
     else process.env.PATH = originalPath;
+    if (originalOpenclawWorkspace === undefined) {
+      delete process.env.OPENCLAW_WORKSPACE_DIR;
+    } else {
+      process.env.OPENCLAW_WORKSPACE_DIR = originalOpenclawWorkspace;
+    }
+    if (originalOpenclawProfile === undefined) {
+      delete process.env.OPENCLAW_PROFILE;
+    } else {
+      process.env.OPENCLAW_PROFILE = originalOpenclawProfile;
+    }
     if (originalUserProfile === undefined) delete process.env.USERPROFILE;
     else process.env.USERPROFILE = originalUserProfile;
     if (originalAppData === undefined) delete process.env.APPDATA;
@@ -889,6 +905,59 @@ describe('handleSetupCommand', () => {
     const rerun = readFileSync(agentsFile, 'utf-8');
     expect(rerun.match(new RegExp(RULE_MARKER, 'g'))).toHaveLength(2);
     expect(rerun).toBe(written);
+  });
+
+  it('does not write the OpenClaw rule when MCP registration fails', async () => {
+    const workspace = path.join(sandboxHome, '.openclaw', 'workspace');
+    mkdirSync(workspace, { recursive: true });
+    const agentsFile = path.join(workspace, 'AGENTS.md');
+    writeFileSync(agentsFile, '# Keep\n');
+    vi.mocked(execFileSync).mockImplementation(() => {
+      throw new Error('openclaw missing');
+    });
+
+    await expect(
+      handleSetupCommand('mcp', {
+        clients: ['openclaw'],
+        yes: true,
+        rules: true,
+      } as never)
+    ).rejects.toThrow(/OpenClaw/);
+
+    expect(readFileSync(agentsFile, 'utf-8')).toBe('# Keep\n');
+  });
+
+  it('writes the OpenClaw rule to the workspace the CLI reports', async () => {
+    const moved = path.join(sandboxHome, 'cli-workspace');
+    mkdirSync(moved, { recursive: true });
+    writeFileSync(path.join(moved, 'AGENTS.md'), '# CLI\n');
+    const defaultAgents = path.join(
+      sandboxHome,
+      '.openclaw',
+      'workspace',
+      'AGENTS.md'
+    );
+    mkdirSync(path.dirname(defaultAgents), { recursive: true });
+    writeFileSync(defaultAgents, '# Default\n');
+
+    vi.mocked(execFileSync).mockImplementation((_cmd, args) => {
+      const haystack = Array.isArray(args) ? args.join(' ') : String(args);
+      if (haystack.includes('config') && haystack.includes('get')) {
+        return JSON.stringify(moved);
+      }
+      return '';
+    });
+
+    await handleSetupCommand('mcp', {
+      clients: ['openclaw'],
+      yes: true,
+      rules: true,
+    } as never);
+
+    expect(readFileSync(path.join(moved, 'AGENTS.md'), 'utf-8')).toContain(
+      'firecrawl_search'
+    );
+    expect(readFileSync(defaultAgents, 'utf-8')).toBe('# Default\n');
   });
 
   it('leaves the OpenClaw rule alone until its workspace exists', async () => {

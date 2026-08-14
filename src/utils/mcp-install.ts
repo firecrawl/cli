@@ -12,7 +12,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { applyEdits, modify, parse, type ParseError } from 'jsonc-parser';
-import { parseDocument } from 'yaml';
+import { isMap, isScalar, parseDocument } from 'yaml';
 import {
   MCP_CLIENTS,
   MCP_SERVER_NAME,
@@ -151,18 +151,23 @@ export function upsertYamlServer(
   }
 
   const alreadyExists = doc.hasIn([serversKey, serverName]);
+  const current = doc.getIn([serversKey], true);
   // A key with nothing under it parses as a null scalar, and setting a path
   // through that refuses to descend. It has to become a collection node:
   // assigning a plain object leaves the same error one level down. An absent
-  // key needs none of this, since setIn creates the path itself.
-  if (doc.getIn([serversKey]) === null) {
-    const empty = doc.getIn([serversKey], true) as { comment?: string | null };
+  // key needs none of this, since setIn creates the path itself. A scalar or
+  // sequence is already a value; replacing it would drop the user's data, so
+  // that fails instead of calling setIn (which throws a yaml-internal error).
+  if (isScalar(current) && current.value == null) {
+    const empty = current as { comment?: string | null };
     const section = doc.createNode({});
     // That comment belongs to the null value being replaced. A block map has
     // no inline slot on its key, so it moves to the head of the section
     // rather than being dropped with the node it was attached to.
     if (empty?.comment) section.commentBefore = empty.comment;
     doc.setIn([serversKey], section);
+  } else if (current != null && !isMap(current)) {
+    throw new Error(`Could not update ${serversKey}: expected a mapping.`);
   }
   doc.setIn([serversKey, serverName], entry);
 
