@@ -101,13 +101,9 @@ firecrawl setup mcp
 
 This detects which agents you have installed, lists those in a picker
 (already selected), and asks whether to add rules telling those agents to
-prefer Firecrawl for web search and scraping. Setup writes config for Claude
-Code, Cursor, VS Code, Codex, and OpenCode.
-
-Hermes Agent and OpenClaw are supported without being configured: each keeps
-MCP somewhere setup cannot edit safely, so `--hermes` and `--openclaw` print
-the server URL and succeed rather than editing their files. Skills and
-`firecrawl launch` cover both as before.
+prefer Firecrawl for web search and scraping. Setup configures Claude Code,
+Cursor, VS Code, Codex, and OpenCode. `--hermes` and `--openclaw` print the
+server URL instead, for agents Firecrawl supports but does not configure.
 
 Setup writes to your global agent settings, so one command puts Firecrawl on
 every agent you already use. Pass agent flags to skip the picker, or `-y` to
@@ -126,19 +122,10 @@ Your API key is never written into an agent config. When `FIRECRAWL_API_KEY` is
 exported in the environment your agents run under, each agent gets a reference
 to that variable in the syntax it understands. Otherwise setup stays keyless,
 which still serves search, scrape, and parse under an anonymous rate limit. Use
-`--keyless` to force the anonymous path even when a key is available.
-
-To sign in from the agent instead of carrying a key, use `--oauth`:
-
-```bash
-firecrawl setup mcp --oauth              # sign in from each agent's browser
-```
-
-This writes the sign-in endpoint rather than a credential, and each agent starts
-the browser flow itself the first time it connects. Setup prints the step each
-agent needs, since they differ: `/mcp` in Claude Code, `codex mcp login
-firecrawl` for Codex, Cursor Settings, and a browser on first use elsewhere.
-`--oauth` and `--keyless` are different endpoints, so pass only one.
+`--keyless` to force the anonymous path even when a key is available, or
+`--oauth` to sign in from the agent instead. Sign-in writes a different
+endpoint, so each agent runs the browser flow itself on first use and setup
+prints the step it needs. Pass either `--oauth` or `--keyless`, not both.
 
 To make Firecrawl the default web provider for supported AI agents:
 
