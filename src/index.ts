@@ -60,12 +60,7 @@ import {
 } from './commands/init';
 import { handleMakeDefaultCommand, handleSetupCommand } from './commands/setup';
 import type { SetupSubcommand } from './commands/setup';
-import {
-  ALL_MCP_TARGET_IDS,
-  MCP_URL_ONLY_IDS,
-  MCP_URL_ONLY_NAMES,
-  mcpTargetName,
-} from './utils/mcp-clients';
+import { ALL_MCP_TARGET_IDS, mcpTargetName } from './utils/mcp-clients';
 import { handleEnvPullCommand } from './commands/env';
 import { handleStatusCommand } from './commands/status';
 import { handleDoctorCommand } from './commands/doctor';
@@ -2274,14 +2269,6 @@ const setupCommand = program
 for (const id of ALL_MCP_TARGET_IDS) {
   setupCommand.option(`--${id}`, `Set up ${mcpTargetName(id)} (mcp)`);
 }
-// Supported agents we do not configure still take a flag, so naming one
-// succeeds with the server URL instead of failing as unknown.
-for (const id of MCP_URL_ONLY_IDS) {
-  setupCommand.option(
-    `--${id}`,
-    `Show the MCP URL for ${MCP_URL_ONLY_NAMES[id]} (mcp)`
-  );
-}
 
 // `-g` is the old way to ask for the global scope that is now the default.
 // Kept so existing scripts keep running, hidden because it does nothing.
@@ -2312,7 +2299,6 @@ Examples:
     await handleSetupCommand(subcommand, {
       ...options,
       clients: ALL_MCP_TARGET_IDS.filter((id) => options[id] === true),
-      urlOnly: MCP_URL_ONLY_IDS.filter((id) => options[id] === true),
     });
   });
 

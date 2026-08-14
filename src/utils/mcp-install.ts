@@ -12,6 +12,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { applyEdits, modify, parse, type ParseError } from 'jsonc-parser';
+import { parseDocument } from 'yaml';
 import {
   MCP_CLIENTS,
   MCP_SERVER_NAME,
@@ -20,6 +21,7 @@ import {
   type McpClient,
   type McpClientId,
   type McpContext,
+  type McpTargetId,
 } from './mcp-clients';
 
 export type McpStatus = 'configured' | 'reconfigured' | 'failed';
@@ -31,7 +33,7 @@ export type RuleStatus =
   | 'failed';
 
 export interface McpClientResult {
-  id: McpClientId;
+  id: McpTargetId;
   name: string;
   mcpStatus: McpStatus;
   /** Config path on success, error message on failure. */
@@ -58,10 +60,12 @@ async function readIfExists(filePath: string): Promise<string | undefined> {
 
 async function writeFileEnsuringDir(
   filePath: string,
-  content: string
+  content: string,
+  /** Applied by the OS only when the file is created, never to an existing one. */
+  createMode?: number
 ): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, content, 'utf8');
+  await fs.writeFile(filePath, content, { encoding: 'utf8', mode: createMode });
 }
 
 function escapeRegExp(value: string): string {
@@ -127,6 +131,50 @@ export async function writeJsonServerEntry(
 
   await writeFileEnsuringDir(filePath, `${bom}${applyEdits(raw, edits)}`);
   return { status: alreadyExists ? 'reconfigured' : 'configured' };
+}
+
+/**
+ * Insert or replace `serversKey.serverName` in a YAML config. The document is
+ * edited as a tree rather than reserialised from plain objects, so comments,
+ * key order, and the user's formatting survive. Throws on a document that does
+ * not parse, matching how the JSON path treats a config it cannot read.
+ */
+export function upsertYamlServer(
+  content: string,
+  serversKey: string,
+  serverName: string,
+  entry: Record<string, unknown>
+): { content: string; alreadyExists: boolean } {
+  const doc = parseDocument(content);
+  if (doc.errors.length > 0) {
+    throw new Error(doc.errors[0].message);
+  }
+
+  const alreadyExists = doc.hasIn([serversKey, serverName]);
+  // A key with nothing under it parses as a null scalar, and setting a path
+  // through that refuses to descend. It has to become a collection node:
+  // assigning a plain object leaves the same error one level down. An absent
+  // key needs none of this, since setIn creates the path itself.
+  if (doc.getIn([serversKey]) === null) {
+    const empty = doc.getIn([serversKey], true) as { comment?: string | null };
+    const section = doc.createNode({});
+    // That comment belongs to the null value being replaced. A block map has
+    // no inline slot on its key, so it moves to the head of the section
+    // rather than being dropped with the node it was attached to.
+    if (empty?.comment) section.commentBefore = empty.comment;
+    doc.setIn([serversKey], section);
+  }
+  doc.setIn([serversKey, serverName], entry);
+
+  // Serialising the tree drops a byte order mark and normalises line endings.
+  // Both belong to the user's file, so they are restored on the way out.
+  const bom = content.startsWith('\uFEFF') ? '\uFEFF' : '';
+  const eol = content.includes('\r\n') ? '\r\n' : '\n';
+  const serialized = doc.toString().replace(/^\uFEFF/, '');
+  return {
+    content: `${bom}${serialized.replace(/\r?\n/g, eol)}`,
+    alreadyExists,
+  };
 }
 
 /**
@@ -338,6 +386,29 @@ async function writeMcpEntry(
     ctx.auth === 'oauth' && client.oauth?.entry
       ? { ...client.buildEntry(ctx), ...client.oauth.entry }
       : client.buildEntry(ctx);
+
+  if (client.format === 'yaml') {
+    const existing = (await readIfExists(configPath)) ?? '';
+    let patched: { content: string; alreadyExists: boolean };
+    try {
+      patched = upsertYamlServer(
+        existing,
+        client.serversKey,
+        MCP_SERVER_NAME,
+        entry
+      );
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `could not parse existing config at ${configPath}: ${reason}`
+      );
+    }
+    await writeFileEnsuringDir(configPath, patched.content, client.createMode);
+    return {
+      status: patched.alreadyExists ? 'reconfigured' : 'configured',
+      configPath,
+    };
+  }
 
   if (client.format === 'toml') {
     const existing = (await readIfExists(configPath)) ?? '';

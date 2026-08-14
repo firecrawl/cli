@@ -24,35 +24,25 @@ export const FIRECRAWL_MCP_OAUTH_URL = 'https://mcp.firecrawl.dev/v2/mcp-oauth';
 export const MCP_SERVER_NAME = 'firecrawl';
 export const API_KEY_ENV_VAR = 'FIRECRAWL_API_KEY';
 
-export type McpClientId = 'claude' | 'cursor' | 'vscode' | 'codex' | 'opencode';
+export type McpClientId =
+  | 'claude'
+  | 'cursor'
+  | 'vscode'
+  | 'codex'
+  | 'opencode'
+  | 'hermes';
 
 /**
- * Agents Firecrawl supports without configuring. Setup writes a global entry
- * to a file it can parse, never a literal key, plus an optional rule file it
- * owns. These agents do not share that contract: each needs its own writer,
- * its own credential shape, or a subprocess. Setup prints the server URL for
- * them instead, and skills and `firecrawl launch` are unaffected.
+ * Agent launchers that own their MCP configuration rather than reading a file
+ * we write. They are offered alongside the editors but installed differently.
+ *
+ * OpenClaw is the only one: its config is JSON5, which the editor we patch JSON
+ * with cannot read, and `openclaw mcp set` is the vendor-documented path that
+ * also normalises the entry. Hermes reads plain YAML, so it is a client.
  */
-export const MCP_URL_ONLY_IDS = ['hermes', 'openclaw'] as const;
-export type McpUrlOnlyId = (typeof MCP_URL_ONLY_IDS)[number];
+export type McpLauncherId = 'openclaw';
 
-export const MCP_URL_ONLY_NAMES: Record<McpUrlOnlyId, string> = {
-  hermes: 'Hermes Agent',
-  openclaw: 'OpenClaw',
-};
-
-const URL_ONLY_ALIASES: Record<string, McpUrlOnlyId> = {
-  hermes: 'hermes',
-  'hermes-agent': 'hermes',
-  openclaw: 'openclaw',
-};
-
-export function resolveMcpUrlOnlyId(agent: string): McpUrlOnlyId | undefined {
-  const alias = agent.trim().toLowerCase();
-  return Object.prototype.hasOwnProperty.call(URL_ONLY_ALIASES, alias)
-    ? URL_ONLY_ALIASES[alias]
-    : undefined;
-}
+export type McpTargetId = McpClientId | McpLauncherId;
 
 /**
  * `env` writes an indirect reference to `FIRECRAWL_API_KEY`, which only works
@@ -97,10 +87,15 @@ export interface McpOauthSpec {
 export interface McpClient {
   id: McpClientId;
   name: string;
-  format: 'json' | 'toml';
+  format: 'json' | 'toml' | 'yaml';
   /** Key of the map holding MCP servers in this agent's config. */
   serversKey: string;
   globalConfigPath: (ctx: McpContext) => string;
+  /**
+   * Mode for a config file we create. Only applied on creation, so a file the
+   * user already owns keeps the permissions they gave it.
+   */
+  createMode?: number;
   buildEntry: (ctx: McpContext) => Record<string, unknown>;
   /** Absent when browser sign-in is not verified for this agent. */
   oauth?: McpOauthSpec;
@@ -299,6 +294,28 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
     oauth: { nextStep: 'OpenCode opens the browser on first use' },
     detectPaths: (ctx) => [path.join(ctx.home, '.config', 'opencode')],
   },
+  hermes: {
+    id: 'hermes',
+    name: 'Hermes Agent',
+    format: 'yaml',
+    serversKey: 'mcp_servers',
+    globalConfigPath: (ctx) => path.join(ctx.home, '.hermes', 'config.yaml'),
+    // Hermes keeps secrets in ~/.hermes/.env rather than here, but the rest of
+    // this file is the user's, so a file we create starts owner-only.
+    createMode: 0o600,
+    // Documented HTTP server shape: `url` plus a `headers` mapping. Hermes
+    // expands `${VAR}` in any string value in a server entry.
+    buildEntry: (ctx) =>
+      withEnvAuth(ctx, { url: firecrawlMcpUrl(ctx) }, ENV_HEADER.shell),
+    // No `rule`: Hermes reads AGENTS.md from the project directory, and setup
+    // only ever writes global config, so there is no global rule file to own.
+    // Hermes only starts the flow when the entry opts into it.
+    oauth: {
+      entry: { auth: 'oauth' },
+      nextStep: 'Hermes opens the browser on first use',
+    },
+    detectPaths: (ctx) => [path.join(ctx.home, '.hermes')],
+  },
 };
 
 export const ALL_MCP_CLIENT_IDS: readonly McpClientId[] = [
@@ -307,12 +324,105 @@ export const ALL_MCP_CLIENT_IDS: readonly McpClientId[] = [
   'vscode',
   'codex',
   'opencode',
+  'hermes',
 ];
 
-export const ALL_MCP_TARGET_IDS: readonly McpClientId[] = ALL_MCP_CLIENT_IDS;
+export const MCP_LAUNCHER_NAMES: Record<McpLauncherId, string> = {
+  openclaw: 'OpenClaw',
+};
 
-export function mcpTargetName(id: McpClientId): string {
-  return MCP_CLIENTS[id].name;
+/**
+ * OpenClaw keeps its bootstrap files in a workspace directory, which the user
+ * can move. An explicit config value wins over the environment, but that config
+ * is JSON5 and out of reach here, so this covers the documented defaults only.
+ */
+function openclawWorkspaceDir(ctx: McpContext): string {
+  const explicit = ctx.env.OPENCLAW_WORKSPACE_DIR;
+  if (explicit && explicit !== '') return explicit;
+  const profile = ctx.env.OPENCLAW_PROFILE;
+  const suffix =
+    profile && profile !== '' && profile !== 'default' ? `-${profile}` : '';
+  return path.join(ctx.home, '.openclaw', `workspace${suffix}`);
+}
+
+/**
+ * A launcher owns its MCP registration but can still read an instruction file
+ * we write. OpenClaw injects its workspace `AGENTS.md` into the system prompt
+ * on every turn, so the rule belongs there, fenced like any shared file.
+ */
+/** Sign-in support for launchers, held apart because they take no config write. */
+export const MCP_LAUNCHER_OAUTH: Partial<Record<McpLauncherId, McpOauthSpec>> =
+  {
+    openclaw: {
+      // A static Authorization header is ignored once this is set, and the
+      // login command only runs for servers configured with it.
+      entry: { auth: 'oauth' },
+      nextStep: 'run openclaw mcp login firecrawl',
+    },
+  };
+
+export const MCP_LAUNCHER_RULES: Partial<Record<McpLauncherId, McpRuleSpec>> = {
+  openclaw: {
+    kind: 'append',
+    content: RULE_BODY,
+    globalPath: (ctx) => path.join(openclawWorkspaceDir(ctx), 'AGENTS.md'),
+  },
+};
+
+export const ALL_MCP_LAUNCHER_IDS: readonly McpLauncherId[] = ['openclaw'];
+
+export const ALL_MCP_TARGET_IDS: readonly McpTargetId[] = [
+  ...ALL_MCP_CLIENT_IDS,
+  ...ALL_MCP_LAUNCHER_IDS,
+];
+
+export function isMcpLauncherId(id: McpTargetId): id is McpLauncherId {
+  return (ALL_MCP_LAUNCHER_IDS as readonly string[]).includes(id);
+}
+
+export function mcpTargetName(id: McpTargetId): string {
+  return isMcpLauncherId(id) ? MCP_LAUNCHER_NAMES[id] : MCP_CLIENTS[id].name;
+}
+
+/**
+ * Look for an executable across PATH without spawning it. Launchers are CLIs,
+ * so their presence on PATH is the signal, but running `--version` during a
+ * picker would be slow and have side effects.
+ */
+function binaryOnPath(name: string, ctx: McpContext): boolean {
+  const extensions =
+    ctx.platform === 'win32'
+      ? (ctx.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
+      : [''];
+  const entries = (ctx.env.PATH ?? ctx.env.Path ?? '')
+    .split(path.delimiter)
+    .filter(Boolean);
+  for (const entry of entries) {
+    for (const extension of extensions) {
+      if (existsSync(path.join(entry, `${name}${extension}`))) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Detection prefers a false negative to a false positive: the picker only
+ * lists agents that look installed, so a miss means the user passes a flag
+ * (`--cursor`) instead of seeing an agent they do not have.
+ *
+ * Hermes is detected by its config directory alone, through `detectPaths`. Its
+ * name is also used by an unrelated JavaScript engine that ships with common
+ * toolchains, so a PATH lookup reports it present on machines without it.
+ */
+const LAUNCHER_DETECT: Record<McpLauncherId, (ctx: McpContext) => boolean> = {
+  openclaw: (ctx) =>
+    existsSync(path.join(ctx.home, '.openclaw')) ||
+    binaryOnPath('openclaw', ctx),
+};
+
+/** Launchers present on this machine, in registry order. */
+export function detectMcpLaunchers(ctx: McpContext): McpLauncherId[] {
+  return ALL_MCP_LAUNCHER_IDS.filter((id) => LAUNCHER_DETECT[id](ctx));
 }
 
 /** Aliases accepted by `--agent`, including the names `firecrawl launch` uses. */
@@ -330,6 +440,8 @@ const CLIENT_ALIASES: Record<string, McpClientId> = {
   'codex-gui': 'codex',
   opencode: 'opencode',
   'open-code': 'opencode',
+  hermes: 'hermes',
+  'hermes-agent': 'hermes',
 };
 
 export function resolveMcpClientId(agent: string): McpClientId | undefined {

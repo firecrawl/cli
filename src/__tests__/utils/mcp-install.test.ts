@@ -14,10 +14,12 @@ import {
   resolveMcpClientId,
   type McpContext,
 } from '../../utils/mcp-clients';
+import { parse as parseYaml } from 'yaml';
 import {
   appendRuleSection,
   setupMcpClient,
   upsertTomlServer,
+  upsertYamlServer,
   writeJsonServerEntry,
 } from '../../utils/mcp-install';
 
@@ -309,6 +311,123 @@ describe('mcp install', () => {
           url: MCP_URL,
         })
       ).toThrow('unterminated multi-line string');
+    });
+  });
+
+  describe('upsertYamlServer', () => {
+    it('keeps the comments and formatting around an added server', () => {
+      const existing = [
+        '# Hermes configuration',
+        'model: anthropic/claude-opus-4.6 # my preferred model',
+        '',
+        'mcp_servers:',
+        '  github:',
+        '    command: npx',
+        '',
+      ].join('\n');
+
+      const { content, alreadyExists } = upsertYamlServer(
+        existing,
+        'mcp_servers',
+        'firecrawl',
+        { url: MCP_URL }
+      );
+
+      expect(alreadyExists).toBe(false);
+      expect(content).toContain('# Hermes configuration');
+      expect(content).toContain('# my preferred model');
+      expect(content).toContain('command: npx');
+      expect(content).toContain(`url: ${MCP_URL}`);
+    });
+
+    it('builds the server map when the file is empty', () => {
+      const { content, alreadyExists } = upsertYamlServer(
+        '',
+        'mcp_servers',
+        'firecrawl',
+        { url: MCP_URL }
+      );
+
+      expect(alreadyExists).toBe(false);
+      expect(parseYaml(content)).toEqual({
+        mcp_servers: { firecrawl: { url: MCP_URL } },
+      });
+    });
+
+    it('reports an existing entry as already present and replaces it', () => {
+      const existing = 'mcp_servers:\n  firecrawl:\n    url: https://old\n';
+
+      const { content, alreadyExists } = upsertYamlServer(
+        existing,
+        'mcp_servers',
+        'firecrawl',
+        { url: MCP_URL }
+      );
+
+      expect(alreadyExists).toBe(true);
+      expect(content).toContain(MCP_URL);
+      expect(content).not.toContain('https://old');
+    });
+
+    it('fills in a server section that exists but is empty', () => {
+      const { content, alreadyExists } = upsertYamlServer(
+        'model: opus\nmcp_servers:\n',
+        'mcp_servers',
+        'firecrawl',
+        { url: MCP_URL }
+      );
+
+      expect(alreadyExists).toBe(false);
+      expect(parseYaml(content)).toEqual({
+        model: 'opus',
+        mcp_servers: { firecrawl: { url: MCP_URL } },
+      });
+    });
+
+    it('keeps a comment that sat on the empty section', () => {
+      const { content } = upsertYamlServer(
+        'model: opus\nmcp_servers: # servers live here\n',
+        'mcp_servers',
+        'firecrawl',
+        { url: MCP_URL }
+      );
+
+      expect(content).toContain('# servers live here');
+      expect(parseYaml(content)).toEqual({
+        model: 'opus',
+        mcp_servers: { firecrawl: { url: MCP_URL } },
+      });
+    });
+
+    it('keeps a byte order mark and CRLF line endings', () => {
+      const existing =
+        '\uFEFFmodel: opus\r\nterminal:\r\n  backend: docker\r\n';
+
+      const { content } = upsertYamlServer(
+        existing,
+        'mcp_servers',
+        'firecrawl',
+        { url: MCP_URL }
+      );
+
+      expect(content.startsWith('\uFEFF')).toBe(true);
+      expect(content).toContain('\r\n');
+      expect(/[^\r]\n/.test(content)).toBe(false);
+      expect(parseYaml(content.slice(1))).toMatchObject({
+        model: 'opus',
+        mcp_servers: { firecrawl: { url: MCP_URL } },
+      });
+    });
+
+    it('refuses a config that does not parse', () => {
+      expect(() =>
+        upsertYamlServer(
+          'model: "unterminated\nother: 1\n',
+          'mcp_servers',
+          'firecrawl',
+          { url: MCP_URL }
+        )
+      ).toThrow(/quote/i);
     });
   });
 

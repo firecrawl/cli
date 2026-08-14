@@ -3,7 +3,7 @@
  * Installs firecrawl skill files and MCP server into AI coding agents
  */
 
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import { existsSync } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -37,21 +37,27 @@ import {
 import {
   ALL_MCP_CLIENT_IDS,
   FIRECRAWL_MCP_URL,
+  ALL_MCP_LAUNCHER_IDS,
   ALL_MCP_TARGET_IDS,
   detectMcpClients,
+  detectMcpLaunchers,
   FIRECRAWL_MCP_OAUTH_URL,
+  isMcpLauncherId,
   MCP_CLIENTS,
+  MCP_LAUNCHER_OAUTH,
+  MCP_LAUNCHER_RULES,
   mcpTargetName,
   resolveMcpClientId,
   type McpAuthMode,
   type McpContext,
-  MCP_URL_ONLY_IDS,
-  MCP_URL_ONLY_NAMES,
-  resolveMcpUrlOnlyId,
-  type McpClientId,
-  type McpUrlOnlyId,
+  type McpLauncherId,
+  type McpTargetId,
 } from '../utils/mcp-clients';
-import { setupMcpClient, type McpClientResult } from '../utils/mcp-install';
+import {
+  appendRuleSection,
+  setupMcpClient,
+  type McpClientResult,
+} from '../utils/mcp-install';
 
 export type SetupSubcommand =
   | 'skills'
@@ -64,11 +70,11 @@ export type SetupSubcommand =
 type SetupIntegration = SetupSubcommand;
 
 type ResolvedMcpAgent =
-  | { kind: 'clients'; ids?: McpClientId[] }
+  | { kind: 'clients'; ids?: McpTargetId[] }
+  | { kind: 'launchers' }
   | { kind: 'skills-only'; agent: string }
-  /** Supported, but setup prints the URL instead of editing their config. */
-  | { kind: 'url-only'; ids: McpUrlOnlyId[] }
-  | { kind: 'all' };
+  | { kind: 'openclaw' }
+  | { kind: 'all-launchers' };
 
 export interface SetupOptions {
   global?: boolean;
@@ -89,9 +95,7 @@ export interface SetupOptions {
   /** Point agents at the sign-in endpoint instead of sending a credential. */
   oauth?: boolean;
   /** Agents chosen by flag (`--claude`, `--cursor`, ...); skips the picker. */
-  clients?: McpClientId[];
-  /** Supported agents named by flag that setup does not configure. */
-  urlOnly?: McpUrlOnlyId[];
+  clients?: McpTargetId[];
   /** Force the Firecrawl web rules on or off instead of prompting. */
   rules?: boolean;
 }
@@ -112,6 +116,108 @@ const SKILL_REPO_LABELS: Record<string, string> = {
 function skillRepoLabel(repo: string): string {
   return SKILL_REPO_LABELS[repo] ?? repo;
 }
+
+const CMD_META_CHARS = /([()%!^"<>&|])/g;
+
+function rejectCommandControlCharacters(value: string, label: string): void {
+  if (/[\0\r\n]/.test(value)) {
+    throw new Error(`${label} contains an unsupported control character.`);
+  }
+}
+
+/** Quote one argv value for cmd.exe using the same two-layer escaping model as
+ * established Windows spawn libraries: first the C runtime, then cmd.exe. */
+function escapeCmdArg(arg: string): string {
+  rejectCommandControlCharacters(arg, 'Command argument');
+  const quoted = `"${arg
+    .replace(/(\\*)"/g, '$1$1\\"')
+    .replace(/(\\*)$/, '$1$1')}"`;
+  return quoted.replace(CMD_META_CHARS, '^$1');
+}
+
+function windowsPathExtensions(env: NodeJS.ProcessEnv): string[] {
+  const configured = env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD';
+  return configured
+    .split(';')
+    .map((extension) => extension.trim())
+    .filter(Boolean);
+}
+
+/** Resolve the actual Windows launcher instead of assuming every tool is a
+ * `.cmd` shim. Native `.exe` clients must bypass cmd.exe entirely. */
+function resolveWindowsCommand(
+  command: string,
+  env: NodeJS.ProcessEnv
+): string {
+  rejectCommandControlCharacters(command, 'Command');
+  const hasPath = /[\\/]/.test(command);
+  const hasExtension = path.extname(command) !== '';
+  const candidates = hasExtension
+    ? [command]
+    : windowsPathExtensions(env).map((extension) => `${command}${extension}`);
+  const pathEntries = hasPath
+    ? ['']
+    : (env.PATH ?? env.Path ?? env.path ?? '')
+        .split(path.delimiter)
+        .map((entry) => entry.replace(/^"|"$/g, ''))
+        .filter(Boolean);
+
+  for (const directory of pathEntries) {
+    for (const candidate of candidates) {
+      const resolved = directory ? path.join(directory, candidate) : candidate;
+      if (existsSync(resolved)) return resolved;
+    }
+  }
+
+  // Let CreateProcess perform its normal resolution for native executables.
+  // Crucially, do not silently rewrite an unknown command to `<name>.cmd`.
+  return command;
+}
+
+/**
+ * Cross-platform, injection-safe replacement for `execFileSync`.
+ *
+ * On win32, external tools ship as `.cmd`/`.bat` shims (npx.cmd, npm.cmd,
+ * codex.cmd, openclaw.cmd). Node's `execFile`/`execFileSync` calls CreateProcess
+ * directly and CANNOT launch a `.cmd`/`.bat` file — it throws ENOENT/EINVAL. The
+ * only reliable way is to route through the shell (cmd.exe). To keep the argv
+ * safety this file relies on (secrets must never be shell-interpreted), we
+ * escape every argument for cmd.exe ourselves instead of letting the shell
+ * re-split a joined string.
+ *
+ * On every other platform we spawn the binary directly with no shell, exactly as
+ * `execFileSync` did before.
+ */
+function runClientCommand(
+  command: string,
+  args: string[],
+  options: Parameters<typeof execFileSync>[2]
+): void {
+  rejectCommandControlCharacters(command, 'Command');
+  for (const arg of args)
+    rejectCommandControlCharacters(arg, 'Command argument');
+
+  if (process.platform !== 'win32') {
+    execFileSync(command, args, options);
+    return;
+  }
+
+  const env = options?.env ?? process.env;
+  const resolved = resolveWindowsCommand(command, env);
+  if (!/\.(?:cmd|bat)$/i.test(resolved)) {
+    execFileSync(resolved, args, options);
+    return;
+  }
+
+  const line = [escapeCmdArg(resolved), ...args.map(escapeCmdArg)].join(' ');
+  const comspec = env.ComSpec ?? env.COMSPEC ?? 'cmd.exe';
+  const windowsOptions = {
+    ...options,
+    windowsVerbatimArguments: true,
+  } as Parameters<typeof execFileSync>[2];
+  execFileSync(comspec, ['/d', '/s', '/c', `"${line}"`], windowsOptions);
+}
+
 function firecrawlHostedMcpUrl(oauth = false): string {
   return oauth ? FIRECRAWL_MCP_OAUTH_URL : FIRECRAWL_MCP_URL;
 }
@@ -123,6 +229,51 @@ function isEnvironmentBackedApiKey(
   return Boolean(apiKey && runtimeEnv[ENV_API_KEY] === apiKey);
 }
 
+function assertSubprocessSafeCredential(
+  apiKey?: string,
+  runtimeEnv: NodeJS.ProcessEnv = process.env
+): void {
+  if (apiKey && !isEnvironmentBackedApiKey(apiKey, runtimeEnv)) {
+    throw new Error(
+      'Secure MCP setup cannot persist a stored API key for future client sessions. Export FIRECRAWL_API_KEY, launch the client through "firecrawl launch <agent>", or configure keyless MCP.'
+    );
+  }
+}
+
+function environmentHeaderForAgent(agent?: string): string | undefined {
+  switch (agent) {
+    case 'claude-code':
+    case 'hermes':
+    case 'openclaw':
+      return `Bearer \${${ENV_API_KEY}}`;
+    case 'cursor':
+    case 'vscode':
+      return `Bearer \${env:${ENV_API_KEY}}`;
+    case 'opencode':
+      return `Bearer {env:${ENV_API_KEY}}`;
+    default:
+      return undefined;
+  }
+}
+
+function firecrawlMcpHeaders(
+  agent?: string,
+  apiKey?: string,
+  runtimeEnv: NodeJS.ProcessEnv = process.env
+): Record<string, string> | undefined {
+  if (!apiKey) return undefined;
+
+  // Keep this helper safe in isolation. Callers currently reject stored keys
+  // before reaching it, but a future call site must not turn one into a raw
+  // Authorization header in argv or a client configuration file.
+  assertSubprocessSafeCredential(apiKey, runtimeEnv);
+  const environmentHeader = environmentHeaderForAgent(agent);
+  if (environmentHeader) return { Authorization: environmentHeader };
+  throw new Error(
+    'This MCP client does not have a verified environment-variable syntax. Choose a supported --agent, use --agent all, or configure the client manually so FIRECRAWL_API_KEY is not persisted as a literal.'
+  );
+}
+
 function resolveMcpAgent(agent: string | undefined): ResolvedMcpAgent {
   if (!agent) return { kind: 'clients' };
 
@@ -130,19 +281,22 @@ function resolveMcpAgent(agent: string | undefined): ResolvedMcpAgent {
   switch (normalized) {
     case '*':
     case 'all':
-      return { kind: 'all' };
+      return { kind: 'all-launchers' };
+    case 'launchers':
+    case 'launcher':
+      return { kind: 'launchers' };
+    case 'openclaw':
+      return { kind: 'openclaw' };
     default: {
       const id = resolveMcpClientId(normalized);
       if (id) return { kind: 'clients', ids: [id] };
-      const urlOnly = resolveMcpUrlOnlyId(normalized);
-      if (urlOnly) return { kind: 'url-only', ids: [urlOnly] };
       // A name we install skills for but write no MCP config for is not an
       // error; the caller may have already installed skills for it.
       if (isSkillsAgentName(normalized)) {
         return { kind: 'skills-only', agent };
       }
       throw new Error(
-        `Unknown agent "${agent}" for setup mcp. Use one of: ${[...ALL_MCP_CLIENT_IDS, ...MCP_URL_ONLY_IDS].join(', ')}, all.`
+        `Unknown agent "${agent}" for setup mcp. Use one of: ${ALL_MCP_TARGET_IDS.join(', ')}, all.`
       );
     }
   }
@@ -512,27 +666,6 @@ export async function installSkillsForAgent(
   );
 }
 
-/** The endpoint this run points agents at, which sign-in changes. */
-function mcpUrlFor(options: SetupOptions): string {
-  return options.oauth ? FIRECRAWL_MCP_OAUTH_URL : FIRECRAWL_MCP_URL;
-}
-
-/**
- * Report the agents Firecrawl supports but does not configure. Naming one is
- * not an error: the run succeeds and prints the URL so the person can point
- * the agent at it themselves.
- */
-function reportUrlOnly(ids: McpUrlOnlyId[], options: SetupOptions): void {
-  // Quiet mode is embedded in init and launch, which indent every line they
-  // render, so these sit with the rest of that output rather than beside it.
-  const indent = options.quiet ? '  ' : '';
-  for (const id of ids) {
-    console.log(
-      `${indent}${MCP_URL_ONLY_NAMES[id]}: Firecrawl does not write its MCP config. Point it at ${mcpUrlFor(options)} to connect it yourself.`
-    );
-  }
-}
-
 export async function installMcp(
   options: SetupOptions,
   // `firecrawl launch` may provide the exact environment inherited by the
@@ -540,53 +673,51 @@ export async function installMcp(
   // without mutating the parent shell or exposing the key to setup commands.
   runtimeEnv: NodeJS.ProcessEnv = process.env
 ): Promise<void> {
-  // Checked before anything else reports or returns, so an agent we only print
-  // a URL for cannot accept a combination the writers reject.
+  // Checked before anything else reports or returns, so no branch can accept a
+  // combination the writers reject.
   if (options.oauth && options.keyless) {
     throw new Error(
       'Choose either --oauth or --keyless. Signing in and running anonymously are different endpoints.'
     );
   }
 
+  const apiKey = options.keyless ? undefined : getApiKey();
   const resolvedAgent = resolveMcpAgent(options.agent);
+  // Same rule as installMcpClients: a stored key cannot go into agent config,
+  // so --agent hermes/openclaw fall back to keyless just like --hermes/--openclaw.
+  const keyless = !isEnvironmentBackedApiKey(apiKey, runtimeEnv);
 
   if (resolvedAgent.kind === 'skills-only') {
     // Skills for this agent have already installed by this point; ending the
     // run here would fail a command that mostly succeeded.
     console.log(
-      `Firecrawl does not write MCP config for ${resolvedAgent.agent}. Point it at ${mcpUrlFor(options)} to connect it yourself.`
+      `Firecrawl does not write MCP config for ${resolvedAgent.agent}. Point it at ${FIRECRAWL_MCP_URL} to connect it yourself.`
     );
     return;
   }
 
-  if (resolvedAgent.kind === 'all') {
-    // `all` covers the agents we do not configure too, and their URL is the
-    // whole answer for them. A writer failing must not swallow it, so the
-    // report runs before the failure leaves this function.
-    try {
-      await installMcpClients({ ...options, yes: true }, runtimeEnv, [
-        ...ALL_MCP_CLIENT_IDS,
-      ]);
-    } finally {
-      reportUrlOnly([...MCP_URL_ONLY_IDS], options);
-    }
+  if (resolvedAgent.kind === 'openclaw') {
+    // Routed through the same reporter as every other target so the keyless
+    // fallback is stated rather than implied by a bare installer log line.
+    await installMcpClients({ ...options, yes: true }, runtimeEnv, [
+      resolvedAgent.kind,
+    ]);
+    return;
+  }
+  if (resolvedAgent.kind === 'launchers') {
+    await installMcpClients({ ...options, yes: true }, runtimeEnv, [
+      ...ALL_MCP_LAUNCHER_IDS,
+    ]);
+    return;
+  }
+  if (resolvedAgent.kind === 'all-launchers') {
+    await installMcpClients({ ...options, yes: true }, runtimeEnv, undefined, {
+      includeAllLaunchers: true,
+    });
     return;
   }
 
-  // Every agent named this run that setup does not configure, whichever flag
-  // form named it. Reported once, and never in place of the rest of the run.
-  const urlOnly = [
-    ...(options.urlOnly ?? []),
-    ...(resolvedAgent.kind === 'url-only' ? resolvedAgent.ids : []),
-  ].filter((id, index, all) => all.indexOf(id) === index);
-  if (urlOnly.length > 0) reportUrlOnly(urlOnly, options);
-
-  const explicitIds =
-    resolvedAgent.kind === 'clients' ? resolvedAgent.ids : undefined;
-  // The URL was the whole request only when nothing else was named.
-  if (urlOnly.length > 0 && !explicitIds && !options.clients?.length) return;
-
-  await installMcpClients(options, runtimeEnv, explicitIds);
+  await installMcpClients(options, runtimeEnv, resolvedAgent.ids);
 }
 
 /** Shorten a path for display: relative inside the project, `~` under home. */
@@ -602,10 +733,10 @@ function displayPath(target: string, ctx: McpContext): string {
 }
 
 async function pickMcpClients(
-  detected: readonly McpClientId[]
-): Promise<McpClientId[]> {
+  detected: readonly McpTargetId[]
+): Promise<McpTargetId[]> {
   const { checkbox } = await import('@inquirer/prompts');
-  return checkbox<McpClientId>({
+  return checkbox<McpTargetId>({
     message: 'Which agents do you want to set up?',
     loop: false,
     pageSize: detected.length,
@@ -623,6 +754,104 @@ async function pickMcpClients(
  * out of reach here, so the launcher itself is the authority. Falls back to the
  * documented defaults whenever the CLI cannot answer.
  */
+function openclawConfiguredWorkspace(
+  runtimeEnv: NodeJS.ProcessEnv,
+  id: McpLauncherId
+): string | undefined {
+  if (id !== 'openclaw') return undefined;
+  try {
+    const stdout = execFileSync(
+      'openclaw',
+      ['config', 'get', 'agents.defaults.workspace', '--json'],
+      {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        env: cleanNpmEnv(),
+      }
+    );
+    const value: unknown = JSON.parse(stdout);
+    if (typeof value !== 'string' || value === '') return undefined;
+    const expanded = value.startsWith('~')
+      ? path.join(os.homedir(), value.slice(1))
+      : value;
+    return path.join(expanded, 'AGENTS.md');
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Launchers own their MCP configuration, so they are installed through their
+ * own routine instead of a config write. Failures stay scoped to the one
+ * launcher: a missing binary must not cost the user the agents that worked.
+ */
+async function setupMcpLauncher(
+  id: McpLauncherId,
+  ctx: McpContext,
+  runtimeEnv: NodeJS.ProcessEnv,
+  rules: boolean
+): Promise<McpClientResult> {
+  const keyless = ctx.auth !== 'env';
+  const result: McpClientResult = {
+    id,
+    name: mcpTargetName(id),
+    mcpStatus: 'failed',
+    mcpDetail: '',
+    auth: keyless ? 'keyless' : 'env',
+    ruleStatus: 'unsupported',
+    ruleDetail: '',
+  };
+
+  try {
+    switch (id) {
+      case 'openclaw':
+        await installOpenClawMcp(
+          runtimeEnv,
+          keyless,
+          true,
+          ctx.auth === 'oauth'
+        );
+        result.mcpDetail = 'via the openclaw CLI';
+        break;
+      default: {
+        const unreachable: never = id;
+        throw new Error(`No installer for launcher ${String(unreachable)}`);
+      }
+    }
+    result.mcpStatus = 'configured';
+  } catch (error) {
+    result.mcpDetail = error instanceof Error ? error.message : String(error);
+  }
+
+  const rule = MCP_LAUNCHER_RULES[id];
+  if (!rule) return result;
+  if (!rules) {
+    // The launcher does take rules; the run just did not ask for them.
+    result.ruleStatus = 'skipped';
+    return result;
+  }
+
+  const rulePath =
+    openclawConfiguredWorkspace(runtimeEnv, id) ?? rule.globalPath(ctx);
+  // The launcher creates this file itself on first run, seeded with its own
+  // instructions. Creating it here first would leave the user with our section
+  // and none of that, so the rule waits for a workspace that exists.
+  if (!existsSync(rulePath)) {
+    result.ruleStatus = 'skipped';
+    result.ruleDetail = rulePath;
+    return result;
+  }
+
+  try {
+    result.ruleStatus = await appendRuleSection(rulePath, rule.content);
+    result.ruleDetail = rulePath;
+  } catch (error) {
+    result.ruleStatus = 'failed';
+    result.ruleDetail = error instanceof Error ? error.message : String(error);
+  }
+  return result;
+}
+
 async function confirmMcpRules(): Promise<boolean> {
   const { confirm } = await import('@inquirer/prompts');
   return confirm({
@@ -635,7 +864,7 @@ async function confirmMcpRules(): Promise<boolean> {
 async function installMcpClients(
   options: SetupOptions,
   runtimeEnv: NodeJS.ProcessEnv,
-  explicitIds?: McpClientId[],
+  explicitIds?: McpTargetId[],
   { includeAllLaunchers = false } = {}
 ): Promise<void> {
   const apiKey = options.oauth || options.keyless ? undefined : getApiKey();
@@ -660,12 +889,17 @@ async function installMcpClients(
   // Prompts only make sense when someone is there to answer them.
   const nonInteractive = Boolean(options.yes) || !process.stdin.isTTY;
 
-  let selected = explicitIds ?? options.clients;
+  let selected = includeAllLaunchers
+    ? [...ALL_MCP_CLIENT_IDS]
+    : (explicitIds ?? options.clients);
   if (!selected || selected.length === 0) {
-    const detected: McpClientId[] = await detectMcpClients(ctx);
-    if (detected.length === 0) {
+    const detected: McpTargetId[] = [
+      ...(await detectMcpClients(ctx)),
+      ...detectMcpLaunchers(ctx),
+    ];
+    if (detected.length === 0 && !includeAllLaunchers) {
       throw new Error(
-        `No coding agents detected. Pass an agent flag such as --claude or --cursor, or point one at ${mcpUrlFor(options)} yourself.`
+        'No coding agents detected. Pass an agent flag such as --claude or --cursor.'
       );
     }
     if (nonInteractive) {
@@ -679,6 +913,15 @@ async function installMcpClients(
     }
   }
 
+  // `--agent all` reaches every integration whether or not it looks installed,
+  // which is what the flag has always meant.
+  if (includeAllLaunchers) {
+    selected = [
+      ...selected.filter((id) => !isMcpLauncherId(id)),
+      ...ALL_MCP_LAUNCHER_IDS,
+    ];
+  }
+
   // `-y` stays MCP-only so automation never rewrites instruction files by
   // surprise; the flags are there when a script does want the rules.
   const rules =
@@ -686,7 +929,11 @@ async function installMcpClients(
 
   const results: McpClientResult[] = [];
   for (const id of selected) {
-    results.push(await setupMcpClient(id, { rules, ctx }));
+    results.push(
+      isMcpLauncherId(id)
+        ? await setupMcpLauncher(id, ctx, runtimeEnv, rules)
+        : await setupMcpClient(id, { rules, ctx })
+    );
   }
 
   reportMcpResults(results, ctx, options, Boolean(apiKey));
@@ -752,7 +999,9 @@ function signInLine(
   ctx: McpContext
 ): string | undefined {
   if (ctx.auth !== 'oauth' || result.mcpStatus === 'failed') return undefined;
-  const spec = MCP_CLIENTS[result.id].oauth;
+  const spec = isMcpLauncherId(result.id)
+    ? MCP_LAUNCHER_OAUTH[result.id]
+    : MCP_CLIENTS[result.id].oauth;
   return spec ? `  Sign in ${dim}${spec.nextStep}${reset}` : undefined;
 }
 
@@ -809,6 +1058,60 @@ function reportMcpResults(
   if (failed.length > 0) {
     throw new Error(
       `Firecrawl MCP failed for ${failed.map((result) => result.name).join(', ')}.`
+    );
+  }
+}
+
+function firecrawlMcpConfig(
+  agent?: string,
+  runtimeEnv: NodeJS.ProcessEnv = process.env,
+  keyless = false,
+  oauth = false
+): {
+  url: string;
+  headers?: Record<string, string>;
+  transport?: string;
+} {
+  return {
+    url: firecrawlHostedMcpUrl(oauth),
+    // Sign-in replaces the credential rather than travelling beside it, so the
+    // key is dropped here too. Callers already choose one or the other, but a
+    // helper this public must not put credential configuration on the sign-in
+    // endpoint just because it was called directly.
+    headers: firecrawlMcpHeaders(
+      agent,
+      keyless || oauth ? undefined : getApiKey(),
+      runtimeEnv
+    ),
+  };
+}
+
+export async function installOpenClawMcp(
+  runtimeEnv: NodeJS.ProcessEnv = process.env,
+  keyless = false,
+  /** Suppress standalone logging when a caller renders its own summary. */
+  quiet = false,
+  oauth = false
+): Promise<void> {
+  const config = {
+    ...firecrawlMcpConfig('openclaw', runtimeEnv, keyless, oauth),
+    transport: 'streamable-http',
+    ...(oauth ? MCP_LAUNCHER_OAUTH.openclaw?.entry : undefined),
+  };
+  if (!quiet) console.log('Configuring Firecrawl MCP for OpenClaw...\n');
+
+  try {
+    runClientCommand(
+      'openclaw',
+      ['mcp', 'set', 'firecrawl', JSON.stringify(config)],
+      {
+        stdio: 'pipe',
+        env: cleanNpmEnv(),
+      }
+    );
+  } catch {
+    throw new Error(
+      'Failed to configure Firecrawl MCP for OpenClaw. Verify that OpenClaw is installed and available on PATH.'
     );
   }
 }

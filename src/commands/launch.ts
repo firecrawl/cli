@@ -4,7 +4,6 @@ import path from 'path';
 import readline from 'readline';
 import { spawnSync } from 'child_process';
 import { installMcp, installSkillsForAgent } from './setup';
-import { resolveMcpUrlOnlyId } from '../utils/mcp-clients';
 import { ALL_SKILL_REPOS } from './skills-install';
 import { getApiKey } from '../utils/config';
 
@@ -250,11 +249,6 @@ export async function handleLaunchCommand(
   }
 
   const targetSupportsMcp = Boolean(target.mcpAgent);
-  // Some targets are supported without their MCP config being written; setup
-  // prints their server URL instead. Launch must not then claim otherwise.
-  const targetWritesMcp = Boolean(
-    target.mcpAgent && !resolveMcpUrlOnlyId(target.mcpAgent)
-  );
   const targetSupportsSkills = Boolean(target.skillsAgent);
   let installMcpForTarget = targetSupportsMcp && !options.skipMcp;
   let installSkillsForTarget = targetSupportsSkills && !options.skipSkills;
@@ -307,13 +301,7 @@ export async function handleLaunchCommand(
   }
 
   if (installOnly) {
-    // Only claim MCP when this run actually wrote it: --skip-mcp and the
-    // targets we do not configure both end up here having written none.
-    console.log(
-      installMcpForTarget && targetWritesMcp
-        ? `${target.displayName} is configured with Firecrawl MCP.`
-        : `${target.displayName} is set up.`
-    );
+    console.log(`${target.displayName} is configured with Firecrawl MCP.`);
     return;
   }
 
