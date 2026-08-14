@@ -523,9 +523,12 @@ function mcpUrlFor(options: SetupOptions): string {
  * the agent at it themselves.
  */
 function reportUrlOnly(ids: McpUrlOnlyId[], options: SetupOptions): void {
+  // Quiet mode is embedded in init and launch, which indent every line they
+  // render, so these sit with the rest of that output rather than beside it.
+  const indent = options.quiet ? '  ' : '';
   for (const id of ids) {
     console.log(
-      `${MCP_URL_ONLY_NAMES[id]}: Firecrawl does not write its MCP config. Point it at ${mcpUrlFor(options)} to connect it yourself.`
+      `${indent}${MCP_URL_ONLY_NAMES[id]}: Firecrawl does not write its MCP config. Point it at ${mcpUrlFor(options)} to connect it yourself.`
     );
   }
 }
