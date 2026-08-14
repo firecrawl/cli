@@ -86,8 +86,12 @@ export interface McpRuleSpec {
 export interface McpOauthSpec {
   /** Entry fields the agent needs before it will start the flow. */
   entry?: Record<string, unknown>;
-  /** What the person does next, since no agent signs in during setup. */
-  nextStep: string;
+  /**
+   * The command that signs this agent in, and only when one is required.
+   * Agents that surface the prompt themselves leave this unset: repeating
+   * their own instruction back at them is noise, not help.
+   */
+  nextStep?: string;
 }
 
 export interface McpClient {
@@ -211,7 +215,8 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
       globalPath: (ctx) =>
         path.join(claudeConfigDir(ctx), 'rules', 'firecrawl.md'),
     },
-    oauth: { nextStep: 'run /mcp in Claude Code to sign in' },
+    // Claude Code flags a server that answers 401 and shows a startup notice
+    // pointing at `/mcp`, so setup has nothing to add.
     detectPaths: (ctx) => [claudeConfigDir(ctx), claudeGlobalConfigPath(ctx)],
   },
   cursor: {
@@ -228,7 +233,7 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
       globalPath: (ctx) =>
         path.join(ctx.home, '.cursor', 'rules', 'firecrawl.mdc'),
     },
-    oauth: { nextStep: 'open Cursor Settings, select MCP, and sign in' },
+    // Cursor marks the server as needing login in its own MCP settings.
     detectPaths: (ctx) => [path.join(ctx.home, '.cursor')],
   },
   vscode: {
@@ -251,7 +256,8 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
     },
     // `User` is created on first launch, so requiring it misses an install
     // that has only been unpacked. These are the markers doctor already uses.
-    oauth: { nextStep: 'sign in from the MCP view in VS Code' },
+    // VS Code registers its own client and opens the browser when the server
+    // starts, and documents no sign-in command to point at.
     detectPaths: (ctx) => [
       appSupportDir(ctx, 'Code'),
       path.join(ctx.home, '.vscode'),
@@ -274,8 +280,12 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
       content: RULE_BODY,
       globalPath: (ctx) => path.join(ctx.home, '.codex', 'AGENTS.md'),
     },
-    // Codex registers the server but does not start the flow on its own.
-    oauth: { nextStep: 'run codex mcp login firecrawl' },
+    // Codex registers the server but does not start the flow on its own. The
+    // desktop app and the IDE extension share this config file and offer an
+    // Authenticate action; only the CLI needs the command.
+    oauth: {
+      nextStep: 'codex mcp login firecrawl, or Authenticate in Codex settings',
+    },
     detectPaths: (ctx) => [path.join(ctx.home, '.codex')],
   },
   opencode: {
@@ -297,7 +307,7 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
       globalPath: (ctx) =>
         path.join(ctx.home, '.config', 'opencode', 'AGENTS.md'),
     },
-    oauth: { nextStep: 'OpenCode opens the browser on first use' },
+    // OpenCode prompts on first use, so there is nothing to tell the user.
     detectPaths: (ctx) => [path.join(ctx.home, '.config', 'opencode')],
   },
   hermes: {
@@ -315,10 +325,12 @@ export const MCP_CLIENTS: Record<McpClientId, McpClient> = {
       withEnvAuth(ctx, { url: firecrawlMcpUrl(ctx) }, ENV_HEADER.shell),
     // No `rule`: Hermes reads AGENTS.md from the project directory, and setup
     // only ever writes global config, so there is no global rule file to own.
-    // Hermes only starts the flow when the entry opts into it.
+    // Hermes only starts the flow when the entry opts into it. A running
+    // session reloads this file on a 30s timer, which is not long enough to
+    // finish the flow, so the login command has to run outside that session.
     oauth: {
       entry: { auth: 'oauth' },
-      nextStep: 'Hermes opens the browser on first use',
+      nextStep: 'hermes mcp login firecrawl, from a new terminal',
     },
     detectPaths: (ctx) => [path.join(ctx.home, '.hermes')],
   },
@@ -363,7 +375,7 @@ export const MCP_LAUNCHER_OAUTH: Partial<Record<McpLauncherId, McpOauthSpec>> =
       // A static Authorization header is ignored once this is set, and the
       // login command only runs for servers configured with it.
       entry: { auth: 'oauth' },
-      nextStep: 'run openclaw mcp login firecrawl',
+      nextStep: 'openclaw mcp login firecrawl',
     },
   };
 

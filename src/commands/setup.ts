@@ -969,9 +969,9 @@ function authNotes(
   if (succeeded.length === 0) return [];
 
   if (ctx.auth === 'oauth') {
-    return [
-      'Each agent signs in through your browser the first time it connects.',
-    ];
+    // Deliberately not "each agent prompts you": Codex, Hermes, and OpenClaw
+    // wait for the command printed above their entry instead.
+    return ['Sign in from each agent the first time you use it.'];
   }
 
   if (!hasApiKey) {
@@ -990,9 +990,9 @@ function authNotes(
 }
 
 /**
- * What the person still has to do for this agent. Setup can register the
- * server but no agent signs in on its behalf, and each one starts the flow
- * differently, so a single footer would leave most agents unexplained.
+ * The command that signs this agent in. Only the agents that need one say
+ * anything: the rest prompt on their own, and the footer already tells the
+ * person to expect that.
  */
 function signInLine(
   result: McpClientResult,
@@ -1002,7 +1002,9 @@ function signInLine(
   const spec = isMcpLauncherId(result.id)
     ? MCP_LAUNCHER_OAUTH[result.id]
     : MCP_CLIENTS[result.id].oauth;
-  return spec ? `  Sign in ${dim}${spec.nextStep}${reset}` : undefined;
+  return spec?.nextStep
+    ? `  Sign in: ${dim}${spec.nextStep}${reset}`
+    : undefined;
 }
 
 function reportMcpResults(
