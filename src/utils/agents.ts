@@ -12,7 +12,7 @@ import { execFileSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { parse as parseJsonc, type ParseError } from 'jsonc-parser';
+import { parse as parseJsonc } from 'jsonc-parser';
 import { parseDocument } from 'yaml';
 import {
   createMcpContext,
@@ -201,10 +201,11 @@ async function fileHasFirecrawlMcp(filePath: string): Promise<boolean> {
       return doc.errors.length === 0 && doc.hasIn(['mcp_servers', 'firecrawl']);
     }
 
-    const errors: ParseError[] = [];
-    const parsed = parseJsonc(content, errors, { allowTrailingComma: true });
-    if (errors.length > 0) return false;
-    return hasFirecrawlMcpEntry(parsed);
+    // Recoverable JSONC errors (a missing comma, trailing junk) still yield a
+    // tree the agent will load. Only the recovered value decides registration.
+    return hasFirecrawlMcpEntry(
+      parseJsonc(content, [], { allowTrailingComma: true })
+    );
   } catch {
     return false;
   }

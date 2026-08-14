@@ -920,9 +920,15 @@ async function installMcpClients(
       ...detectMcpLaunchers(ctx),
     ];
     if (detected.length === 0 && !includeAllLaunchers) {
-      throw new Error(
-        'No coding agents detected. Pass an agent flag such as --claude or --cursor.'
-      );
+      const message =
+        'No coding agents detected. Pass an agent flag such as --claude or --cursor.';
+      // Interactive setup needs a picker. Non-interactive `-y` / `setup --yes`
+      // must not fail the rest of the bundle after skills already installed.
+      if (!nonInteractive) {
+        throw new Error(message);
+      }
+      if (!options.quiet) console.log(message);
+      return false;
     }
     if (nonInteractive) {
       selected = detected;

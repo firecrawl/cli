@@ -327,6 +327,36 @@ describe('handleSetupCommand', () => {
       ).mcpServers.firecrawl
     ).toEqual({ url: MCP_URL });
   });
+
+  it('does not fail the --yes bundle when no coding agents are installed', async () => {
+    vi.mocked(getApiKey).mockReturnValue(undefined);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await handleSetupCommand(undefined, { yes: true });
+
+    expect(execSync).toHaveBeenCalledWith(
+      'npx -y skills add firecrawl/cli --full-depth --global --all --yes',
+      expect.objectContaining({ stdio: 'inherit' })
+    );
+    expect(log.mock.calls.flat().join('\n')).toContain(
+      'No coding agents detected'
+    );
+    expect(existsSync(path.join(sandboxHome, '.cursor', 'mcp.json'))).toBe(
+      false
+    );
+  });
+
+  it('does not throw when non-interactive MCP setup finds no agents', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await expect(
+      handleSetupCommand('mcp', { yes: true })
+    ).resolves.toBeUndefined();
+    expect(log.mock.calls.flat().join('\n')).toContain(
+      'No coding agents detected'
+    );
+  });
+
   it('requires a subcommand for bare setup in non-interactive mode', async () => {
     const originalIsTty = process.stdin.isTTY;
     Object.defineProperty(process.stdin, 'isTTY', {

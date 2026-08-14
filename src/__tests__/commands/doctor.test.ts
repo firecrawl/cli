@@ -195,6 +195,36 @@ describe('detectAgents', () => {
     expect(hermes?.mcpRegistered).toBe(true);
   });
 
+  it('still sees Firecrawl in JSONC after a recoverable parse error', async () => {
+    const dir = path.join(tmpHome, '.cursor');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'mcp.json'),
+      `{
+  "theme": "dark"
+  "mcpServers": { "firecrawl": { "url": "https://mcp.firecrawl.dev/v2/mcp" } }
+}
+`
+    );
+
+    const cursor = (await detectAgents(tmpHome)).find(
+      (agent) => agent.id === 'cursor'
+    );
+    expect(cursor?.installed).toBe(true);
+    expect(cursor?.mcpRegistered).toBe(true);
+  });
+
+  it('does not treat an unreadable JSON config as registered', async () => {
+    const dir = path.join(tmpHome, '.cursor');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'mcp.json'), '{ oops');
+
+    const cursor = (await detectAgents(tmpHome)).find(
+      (agent) => agent.id === 'cursor'
+    );
+    expect(cursor?.mcpRegistered).toBe(false);
+  });
+
   it('does not treat a YAML comment mentioning firecrawl as registration', async () => {
     const dir = path.join(tmpHome, '.hermes');
     fs.mkdirSync(dir, { recursive: true });
