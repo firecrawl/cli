@@ -530,6 +530,30 @@ describe('handleSetupCommand', () => {
     ).toContain('firecrawl:');
   });
 
+  it('says so when rules are requested for an agent that has none', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await handleSetupCommand('mcp', {
+      clients: ['hermes'],
+      yes: true,
+      rules: true,
+    });
+
+    const output = log.mock.calls.flat().join('\n');
+    expect(output).toContain('not supported by this agent');
+    expect(output).not.toContain('Rules skipped');
+  });
+
+  it('does not claim rules are unsupported when they were not requested', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await handleSetupCommand('mcp', { clients: ['hermes'], yes: true });
+
+    const output = log.mock.calls.flat().join('\n');
+    expect(output).toContain('Rules skipped');
+    expect(output).not.toContain('not supported by this agent');
+  });
+
   it('lists only detected agents in the picker, already selected', async () => {
     mkdirSync(path.join(sandboxHome, '.cursor'), { recursive: true });
     mkdirSync(path.join(sandboxHome, '.hermes'), { recursive: true });

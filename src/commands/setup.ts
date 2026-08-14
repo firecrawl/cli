@@ -965,11 +965,16 @@ function ruleLine(
     case 'skipped':
       return '  Rules skipped';
     case 'unsupported':
-      // Nothing was asked for and nothing can be done about it, so saying so
-      // every run is noise. `skipped` still prints: that one was asked for.
-      return undefined;
+      // Clients only reach this when rules were requested: setupMcpClient
+      // returns `skipped` whenever rules is false. Hermes has no global rule
+      // file, so `--rules` has to say so rather than going silent.
+      return `  Rules ${dim}not supported by this agent${reset}`;
     case 'failed':
       return `  ${red}Rules failed${reset} ${result.ruleDetail}`;
+    default: {
+      const unreachable: never = result.ruleStatus;
+      return unreachable;
+    }
   }
 }
 

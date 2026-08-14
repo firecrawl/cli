@@ -579,6 +579,14 @@ describe('mcp install', () => {
       expect(result.ruleStatus).toBe('failed');
     });
 
+    it('reports rules as unsupported when the agent has no rule file', async () => {
+      const result = await setupMcpClient('hermes', { rules: true, ctx });
+
+      expect(result.mcpStatus).toBe('configured');
+      expect(result.ruleStatus).toBe('unsupported');
+      expect(result.ruleDetail).toBe('');
+    });
+
     it('writes no rule for an agent whose MCP entry failed', async () => {
       const file = path.join(ctx.home, '.cursor', 'mcp.json');
       mkdirSync(path.dirname(file), { recursive: true });
