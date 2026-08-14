@@ -101,8 +101,13 @@ firecrawl setup mcp
 
 This detects which agents you have installed, lists those in a picker
 (already selected), and asks whether to add rules telling those agents to
-prefer Firecrawl for web search and scraping. Supported agents are Claude Code,
-Cursor, VS Code, Codex, OpenCode, Hermes Agent, and OpenClaw.
+prefer Firecrawl for web search and scraping. Setup writes config for Claude
+Code, Cursor, VS Code, Codex, and OpenCode.
+
+Hermes Agent and OpenClaw are supported without being configured: each keeps
+MCP somewhere setup cannot edit safely, so `--hermes` and `--openclaw` print
+the server URL and succeed rather than editing their files. Skills and
+`firecrawl launch` cover both as before.
 
 Setup writes to your global agent settings, so one command puts Firecrawl on
 every agent you already use. Pass agent flags to skip the picker, or `-y` to
