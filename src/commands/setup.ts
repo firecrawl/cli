@@ -682,6 +682,9 @@ function openclawConfiguredWorkspace(
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'ignore'],
         env: cleanNpmEnv(),
+        // stderr is discarded, so a launcher that wedges or waits on a prompt
+        // would hang setup with nothing on screen. Same bound as doctor's probe.
+        timeout: 8000,
       }
     );
     const value: unknown = JSON.parse(String(stdout));
@@ -711,7 +714,9 @@ async function setupMcpLauncher(
     name: mcpTargetName(id),
     mcpStatus: 'failed',
     mcpDetail: '',
-    auth: keyless ? 'keyless' : 'env',
+    // The mode this run configured, which `keyless` cannot express: it folds
+    // oauth in with keyless because neither sends a credential.
+    auth: ctx.auth,
     ruleStatus: 'unsupported',
     ruleDetail: '',
   };

@@ -2245,7 +2245,7 @@ const setupCommand = program
   )
   .option(
     '-a, --agent <agent>',
-    'Limit to a specific agent; required for environment-backed MCP setup, or use "all" to update every launch integration'
+    'Limit to a specific agent, or use "all" to update every supported agent rather than only the detected ones'
   )
   .option(
     '-y, --yes',

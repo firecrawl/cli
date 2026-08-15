@@ -70,10 +70,6 @@ async function writeFileEnsuringDir(
   await fs.writeFile(filePath, content, { encoding: 'utf8', mode: createMode });
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 /**
  * Insert or replace `serversKey.serverName` without disturbing the rest of the
  * file. Throws when the existing file is not parseable, so a malformed config
@@ -324,15 +320,21 @@ export async function appendRuleSection(
   // instead of mixing LF into a CRLF document.
   const eol = existing.includes('\r\n') ? '\r\n' : '\n';
   const section = `${RULE_MARKER}${eol}${content.replace(/\r?\n/g, eol)}${RULE_MARKER}`;
-  const marker = escapeRegExp(RULE_MARKER);
-  const fenced = new RegExp(`${marker}\\r?\\n[\\s\\S]*?${marker}`);
 
-  if (fenced.test(existing)) {
-    // Replace via a function so nothing in the rule body is read as a
-    // replacement pattern.
+  // The last two markers, not the first two. A file carrying an odd marker,
+  // from a half-written run or a hand edit, would otherwise pair that stray
+  // one with our opening marker and delete everything the user wrote between
+  // them. Our own section is always the final pair.
+  const close = existing.lastIndexOf(RULE_MARKER);
+  const open = close > 0 ? existing.lastIndexOf(RULE_MARKER, close - 1) : -1;
+  const opensWithNewline = /^\r?\n/.test(
+    existing.slice(open + RULE_MARKER.length, open + RULE_MARKER.length + 2)
+  );
+
+  if (open !== -1 && opensWithNewline) {
     await writeFileEnsuringDir(
       filePath,
-      existing.replace(fenced, () => section)
+      `${existing.slice(0, open)}${section}${existing.slice(close + RULE_MARKER.length)}`
     );
     return 'updated';
   }

@@ -647,7 +647,10 @@ async function stepIntegrations(
           // says every agent was configured.
           mcpInstalled = await installMcp({
             global: options.global,
-            agent: options.agent ?? (environmentBacked ? 'all' : undefined),
+            // No agent means "every agent detected here". Naming "all" instead
+            // would write config for agents the user does not have, and setup
+            // resolves an exported key on its own either way.
+            agent: options.agent,
             yes: true,
             quiet: true,
             // Stored credentials must never be persisted into MCP client config.

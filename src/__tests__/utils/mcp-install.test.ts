@@ -596,6 +596,22 @@ describe('mcp install', () => {
       expect(result).not.toContain('first');
       expect(result.match(/<!-- firecrawl -->/g)).toHaveLength(2);
     });
+
+    it('does not eat user content sitting under a stray marker', async () => {
+      // A half-written run or a hand edit can leave one marker behind. Pairing
+      // it with our opening marker would delete everything between them.
+      const file = path.join(root, 'AGENTS.md');
+      writeFileSync(file, '<!-- firecrawl -->\nIMPORTANT USER CONTENT\n');
+
+      // Nothing to replace on the way in: one marker is not a section.
+      expect(await appendRuleSection(file, 'first\n')).toBe('installed');
+      expect(await appendRuleSection(file, 'second\n')).toBe('updated');
+
+      const result = read(file);
+      expect(result).toContain('IMPORTANT USER CONTENT');
+      expect(result).toContain('second');
+      expect(result).not.toContain('first');
+    });
   });
 
   describe('appendRuleSection line endings', () => {
