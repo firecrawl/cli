@@ -4,9 +4,11 @@ import { getConfig, isCustomApiUrl, validateConfig } from '../utils/config';
 import { getClient } from '../utils/client';
 import {
   parseMissingContentArg,
+  parseValuableResultsArg,
   parseValuableSourcesArg,
   type MissingContentInput,
   type SearchFeedbackRating,
+  type ValuableResultInput,
   type ValuableSourceInput,
 } from './search-feedback';
 
@@ -20,6 +22,7 @@ export interface EndpointFeedbackOptions {
   tags?: string[];
   note?: string;
   valuableSources?: ValuableSourceInput[];
+  valuableResults?: ValuableResultInput[];
   missingContent?: MissingContentInput[];
   querySuggestions?: string;
   url?: string;
@@ -207,6 +210,7 @@ export function parseEndpointFeedbackCliOptions(options: {
   metadata?: string;
   metadataFile?: string;
   valuableSources?: string;
+  valuableResults?: string;
   missingContent?: string | string[];
   rating?: string;
 }) {
@@ -217,6 +221,7 @@ export function parseEndpointFeedbackCliOptions(options: {
     pageNumbers: parsePageNumbersArg(options.pageNumbers),
     metadata: parseMetadataArg(options.metadata, options.metadataFile),
     valuableSources: parseValuableSourcesArg(options.valuableSources),
+    valuableResults: parseValuableResultsArg(options.valuableResults),
     missingContent: parseMissingContentArg(options.missingContent),
   };
 }
@@ -261,6 +266,7 @@ export async function executeEndpointFeedback(
       ['tags', normalizeList(options.tags)],
       ['note', options.note],
       ['valuableSources', options.valuableSources],
+      ['valuableResults', options.valuableResults],
       ['missingContent', options.missingContent],
       ['querySuggestions', options.querySuggestions],
       ['url', options.url],

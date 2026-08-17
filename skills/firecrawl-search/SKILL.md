@@ -114,7 +114,7 @@ overall command routing.
 - **`--highlights` on by default:** results are query-relevant excerpts, not full-page snippets. Use `--no-highlights` for the original snippets.
 - **`--scrape` fetches full content** — don't re-scrape URLs from search results. This saves credits and avoids redundant fetches.
 - Always write results to `.firecrawl/` with `-o` to avoid context window bloat.
-- Use `jq` to extract URLs or titles: `jq -r '.data.web[].url' .firecrawl/search.json`
+- Use `jq` to extract URLs **with their source and 1-indexed position** (you'll need both for feedback): `jq -r '.data | to_entries[] | .key as $s | .value | to_entries[] | "\($s):\(.key + 1)\t\(.value.url)"' .firecrawl/search.json`
 - Naming convention: `.firecrawl/search-{query}.json` or `.firecrawl/search-{query}-scraped.json`
 
 ## Send feedback after every search (refunds 1 credit)
@@ -127,9 +127,10 @@ Search costs 2 credits. After you've actually used the results (or decided they 
 
 - **Time window:** must be sent within ~2 minutes of the search. Late feedback is rejected.
 - **`--missing-content` is the most important field.** It's a list of _specific pieces_ of content you expected but did not find. One topic per entry — do not pack multiple topics into one string. These aggregate across teams and tell us what to index next.
+- **`--valuable-results` marks which results were useful.** Results come back grouped (`data.web`, `data.images`, `data.news`) and **each group is numbered from 1 independently**, so every entry is `source:position` — `web:1` and `news:1` are two different results. **Be exhaustive** — list every result that was actually useful; unlisted results are treated as not useful, so a partial list corrupts the signal. Reserve `--valuable-sources` for useful URLs that were NOT among the returned results (e.g. a page you found by following a result's link) — never report the same result in both.
 - **Substantive content required** (zero-effort feedback is rejected with HTTP 400):
-  - `good` → must include at least one `--valuable-sources` entry.
-  - `partial` → must include `--valuable-sources` or `--missing-content`.
+  - `good` → must include `--valuable-results` or at least one `--valuable-sources` entry.
+  - `partial` → must include `--valuable-results`, `--valuable-sources`, or `--missing-content`.
   - `bad` → must include `--missing-content` or `--query-suggestions`.
 - **Daily refund cap (per team, per UTC day, default 100 credits).** Once your team has been refunded 100 credits today, further submissions still record feedback but no longer refund credits. The response includes `creditsRefundedToday` / `dailyRefundCap` / `dailyCapReached`. **When `dailyCapReached: true`, stop calling `search-feedback` for the rest of the UTC day** — it won't refund anything and you're wasting bandwidth.
 - **Idempotent:** re-submitting for the same search id returns success but no extra refund.
@@ -144,10 +145,10 @@ SEARCH_ID=$(jq -r '.id' .firecrawl/search-react-hooks.json)
 Then send feedback. Pick the rating that matches what actually happened:
 
 ```bash
-# Results were useful, with notes on what was still missing
+# Results were useful — web positions 1 and 3 answered the question
 firecrawl search-feedback "$SEARCH_ID" \
   --rating good \
-  --valuable-sources '[{"url":"https://react.dev/reference/react/hooks","reason":"Most authoritative"}]' \
+  --valuable-results "web:1,web:3" \
   --missing-content '[
     {"topic":"useDeferredValue","description":"No example of useDeferredValue with Suspense"},
     {"topic":"useTransition","description":"No coverage of useTransition for routing"}
