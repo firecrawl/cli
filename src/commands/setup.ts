@@ -33,6 +33,7 @@ import {
   configureWebDefaults,
   WEB_AGENTS,
   type WebAgent,
+  type WebDefaultResult,
 } from '../utils/web-defaults';
 import {
   ALL_MCP_CLIENT_IDS,
@@ -449,6 +450,47 @@ async function pickWebAgents(undo: boolean): Promise<WebAgent[] | null> {
   return selected;
 }
 
+/**
+ * Show the exact edit each agent will receive, then ask. These files belong to
+ * the user, so nothing this command does should be a surprise afterwards, and
+ * a value they set themselves is reported as kept rather than silently skipped.
+ */
+async function confirmWebDefaults(
+  plan: WebDefaultResult[],
+  undo: boolean
+): Promise<boolean> {
+  const changes = plan.filter((result) => result.changed);
+
+  for (const result of plan) {
+    if (result.preserved || result.skipped) {
+      console.log(`${dim}${result.message}${reset}`);
+    }
+  }
+
+  if (changes.length === 0) {
+    console.log(
+      undo
+        ? 'Native web tools are already enabled for the selected agents.'
+        : 'The selected agents are already set up. Nothing to change.'
+    );
+    return false;
+  }
+
+  console.log('');
+  console.log(undo ? 'This will be reverted:' : 'This will be added:');
+  console.log('');
+  for (const result of changes) {
+    console.log(
+      `  ${bold}${result.agent}${reset} ${dim}${result.path}${reset}`
+    );
+    if (result.preview) console.log(`    ${result.preview}`);
+  }
+  console.log('');
+
+  const { confirm } = await import('@inquirer/prompts');
+  return confirm({ message: 'Apply these changes?', default: true });
+}
+
 export async function handleMakeDefaultCommand(
   options: SetupOptions = {}
 ): Promise<void> {
@@ -473,20 +515,40 @@ export async function handleMakeDefaultCommand(
     agents = picked;
   }
 
+  // `--yes` and non-interactive runs keep their existing behavior; a prompt
+  // nobody can answer would just hang a script.
+  if (!options.yes && process.stdin.isTTY) {
+    const plan = await configureWebDefaults({ undo, agents, dryRun: true });
+    if (!(await confirmWebDefaults(plan, undo))) return;
+  }
+
   const results = await configureWebDefaults({ undo, agents });
 
   for (const result of results) {
-    const prefix = result.skipped ? '!' : result.changed ? '✓' : '•';
+    const prefix =
+      result.skipped || result.preserved ? '!' : result.changed ? '✓' : '•';
     console.log(`${prefix} ${result.message}`);
     console.log(`  ${result.path}`);
   }
 
   console.log('');
-  if (undo) {
+  // An agent whose value we kept was not configured, so the closing line has to
+  // stop short of claiming it was.
+  const untouched = results.filter(
+    (result) => result.preserved || result.skipped
+  );
+  if (results.length > 0 && untouched.length === results.length) {
+    console.log('Nothing changed.');
+  } else if (undo) {
     console.log('Native web tools restored where supported.');
   } else {
     console.log(
       'Firecrawl is now the default web provider for supported AI agents.'
+    );
+  }
+  if (untouched.length > 0 && untouched.length < results.length) {
+    console.log(
+      `${dim}Left ${untouched.map((result) => result.agent).join(' and ')} as you had it.${reset}`
     );
   }
 }

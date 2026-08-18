@@ -1,9 +1,30 @@
+/**
+ * Makes Firecrawl the preferred web provider for the agents that support it.
+ *
+ * Edits here are non-destructive by policy. A value the user set themselves is
+ * left alone and reported back, never overwritten: `web_search` is read from
+ * the TOML AST rather than matched line by line, and Claude's settings are
+ * patched through a JSONC-aware editor so comments and formatting survive.
+ *
+ * Every routine can run as a dry run, so the command can show the exact edit
+ * and get confirmation before anything reaches disk.
+ */
+
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import {
+  applyEdits,
+  modify,
+  parse as parseJsonc,
+  type ParseError,
+} from 'jsonc-parser';
+import { getStaticTOMLValue, parseTOML, type AST } from 'toml-eslint-parser';
 
 const CLAUDE_DENY_TOOLS = ['WebSearch', 'WebFetch'] as const;
-const CODEX_WEB_SEARCH_DISABLED = 'web_search = "disabled"';
+const CODEX_WEB_SEARCH_KEY = 'web_search';
+const CODEX_WEB_SEARCH_VALUE = 'disabled';
+const CODEX_WEB_SEARCH_DISABLED = `${CODEX_WEB_SEARCH_KEY} = "${CODEX_WEB_SEARCH_VALUE}"`;
 
 export type WebAgent = 'Claude Code' | 'Codex';
 
@@ -13,6 +34,8 @@ export interface WebDefaultsOptions {
   undo?: boolean;
   /** Limit configuration to these agents. Defaults to all agents. */
   agents?: readonly WebAgent[];
+  /** Compute the edit and report it without touching the filesystem. */
+  dryRun?: boolean;
 }
 
 export interface WebDefaultResult {
@@ -20,7 +43,11 @@ export interface WebDefaultResult {
   path: string;
   changed: boolean;
   skipped?: boolean;
+  /** The user set this key themselves, so it was read and left as-is. */
+  preserved?: boolean;
   message: string;
+  /** The exact edit, shown for confirmation before anything is written. */
+  preview?: string;
 }
 
 async function readText(filePath: string): Promise<string | null> {
@@ -37,23 +64,28 @@ async function writeText(filePath: string, content: string): Promise<void> {
   await fs.writeFile(filePath, content, 'utf8');
 }
 
-function removeJsonComments(content: string): string {
-  return content
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:\\])\/\/.*$/gm, '$1');
-}
+/* -------------------------------------------------------------- Claude Code */
 
 async function configureClaudeDefaults(
-  undo: boolean
+  undo: boolean,
+  dryRun: boolean
 ): Promise<WebDefaultResult> {
   const filePath = path.join(os.homedir(), '.claude', 'settings.json');
-  const existing = await readText(filePath);
-  let config: Record<string, unknown> = {};
+  const stored = await readText(filePath);
+  // A byte order mark parses as an error even though the document is valid.
+  const bom = stored?.startsWith('\uFEFF') ? '\uFEFF' : '';
+  const raw = (bom ? stored!.slice(1) : stored) ?? '';
 
-  if (existing && existing.trim()) {
-    try {
-      config = JSON.parse(removeJsonComments(existing));
-    } catch {
+  let config: Record<string, unknown> = {};
+  if (raw.trim()) {
+    const errors: ParseError[] = [];
+    const parsed = parseJsonc(raw, errors, { allowTrailingComma: true });
+    if (
+      errors.length > 0 ||
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
       return {
         agent: 'Claude Code',
         path: filePath,
@@ -63,33 +95,36 @@ async function configureClaudeDefaults(
           'Skipped Claude Code settings because settings.json is not valid JSON',
       };
     }
+    config = parsed as Record<string, unknown>;
   }
 
+  const rawPermissions = config.permissions;
   const permissions =
-    config.permissions && typeof config.permissions === 'object'
-      ? (config.permissions as Record<string, unknown>)
+    rawPermissions &&
+    typeof rawPermissions === 'object' &&
+    !Array.isArray(rawPermissions)
+      ? (rawPermissions as Record<string, unknown>)
       : {};
   const deny = Array.isArray(permissions.deny) ? [...permissions.deny] : [];
+  const denyTools = new Set<string>(CLAUDE_DENY_TOOLS);
 
   let nextDeny: unknown[];
-  const denyTools = new Set<string>(CLAUDE_DENY_TOOLS);
   if (undo) {
     nextDeny = deny.filter(
       (tool) => typeof tool !== 'string' || !denyTools.has(tool)
     );
   } else {
-    const existingDeny = new Set(
+    // Additive: entries the user denied for their own reasons are untouched.
+    const present = new Set(
       deny.filter((tool): tool is string => typeof tool === 'string')
     );
     nextDeny = [...deny];
     for (const tool of CLAUDE_DENY_TOOLS) {
-      if (!existingDeny.has(tool)) nextDeny.push(tool);
+      if (!present.has(tool)) nextDeny.push(tool);
     }
   }
 
-  const changed = JSON.stringify(deny) !== JSON.stringify(nextDeny);
-
-  if (!changed) {
+  if (JSON.stringify(deny) === JSON.stringify(nextDeny)) {
     return {
       agent: 'Claude Code',
       path: filePath,
@@ -100,102 +135,185 @@ async function configureClaudeDefaults(
     };
   }
 
-  const nextPermissions = { ...permissions };
-  if (nextDeny.length > 0) {
-    nextPermissions.deny = nextDeny;
-  } else {
-    delete nextPermissions.deny;
-  }
+  const touched = CLAUDE_DENY_TOOLS.filter((tool) =>
+    undo ? deny.includes(tool) : !deny.includes(tool)
+  );
+  const preview = `permissions.deny ${undo ? '-' : '+'}= ${JSON.stringify(touched)}`;
 
-  const nextConfig = { ...config };
-  if (Object.keys(nextPermissions).length > 0) {
-    nextConfig.permissions = nextPermissions;
-  } else {
-    delete nextConfig.permissions;
+  if (!dryRun) {
+    let next: string;
+    if (raw.trim() === '') {
+      next = `${JSON.stringify({ permissions: { deny: nextDeny } }, null, 2)}\n`;
+    } else {
+      // Patch the leaf so comments, key order, and formatting all survive.
+      const edits = modify(
+        raw,
+        ['permissions', 'deny'],
+        nextDeny.length > 0 ? nextDeny : undefined,
+        { formattingOptions: { insertSpaces: true, tabSize: 2 } }
+      );
+      next = applyEdits(raw, edits);
+      if (!next.endsWith('\n')) next += '\n';
+    }
+    await writeText(filePath, `${bom}${next}`);
   }
-
-  await writeText(filePath, `${JSON.stringify(nextConfig, null, 2)}\n`);
 
   return {
     agent: 'Claude Code',
     path: filePath,
     changed: true,
+    preview,
     message: undo
       ? 'Enabled Claude Code native WebSearch/WebFetch'
       : 'Disabled Claude Code native WebSearch/WebFetch',
   };
 }
 
-function setCodexWebSearchDisabled(content: string): {
-  content: string;
-  changed: boolean;
-} {
-  if (content.trim().length === 0) {
-    return { content: `${CODEX_WEB_SEARCH_DISABLED}\n`, changed: true };
-  }
+/* --------------------------------------------------------------------- Codex */
 
-  const lines = content.split(/\r?\n/);
-  const firstTableIndex = lines.findIndex((line) => /^\s*\[/.test(line));
-  const rootEnd = firstTableIndex === -1 ? lines.length : firstTableIndex;
-
-  for (let index = 0; index < rootEnd; index += 1) {
-    if (/^\s*web_search\s*=/.test(lines[index])) {
-      if (lines[index] === CODEX_WEB_SEARCH_DISABLED) {
-        return { content, changed: false };
-      }
-      lines[index] = CODEX_WEB_SEARCH_DISABLED;
-      return { content: lines.join('\n'), changed: true };
-    }
-  }
-
-  lines.splice(rootEnd, 0, CODEX_WEB_SEARCH_DISABLED);
-  return { content: lines.join('\n'), changed: true };
+/** Offsets of the whole line containing `index`, newline included. */
+function lineBounds(
+  raw: string,
+  index: number
+): { start: number; end: number } {
+  const start = raw.lastIndexOf('\n', Math.max(index - 1, 0)) + 1;
+  const newline = raw.indexOf('\n', index);
+  return { start, end: newline === -1 ? raw.length : newline + 1 };
 }
 
-function removeCodexWebSearchDisabled(content: string): {
-  content: string;
-  changed: boolean;
-} {
-  const lines = content.split(/\r?\n/);
-  const firstTableIndex = lines.findIndex((line) => /^\s*\[/.test(line));
-  const rootEnd = firstTableIndex === -1 ? lines.length : firstTableIndex;
-  const nextLines = lines.filter((line, index) => {
-    if (index >= rootEnd) return true;
-    return !/^web_search\s*=\s*["']disabled["']\s*(#.*)?$/.test(line.trim());
-  });
-  const next = nextLines.join('\n').replace(/\n{3,}/g, '\n\n');
-  return { content: next, changed: next !== content };
+/**
+ * The root-level `web_search` assignment, if the user has one. Root scope ends
+ * at the first table header, so the scan stops there rather than matching a
+ * `web_search` that belongs to some other table.
+ */
+function rootWebSearchNode(ast: AST.TOMLProgram): AST.TOMLKeyValue | undefined {
+  for (const node of ast.body[0].body) {
+    if (node.type === 'TOMLTable') break;
+    if (node.type !== 'TOMLKeyValue') continue;
+    const keys = node.key.keys;
+    if (keys.length !== 1) continue;
+    const key = keys[0] as { name?: string; value?: unknown };
+    const name = key.name ?? String(key.value);
+    if (name === CODEX_WEB_SEARCH_KEY) return node;
+  }
+  return undefined;
+}
+
+/** Insert after the last root key so the line cannot land inside a table. */
+function rootInsertOffset(ast: AST.TOMLProgram, raw: string): number {
+  let last: AST.TOMLKeyValue | undefined;
+  for (const node of ast.body[0].body) {
+    if (node.type === 'TOMLTable') break;
+    if (node.type === 'TOMLKeyValue') last = node;
+  }
+  return last ? lineBounds(raw, last.range[0]).end : 0;
 }
 
 async function configureCodexDefaults(
-  undo: boolean
+  undo: boolean,
+  dryRun: boolean
 ): Promise<WebDefaultResult> {
   const filePath = path.join(os.homedir(), '.codex', 'config.toml');
-  const existing = (await readText(filePath)) ?? '';
-  const result = undo
-    ? removeCodexWebSearchDisabled(existing)
-    : setCodexWebSearchDisabled(existing);
+  const raw = (await readText(filePath)) ?? '';
+  const eol = raw.includes('\r\n') ? '\r\n' : '\n';
+  const base = {
+    agent: 'Codex' as const,
+    path: filePath,
+  };
 
-  if (!result.changed) {
+  if (raw.trim() === '') {
+    if (undo) {
+      return {
+        ...base,
+        changed: false,
+        message: 'Codex native web search was already enabled',
+      };
+    }
+    if (!dryRun)
+      await writeText(filePath, `${CODEX_WEB_SEARCH_DISABLED}${eol}`);
     return {
-      agent: 'Codex',
-      path: filePath,
-      changed: false,
-      message: undo
-        ? 'Codex native web search was already enabled'
-        : 'Codex native web search was already disabled',
+      ...base,
+      changed: true,
+      preview: `+ ${CODEX_WEB_SEARCH_DISABLED}`,
+      message: 'Disabled Codex native web search',
     };
   }
 
-  await writeText(filePath, result.content);
+  let ast: AST.TOMLProgram;
+  try {
+    ast = parseTOML(raw);
+  } catch (error) {
+    // A config we cannot read is a config we must not rewrite.
+    return {
+      ...base,
+      changed: false,
+      skipped: true,
+      message: `Skipped Codex config because config.toml is not valid TOML: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
 
+  const current = (getStaticTOMLValue(ast) as Record<string, unknown>)[
+    CODEX_WEB_SEARCH_KEY
+  ];
+  const node = rootWebSearchNode(ast);
+
+  if (undo) {
+    // Only ever remove the value this command writes. Anything else is the
+    // user's own setting and restoring native search is not worth clobbering it.
+    if (!node || current !== CODEX_WEB_SEARCH_VALUE) {
+      return {
+        ...base,
+        changed: false,
+        message: 'Codex native web search was already enabled',
+      };
+    }
+    if (!dryRun) {
+      const { start, end } = lineBounds(raw, node.range[0]);
+      await writeText(filePath, `${raw.slice(0, start)}${raw.slice(end)}`);
+    }
+    return {
+      ...base,
+      changed: true,
+      preview: `- ${CODEX_WEB_SEARCH_DISABLED}`,
+      message: 'Enabled Codex native web search',
+    };
+  }
+
+  if (current === CODEX_WEB_SEARCH_VALUE) {
+    return {
+      ...base,
+      changed: false,
+      message: 'Codex native web search was already disabled',
+    };
+  }
+
+  if (node) {
+    // The user set this themselves. Report it and move on.
+    return {
+      ...base,
+      changed: false,
+      preserved: true,
+      message: `Left Codex ${CODEX_WEB_SEARCH_KEY} = ${JSON.stringify(current)} as you set it`,
+    };
+  }
+
+  const offset = rootInsertOffset(ast, raw);
+  const line = `${CODEX_WEB_SEARCH_DISABLED}${eol}`;
+  if (!dryRun) {
+    const head = raw.slice(0, offset);
+    const needsBreak = head.length > 0 && !head.endsWith('\n');
+    await writeText(
+      filePath,
+      `${head}${needsBreak ? eol : ''}${line}${raw.slice(offset)}`
+    );
+  }
   return {
-    agent: 'Codex',
-    path: filePath,
+    ...base,
     changed: true,
-    message: undo
-      ? 'Enabled Codex native web search'
-      : 'Disabled Codex native web search',
+    preview: `+ ${CODEX_WEB_SEARCH_DISABLED}`,
+    message: 'Disabled Codex native web search',
   };
 }
 
@@ -203,9 +321,12 @@ export async function configureWebDefaults(
   options: WebDefaultsOptions = {}
 ): Promise<WebDefaultResult[]> {
   const undo = Boolean(options.undo);
+  const dryRun = Boolean(options.dryRun);
   const selected = new Set<WebAgent>(options.agents ?? WEB_AGENTS);
   const tasks: Promise<WebDefaultResult>[] = [];
-  if (selected.has('Claude Code')) tasks.push(configureClaudeDefaults(undo));
-  if (selected.has('Codex')) tasks.push(configureCodexDefaults(undo));
+  if (selected.has('Claude Code')) {
+    tasks.push(configureClaudeDefaults(undo, dryRun));
+  }
+  if (selected.has('Codex')) tasks.push(configureCodexDefaults(undo, dryRun));
   return Promise.all(tasks);
 }
