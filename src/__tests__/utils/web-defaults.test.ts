@@ -1,7 +1,8 @@
-import { promises as fs } from 'fs';
+import { existsSync, promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { parseTOML } from 'toml-eslint-parser';
 import { configureWebDefaults } from '../../utils/web-defaults';
 
 const originalHome = process.env.HOME;
@@ -199,5 +200,67 @@ describe('configureWebDefaults', () => {
     expect(results.find((result) => result.agent === 'Codex')?.changed).toBe(
       false
     );
+  });
+
+  it('does not splice into a multi-line root value', async () => {
+    await write(
+      '.codex/config.toml',
+      'model = "gpt-5"\nnotify = [\n  "notify-send",\n  "Codex",\n]\n'
+    );
+
+    await configureWebDefaults({ agents: ['Codex'] });
+
+    const written = await read('.codex/config.toml');
+    expect(() => parseTOML(written)).not.toThrow();
+    expect(written).toContain('  "notify-send",\n  "Codex",\n]');
+    expect(written).toMatch(/^web_search = "disabled"$/m);
+  });
+
+  it('keeps a multi-line string value intact', async () => {
+    await write(
+      '.codex/config.toml',
+      'instructions = """\nline one\nline two\n"""\n'
+    );
+
+    await configureWebDefaults({ agents: ['Codex'] });
+
+    const written = await read('.codex/config.toml');
+    expect(() => parseTOML(written)).not.toThrow();
+    expect(written).toContain('line one\nline two');
+    expect(written).toMatch(/^web_search = "disabled"$/m);
+  });
+
+  it.each(['null', '[]', '"nope"'])(
+    'replaces a permissions value of %s instead of throwing',
+    async (shape) => {
+      await write('.claude/settings.json', `{ "permissions": ${shape} }`);
+
+      await configureWebDefaults({ agents: ['Claude Code'] });
+
+      expect(
+        JSON.parse(await read('.claude/settings.json')).permissions.deny
+      ).toEqual(['WebSearch', 'WebFetch']);
+    }
+  );
+
+  it('follows CODEX_HOME and CLAUDE_CONFIG_DIR like the MCP writer', async () => {
+    process.env.CODEX_HOME = path.join(tempHome, 'work', '.codex');
+    process.env.CLAUDE_CONFIG_DIR = path.join(tempHome, 'work', '.claude');
+    try {
+      await configureWebDefaults();
+
+      expect(await read('work/.codex/config.toml')).toContain(
+        'web_search = "disabled"'
+      );
+      expect(
+        JSON.parse(await read('work/.claude/settings.json')).permissions.deny
+      ).toEqual(['WebSearch', 'WebFetch']);
+      // The un-overridden locations are files the agent never reads.
+      expect(existsSync(path.join(tempHome, '.codex'))).toBe(false);
+      expect(existsSync(path.join(tempHome, '.claude'))).toBe(false);
+    } finally {
+      delete process.env.CODEX_HOME;
+      delete process.env.CLAUDE_CONFIG_DIR;
+    }
   });
 });

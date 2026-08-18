@@ -20,6 +20,7 @@ import {
   type ParseError,
 } from 'jsonc-parser';
 import { getStaticTOMLValue, parseTOML, type AST } from 'toml-eslint-parser';
+import { claudeConfigDir, codexHome, createMcpContext } from './mcp-clients';
 
 const CLAUDE_DENY_TOOLS = ['WebSearch', 'WebFetch'] as const;
 const CODEX_WEB_SEARCH_KEY = 'web_search';
@@ -70,7 +71,13 @@ async function configureClaudeDefaults(
   undo: boolean,
   dryRun: boolean
 ): Promise<WebDefaultResult> {
-  const filePath = path.join(os.homedir(), '.claude', 'settings.json');
+  // Claude Code relocates its whole config tree when CLAUDE_CONFIG_DIR is set,
+  // and the MCP writer already follows it. Both halves have to land in the
+  // same place or the switch is written where the agent will not read it.
+  const filePath = path.join(
+    claudeConfigDir(createMcpContext()),
+    'settings.json'
+  );
   const stored = await readText(filePath);
   // A byte order mark parses as an error even though the document is valid.
   const bom = stored?.startsWith('\uFEFF') ? '\uFEFF' : '';
@@ -146,12 +153,30 @@ async function configureClaudeDefaults(
       next = `${JSON.stringify({ permissions: { deny: nextDeny } }, null, 2)}\n`;
     } else {
       // Patch the leaf so comments, key order, and formatting all survive.
-      const edits = modify(
-        raw,
-        ['permissions', 'deny'],
-        nextDeny.length > 0 ? nextDeny : undefined,
-        { formattingOptions: { insertSpaces: true, tabSize: 2 } }
-      );
+      // `modify` cannot descend through a null, array, or scalar, so a
+      // `permissions` of the wrong shape has the whole key replaced instead.
+      const formattingOptions = { insertSpaces: true, tabSize: 2 };
+      const permissionsIsObject =
+        rawPermissions !== undefined &&
+        rawPermissions !== null &&
+        typeof rawPermissions === 'object' &&
+        !Array.isArray(rawPermissions);
+      const edits =
+        rawPermissions === undefined || permissionsIsObject
+          ? modify(
+              raw,
+              ['permissions', 'deny'],
+              nextDeny.length > 0 ? nextDeny : undefined,
+              { formattingOptions }
+            )
+          : modify(
+              raw,
+              ['permissions'],
+              nextDeny.length > 0
+                ? { ...permissions, deny: nextDeny }
+                : permissions,
+              { formattingOptions }
+            );
       next = applyEdits(raw, edits);
       if (!next.endsWith('\n')) next += '\n';
     }
@@ -199,21 +224,27 @@ function rootWebSearchNode(ast: AST.TOMLProgram): AST.TOMLKeyValue | undefined {
   return undefined;
 }
 
-/** Insert after the last root key so the line cannot land inside a table. */
+/**
+ * Insert after the last root key so the line cannot land inside a table.
+ *
+ * The offset is taken from the END of that key's value, not the start: a root
+ * value can span lines (an inline array, a triple-quoted string), and anchoring
+ * on the first line would splice the new key into the middle of it.
+ */
 function rootInsertOffset(ast: AST.TOMLProgram, raw: string): number {
   let last: AST.TOMLKeyValue | undefined;
   for (const node of ast.body[0].body) {
     if (node.type === 'TOMLTable') break;
     if (node.type === 'TOMLKeyValue') last = node;
   }
-  return last ? lineBounds(raw, last.range[0]).end : 0;
+  return last ? lineBounds(raw, last.range[1] - 1).end : 0;
 }
 
 async function configureCodexDefaults(
   undo: boolean,
   dryRun: boolean
 ): Promise<WebDefaultResult> {
-  const filePath = path.join(os.homedir(), '.codex', 'config.toml');
+  const filePath = path.join(codexHome(createMcpContext()), 'config.toml');
   const raw = (await readText(filePath)) ?? '';
   const eol = raw.includes('\r\n') ? '\r\n' : '\n';
   const base = {
@@ -301,14 +332,26 @@ async function configureCodexDefaults(
 
   const offset = rootInsertOffset(ast, raw);
   const line = `${CODEX_WEB_SEARCH_DISABLED}${eol}`;
-  if (!dryRun) {
-    const head = raw.slice(0, offset);
-    const needsBreak = head.length > 0 && !head.endsWith('\n');
-    await writeText(
-      filePath,
-      `${head}${needsBreak ? eol : ''}${line}${raw.slice(offset)}`
-    );
+  const head = raw.slice(0, offset);
+  const needsBreak = head.length > 0 && !head.endsWith('\n');
+  const next = `${head}${needsBreak ? eol : ''}${line}${raw.slice(offset)}`;
+
+  // The edit is textual, so the result is re-read before it is trusted. A
+  // config we would leave unparseable is reported instead of written.
+  try {
+    parseTOML(next);
+  } catch (error) {
+    return {
+      ...base,
+      changed: false,
+      skipped: true,
+      message: `Skipped Codex config because the edit would not parse: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
   }
+
+  if (!dryRun) await writeText(filePath, next);
   return {
     ...base,
     changed: true,

@@ -883,14 +883,25 @@ async function installMcpClients(
 
   reportMcpResults(results, ctx, options, Boolean(apiKey));
 
-  await offerWebDefaults(
-    options,
-    nonInteractive,
-    results
-      .filter((result) => result.mcpStatus !== 'failed')
-      .map((result) => WEB_DEFAULT_BY_TARGET[result.id])
-      .filter((agent): agent is WebAgent => agent !== undefined)
-  );
+  // The handover is an offer on top of the work this command was asked to do,
+  // so an unreadable settings file or a permissions error reports itself and
+  // leaves the MCP result standing rather than failing the whole run.
+  try {
+    await offerWebDefaults(
+      options,
+      nonInteractive,
+      results
+        .filter((result) => result.mcpStatus !== 'failed')
+        .map((result) => WEB_DEFAULT_BY_TARGET[result.id])
+        .filter((agent): agent is WebAgent => agent !== undefined)
+    );
+  } catch (error) {
+    console.log(
+      `${red}Could not set the default web provider${reset} ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
 
   assertMcpOutcome(results, options);
 

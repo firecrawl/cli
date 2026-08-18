@@ -559,7 +559,7 @@ async function stepIntegrations(
         // Named like the skills entry: setup writes to whatever it detects, so
         // listing a few agents here would undersell it and listing all seven
         // would not fit.
-        name: 'MCP — install the Firecrawl MCP server for detected coding agents',
+        name: 'MCP: install the Firecrawl MCP server for detected coding agents',
         value: 'mcp',
       },
       {
