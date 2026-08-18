@@ -757,6 +757,27 @@ describe('handleSetupCommand', () => {
     expect(existsSync(path.join(sandboxHome, '.hermes'))).toBe(false);
   });
 
+  it('still hands over web tools for the agents that did succeed', async () => {
+    // Cursor's config is unreadable, so its entry fails. Codex still lands, so
+    // the handover the caller asked for has to reach it before the run reports
+    // the aggregate failure.
+    mkdirSync(path.join(sandboxHome, '.cursor'), { recursive: true });
+    writeFileSync(path.join(sandboxHome, '.cursor', 'mcp.json'), '{ broken');
+
+    await expect(
+      handleSetupCommand('mcp', {
+        clients: ['cursor', 'codex'],
+        yes: true,
+        defaults: true,
+      })
+    ).rejects.toThrow('Firecrawl MCP failed for Cursor');
+
+    expect(configureWebDefaults).toHaveBeenCalledWith({
+      undo: false,
+      agents: ['Codex'],
+    });
+  });
+
   it('surfaces total failure even in quiet mode', async () => {
     mkdirSync(path.join(sandboxHome, '.cursor'), { recursive: true });
     writeFileSync(path.join(sandboxHome, '.cursor', 'mcp.json'), '{ broken');

@@ -892,6 +892,8 @@ async function installMcpClients(
       .filter((agent): agent is WebAgent => agent !== undefined)
   );
 
+  assertMcpOutcome(results, options);
+
   return results.every((result) => result.mcpStatus !== 'failed');
 }
 
@@ -965,9 +967,6 @@ function reportMcpResults(
     for (const note of authNotes(results, ctx, hasApiKey)) {
       console.log(`  ${dim}${note}${reset}`);
     }
-    if (succeeded.length === 0) {
-      throw new Error('Failed to configure Firecrawl MCP.');
-    }
     return;
   }
 
@@ -989,16 +988,34 @@ function reportMcpResults(
   for (const note of authNotes(results, ctx, hasApiKey)) {
     console.log(`${dim}${note}${reset}`);
   }
+}
 
-  // Every agent that could be configured was, but the caller asked for these
-  // agents and did not get them all. Quiet mode is embedded in a larger command
-  // that reports its own outcome, so it still fails only when nothing landed.
+/**
+ * Raise the aggregate failure, kept apart from reporting so it can run after
+ * the web-provider step. That step is already scoped to agents whose entry
+ * landed, so one broken config must not cost a working agent the handover the
+ * caller asked for.
+ *
+ * Quiet mode is embedded in a larger command that reports its own outcome, so
+ * it still fails only when nothing landed at all.
+ */
+function assertMcpOutcome(
+  results: McpClientResult[],
+  options: SetupOptions
+): void {
   const failed = results.filter((result) => result.mcpStatus === 'failed');
-  if (failed.length > 0) {
-    throw new Error(
-      `Firecrawl MCP failed for ${failed.map((result) => result.name).join(', ')}.`
-    );
+  if (failed.length === 0) return;
+
+  if (options.quiet) {
+    if (failed.length === results.length) {
+      throw new Error('Failed to configure Firecrawl MCP.');
+    }
+    return;
   }
+
+  throw new Error(
+    `Firecrawl MCP failed for ${failed.map((result) => result.name).join(', ')}.`
+  );
 }
 
 function firecrawlMcpConfig(
