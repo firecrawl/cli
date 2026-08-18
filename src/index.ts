@@ -1065,6 +1065,12 @@ function createDeveloperCommand(): Command {
     .addOption(new Option('--k <number>').argParser(parseInt).hideHelp())
     .option('--skills-only', 'Search only agent-skill files', false)
     .option(
+      '--passage-budget <tokens>',
+      'Approximate-token budget for all passage text (default: 4096, range: 256-16384)',
+      parseInt,
+      4096
+    )
+    .option(
       '-k, --api-key <key>',
       'Firecrawl API key (overrides global --api-key)'
     )
@@ -1085,6 +1091,7 @@ Examples:
         query,
         k: researchLimit(options),
         skillsOnly: options.skillsOnly,
+        passageBudget: options.passageBudget,
         apiKey: options.apiKey,
         apiUrl: options.apiUrl,
         output: options.output,

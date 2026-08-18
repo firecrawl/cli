@@ -5,7 +5,8 @@ import type { DeveloperItem, DeveloperSearchOptions } from '../types/developer';
 // The other mount, /v2/developer/search, rejects keyless callers and may be
 // withdrawn.
 const BASE = '/v2/search/developer';
-const MAX_PASSAGE_CHARS = 1200;
+const DEFAULT_PASSAGE_BUDGET = 4096;
+const LEGACY_MAX_PASSAGE_CHARS = 1200;
 
 async function getDeveloper<T>(
   path: string,
@@ -22,7 +23,10 @@ async function getDeveloper<T>(
   return (response?.data ?? {}) as T;
 }
 
-function fmtDeveloper(results?: DeveloperItem[]): string {
+function fmtDeveloper(
+  results?: DeveloperItem[],
+  passageBudgetApplied?: number
+): string {
   if (!results || results.length === 0) return '(no results)';
 
   return results
@@ -36,7 +40,13 @@ function fmtDeveloper(results?: DeveloperItem[]): string {
         .map((passage) => passage.text ?? '')
         .join('\n---\n')
         .trim();
-      lines.push(body ? body.slice(0, MAX_PASSAGE_CHARS) : '(no content)');
+      // TODO(search#843): Remove this fallback after server passage budgeting
+      // is fully enabled.
+      const renderedBody =
+        passageBudgetApplied == null
+          ? body.slice(0, LEGACY_MAX_PASSAGE_CHARS)
+          : body;
+      lines.push(renderedBody || '(no content)');
       return lines.join('\n');
     })
     .join('\n\n');
@@ -72,11 +82,19 @@ export async function handleDeveloperSearchCommand(
     params.append('query', options.query);
     if (options.k != null) params.append('k', String(options.k));
     if (options.skillsOnly) params.append('skills', 'only');
-    const data = await getDeveloper<{ results?: DeveloperItem[] }>(
-      `${BASE}?${params.toString()}`,
+    params.append(
+      'passage_budget',
+      String(options.passageBudget ?? DEFAULT_PASSAGE_BUDGET)
+    );
+    const data = await getDeveloper<{
+      results?: DeveloperItem[];
+      passage_budget_applied?: number;
+    }>(`${BASE}?${params.toString()}`, options);
+    writeDeveloperOutput(
+      data,
+      fmtDeveloper(data.results, data.passage_budget_applied),
       options
     );
-    writeDeveloperOutput(data, fmtDeveloper(data.results), options);
   } catch (error) {
     handleError(error);
   }

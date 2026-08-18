@@ -31,6 +31,7 @@ describe('CLI argv parsing', () => {
     expect(result.stdout).toContain('Usage: firecrawl developer');
     expect(result.stdout).toContain('--limit');
     expect(result.stdout).toContain('--skills-only');
+    expect(result.stdout).toContain('--passage-budget');
     expect(result.stderr).not.toContain('unknown command');
   });
 

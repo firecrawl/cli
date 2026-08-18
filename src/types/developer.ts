@@ -2,6 +2,7 @@ export interface DeveloperSearchOptions {
   query: string;
   k?: number;
   skillsOnly?: boolean;
+  passageBudget?: number;
   apiKey?: string;
   apiUrl?: string;
   output?: string;

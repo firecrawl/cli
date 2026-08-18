@@ -368,13 +368,16 @@ firecrawl developer "axum middleware ordering"
 
 #### Options
 
-| Option                | Description                               |
-| --------------------- | ----------------------------------------- |
-| `--limit <n>`         | Number of results (default: 10, max: 100) |
-| `--skills-only`       | Search only agent-skill files             |
-| `-o, --output <path>` | Save to file                              |
-| `--json`              | Output as compact JSON                    |
-| `--pretty`            | Pretty print JSON output                  |
+| Option                      | Description                                               |
+| --------------------------- | --------------------------------------------------------- |
+| `--limit <n>`               | Number of results (default: 10, max: 100)                 |
+| `--skills-only`             | Search only agent-skill files                             |
+| `--passage-budget <tokens>` | Approximate-token budget for all passages (default: 4096) |
+| `-o, --output <path>`       | Save to file                                              |
+| `--json`                    | Output as compact JSON                                    |
+| `--pretty`                  | Pretty print JSON output                                  |
+
+The passage budget accepts 256–16384 tokens and is allocated by the search server across all results. The 4096-token default preserves the intent of the previous readable-output cap: 1200 characters were roughly 300 tokens per result, or about 3000 passage tokens across the default 10 results, with additional allocation headroom.
 
 #### Examples
 
@@ -382,8 +385,8 @@ firecrawl developer "axum middleware ordering"
 # Investigate a known bug
 firecrawl developer "tokio spawn_blocking panics thread limit" --limit 10
 
-# Keep the full passages for an agent
-firecrawl developer "tokio select cancellation safety" --json -o results.json
+# Give the server more passage space for an agent
+firecrawl developer "tokio select cancellation safety" --passage-budget 8192 --json -o results.json
 ```
 
 ---

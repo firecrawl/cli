@@ -25,8 +25,17 @@ describe('handleDeveloperSearchCommand', () => {
   // Wrap a payload in the axios envelope returned by `client.http.get`.
   // Mirrors the `/v2/search/developer` response shape:
   //   { success, results: [{ id, type, url, title, passages: [{ text }] }] }
-  const mockDeveloperResponse = (results: any[]) => ({
-    data: { success: true, results },
+  const mockDeveloperResponse = (
+    results: any[],
+    passageBudgetApplied?: number
+  ) => ({
+    data: {
+      success: true,
+      results,
+      ...(passageBudgetApplied == null
+        ? {}
+        : { passage_budget_applied: passageBudgetApplied }),
+    },
   });
 
   const sampleResult = {
@@ -63,7 +72,7 @@ describe('handleDeveloperSearchCommand', () => {
 
       expect(mockHttpGet).toHaveBeenCalledTimes(1);
       expect(mockHttpGet).toHaveBeenCalledWith(
-        '/v2/search/developer?query=tokio+spawn_blocking&integration=cli'
+        '/v2/search/developer?query=tokio+spawn_blocking&passage_budget=4096&integration=cli'
       );
     });
 
@@ -76,7 +85,7 @@ describe('handleDeveloperSearchCommand', () => {
       });
 
       expect(mockHttpGet).toHaveBeenCalledWith(
-        '/v2/search/developer?query=tokio+spawn_blocking&skills=only&integration=cli'
+        '/v2/search/developer?query=tokio+spawn_blocking&skills=only&passage_budget=4096&integration=cli'
       );
     });
 
@@ -89,7 +98,20 @@ describe('handleDeveloperSearchCommand', () => {
       });
 
       expect(mockHttpGet).toHaveBeenCalledWith(
-        '/v2/search/developer?query=tokio+spawn_blocking&k=5&integration=cli'
+        '/v2/search/developer?query=tokio+spawn_blocking&k=5&passage_budget=4096&integration=cli'
+      );
+    });
+
+    it('passes a custom passage budget through verbatim', async () => {
+      mockHttpGet.mockResolvedValue(mockDeveloperResponse([sampleResult], 768));
+
+      await handleDeveloperSearchCommand({
+        query: 'tokio spawn_blocking',
+        passageBudget: 768,
+      });
+
+      expect(mockHttpGet).toHaveBeenCalledWith(
+        '/v2/search/developer?query=tokio+spawn_blocking&passage_budget=768&integration=cli'
       );
     });
 
@@ -125,7 +147,7 @@ describe('handleDeveloperSearchCommand', () => {
       expect(content).toContain('It will panic if this limit is too low.');
     });
 
-    it('joins multiple passages and clips long content', async () => {
+    it('keeps the legacy local cut when the server omits budget metadata', async () => {
       mockHttpGet.mockResolvedValue(
         mockDeveloperResponse([
           {
@@ -141,6 +163,21 @@ describe('handleDeveloperSearchCommand', () => {
       expect(content).toContain('first passage\n---\nx');
       const body = content.split('\n').slice(2).join('\n');
       expect(body.length).toBeLessThanOrEqual(1200);
+    });
+
+    it('does not cut content after the server applies the passage budget', async () => {
+      const passage = 'x'.repeat(5000);
+      mockHttpGet.mockResolvedValue(
+        mockDeveloperResponse(
+          [{ ...sampleResult, passages: [{ text: passage }] }],
+          4096
+        )
+      );
+
+      await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      expect(content).toContain(passage);
     });
 
     it('prints a placeholder when there are no results', async () => {
