@@ -34,8 +34,8 @@ firecrawl interact "Extract the pricing table"
 firecrawl interact "<scrape-id>" "Extract the pricing table"
 
 # 3. Or use code for precise control
-firecrawl interact --code "click @e5" --bash
-firecrawl interact --code "snapshot -i" --bash
+firecrawl interact --code "agent-browser click @e5" --bash
+firecrawl interact --code "agent-browser snapshot -i" --bash
 
 # 4. Stop the session when done
 firecrawl interact stop
