@@ -1,12 +1,10 @@
 /**
- * Writes the Firecrawl MCP server into an agent's config, and optionally the
- * rule that tells that agent to reach for Firecrawl on web work.
+ * Writes the Firecrawl MCP server into an agent's config.
  *
  * Agent configs belong to the user, not to us, so edits are surgical: JSON is
  * patched through a JSONC-aware editor that keeps comments and formatting
  * intact (several agents ship commented settings, which plain `JSON.parse`
- * rejects outright), TOML tables are replaced by AST source range, and shared
- * rule files get a marker-fenced section rather than a rewrite.
+ * rejects outright), and TOML tables are replaced by AST source range.
  */
 
 import { promises as fs } from 'fs';
@@ -17,22 +15,14 @@ import { isMap, isScalar, parseDocument } from 'yaml';
 import {
   MCP_CLIENTS,
   MCP_SERVER_NAME,
-  RULE_MARKER,
   type McpAuthMode,
   type McpClient,
   type McpClientId,
   type McpContext,
-  type McpRuleSpec,
   type McpTargetId,
 } from './mcp-clients';
 
 export type McpStatus = 'configured' | 'reconfigured' | 'failed';
-export type RuleStatus =
-  | 'installed'
-  | 'updated'
-  | 'skipped'
-  | 'unsupported'
-  | 'failed';
 
 export interface McpClientResult {
   id: McpTargetId;
@@ -42,9 +32,6 @@ export interface McpClientResult {
   mcpDetail: string;
   /** How this agent ended up authenticating, after any keyless fallback. */
   auth: McpAuthMode;
-  ruleStatus: RuleStatus;
-  /** Rule path when one was written, error message on failure, else empty. */
-  ruleDetail: string;
 }
 
 function isEnoent(error: unknown): boolean {
@@ -297,57 +284,6 @@ function tableRangeEnd(raw: string, end: number): number {
   return end;
 }
 
-/** Rewrite a rule file we own outright. */
-export async function writeRuleFile(
-  filePath: string,
-  content: string
-): Promise<'installed' | 'updated'> {
-  const existed = (await readIfExists(filePath)) !== undefined;
-  await writeFileEnsuringDir(filePath, content);
-  return existed ? 'updated' : 'installed';
-}
-
-/**
- * Add or refresh a marker-fenced section inside a file the user also writes to,
- * such as AGENTS.md. Everything outside the markers is left alone.
- */
-export async function appendRuleSection(
-  filePath: string,
-  content: string
-): Promise<'installed' | 'updated'> {
-  const existing = (await readIfExists(filePath)) ?? '';
-  // The file belongs to the user, so the section adopts its line endings
-  // instead of mixing LF into a CRLF document.
-  const eol = existing.includes('\r\n') ? '\r\n' : '\n';
-  const section = `${RULE_MARKER}${eol}${content.replace(/\r?\n/g, eol)}${RULE_MARKER}`;
-
-  // The last two markers, not the first two. A file carrying an odd marker,
-  // from a half-written run or a hand edit, would otherwise pair that stray
-  // one with our opening marker and delete everything the user wrote between
-  // them. Our own section is always the final pair.
-  const close = existing.lastIndexOf(RULE_MARKER);
-  const open = close > 0 ? existing.lastIndexOf(RULE_MARKER, close - 1) : -1;
-  const opensWithNewline = /^\r?\n/.test(
-    existing.slice(open + RULE_MARKER.length, open + RULE_MARKER.length + 2)
-  );
-
-  if (open !== -1 && opensWithNewline) {
-    await writeFileEnsuringDir(
-      filePath,
-      `${existing.slice(0, open)}${section}${existing.slice(close + RULE_MARKER.length)}`
-    );
-    return 'updated';
-  }
-
-  const separator =
-    existing.length === 0 ? '' : existing.endsWith('\n') ? eol : `${eol}${eol}`;
-  await writeFileEnsuringDir(
-    filePath,
-    `${existing}${separator}${section}${eol}`
-  );
-  return 'installed';
-}
-
 async function writeMcpEntry(
   client: McpClient,
   ctx: McpContext
@@ -414,47 +350,10 @@ async function writeMcpEntry(
   return { status, configPath };
 }
 
-export async function writeConfiguredRule(
-  rule: McpRuleSpec,
-  rulePath: string
-): Promise<{ status: 'installed' | 'updated' | 'unsupported'; path: string }> {
-  switch (rule.kind) {
-    case 'manual':
-      return { status: 'unsupported', path: rule.nextStep };
-    case 'file':
-      return {
-        status: await writeRuleFile(rulePath, rule.content),
-        path: rulePath,
-      };
-    case 'append':
-      return {
-        status: await appendRuleSection(rulePath, rule.content),
-        path: rulePath,
-      };
-    default: {
-      const unreachable: never = rule;
-      return unreachable;
-    }
-  }
-}
-
-async function writeRule(
-  client: McpClient,
-  ctx: McpContext
-): Promise<{ status: 'installed' | 'updated' | 'unsupported'; path: string }> {
-  const rule = client.rule;
-  if (!rule) return { status: 'unsupported', path: '' };
-  const rulePath = rule.kind === 'manual' ? '' : rule.globalPath(ctx);
-  return writeConfiguredRule(rule, rulePath);
-}
-
-/**
- * Configure one agent. The MCP entry and the rule are written independently so
- * a rule failure never costs the user a working MCP server.
- */
+/** Configure one agent's MCP server entry. */
 export async function setupMcpClient(
   id: McpClientId,
-  options: { rules: boolean; ctx: McpContext }
+  options: { ctx: McpContext }
 ): Promise<McpClientResult> {
   const client = MCP_CLIENTS[id];
   const ctx = options.ctx;
@@ -465,8 +364,6 @@ export async function setupMcpClient(
     mcpStatus: 'failed',
     mcpDetail: '',
     auth: ctx.auth,
-    ruleStatus: 'skipped',
-    ruleDetail: '',
   };
 
   try {
@@ -475,20 +372,6 @@ export async function setupMcpClient(
     result.mcpDetail = configPath;
   } catch (error) {
     result.mcpDetail = error instanceof Error ? error.message : String(error);
-  }
-
-  // The rule tells an agent to prefer Firecrawl tools. Writing one for an agent
-  // whose server entry failed would point it at tools it does not have, so the
-  // dependency runs this way only: a failed rule still leaves MCP working.
-  if (!options.rules || result.mcpStatus === 'failed') return result;
-
-  try {
-    const { status, path: rulePath } = await writeRule(client, ctx);
-    result.ruleStatus = status;
-    result.ruleDetail = rulePath;
-  } catch (error) {
-    result.ruleStatus = 'failed';
-    result.ruleDetail = error instanceof Error ? error.message : String(error);
   }
 
   return result;

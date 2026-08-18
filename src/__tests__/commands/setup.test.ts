@@ -32,11 +32,7 @@ import { configureWebDefaults } from '../../utils/web-defaults';
 import { getApiKey } from '../../utils/config';
 import { browserLogin, isAuthenticated } from '../../utils/auth';
 import { saveCredentials } from '../../utils/credentials';
-import {
-  MCP_CLIENTS,
-  RULE_MARKER,
-  type McpClientId,
-} from '../../utils/mcp-clients';
+import { MCP_CLIENTS, type McpClientId } from '../../utils/mcp-clients';
 
 const MCP_URL = 'https://mcp.firecrawl.dev/v2/mcp';
 
@@ -570,30 +566,6 @@ describe('handleSetupCommand', () => {
     ).toContain('firecrawl:');
   });
 
-  it('says so when rules are requested for an agent that has none', async () => {
-    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-
-    await handleSetupCommand('mcp', {
-      clients: ['hermes'],
-      yes: true,
-      rules: true,
-    });
-
-    const output = log.mock.calls.flat().join('\n');
-    expect(output).toContain('not supported by this agent');
-    expect(output).not.toContain('Rules skipped');
-  });
-
-  it('does not claim rules are unsupported when they were not requested', async () => {
-    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-
-    await handleSetupCommand('mcp', { clients: ['hermes'], yes: true });
-
-    const output = log.mock.calls.flat().join('\n');
-    expect(output).toContain('Rules skipped');
-    expect(output).not.toContain('not supported by this agent');
-  });
-
   it('lists only detected agents in the picker, already selected', async () => {
     mkdirSync(path.join(sandboxHome, '.cursor'), { recursive: true });
     mkdirSync(path.join(sandboxHome, '.hermes'), { recursive: true });
@@ -705,86 +677,71 @@ describe('handleSetupCommand', () => {
     expect(existsSync(path.join(sandboxHome, '.claude.json'))).toBe(true);
   });
 
-  it('asks about rules for --agent all just like a single agent', async () => {
-    mkdirSync(path.join(sandboxHome, '.cursor'), { recursive: true });
-    const { confirm } = await import('@inquirer/prompts');
-    vi.mocked(confirm).mockResolvedValue(true);
-    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-
-    const originalIsTTY = process.stdin.isTTY;
-    Object.defineProperty(process.stdin, 'isTTY', {
-      configurable: true,
-      value: true,
-    });
-
-    try {
-      // Naming the agents skips the picker on its own; it must not also
-      // decide the rules question on the user's behalf.
-      await handleSetupCommand('mcp', { agent: 'all' });
-
-      expect(confirm).toHaveBeenCalledOnce();
-      expect(log.mock.calls.flat().join('\n')).toContain('Customize → Rules');
-      expect(
-        existsSync(path.join(sandboxHome, '.cursor', 'rules', 'firecrawl.mdc'))
-      ).toBe(false);
-    } finally {
-      log.mockRestore();
-      Object.defineProperty(process.stdin, 'isTTY', {
-        configurable: true,
-        value: originalIsTTY,
-      });
-    }
-  });
-
-  it('tells the user how to add a Cursor User Rule instead of writing one', async () => {
-    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-
-    await handleSetupCommand('mcp', {
-      clients: ['cursor'],
-      yes: true,
-      rules: true,
-    });
-
-    const output = log.mock.calls.flat().join('\n');
-    expect(output).toContain('not supported by this agent');
-    expect(output).toContain('Customize → Rules');
-    expect(
-      existsSync(path.join(sandboxHome, '.cursor', 'rules', 'firecrawl.mdc'))
-    ).toBe(false);
-  });
-
-  it('writes VS Code instructions to ~/.copilot/instructions', async () => {
-    await handleSetupCommand('mcp', {
-      clients: ['vscode'],
-      yes: true,
-      rules: true,
-    });
-
-    const written = readFileSync(
-      path.join(
-        sandboxHome,
-        '.copilot',
-        'instructions',
-        'firecrawl.instructions.md'
-      ),
-      'utf-8'
-    );
-    expect(written).toContain("applyTo: '**'");
-  });
-
-  it('writes Codex config and rules under CODEX_HOME', async () => {
+  it('writes Codex config under CODEX_HOME', async () => {
     const override = path.join(sandboxHome, 'codex-override');
     process.env.CODEX_HOME = override;
 
     await handleSetupCommand('mcp', {
       clients: ['codex'],
       yes: true,
-      rules: true,
     });
 
     expect(existsSync(path.join(override, 'config.toml'))).toBe(true);
-    expect(existsSync(path.join(override, 'AGENTS.md'))).toBe(true);
     expect(existsSync(path.join(sandboxHome, '.codex'))).toBe(false);
+  });
+
+  it('leaves native web tools alone unless asked', async () => {
+    await handleSetupCommand('mcp', { clients: ['claude'], yes: true });
+
+    expect(configureWebDefaults).not.toHaveBeenCalled();
+  });
+
+  it('skips the web provider step when --no-defaults is passed', async () => {
+    await handleSetupCommand('mcp', {
+      clients: ['claude'],
+      yes: true,
+      defaults: false,
+    });
+
+    expect(configureWebDefaults).not.toHaveBeenCalled();
+  });
+
+  it('hands over native web tools when --defaults opts in', async () => {
+    await handleSetupCommand('mcp', {
+      clients: ['claude', 'codex'],
+      yes: true,
+      defaults: true,
+    });
+
+    expect(configureWebDefaults).toHaveBeenCalledWith({
+      undo: false,
+      agents: ['Claude Code', 'Codex'],
+    });
+  });
+
+  it('only offers the web provider step for agents that have a switch', async () => {
+    await handleSetupCommand('mcp', {
+      clients: ['cursor', 'codex'],
+      yes: true,
+      defaults: true,
+    });
+
+    // Cursor documents no way to turn its own web tools off, so it is not
+    // offered; Codex is.
+    expect(configureWebDefaults).toHaveBeenCalledWith({
+      undo: false,
+      agents: ['Codex'],
+    });
+  });
+
+  it('does not offer the web provider step when no agent has a switch', async () => {
+    await handleSetupCommand('mcp', {
+      clients: ['cursor'],
+      yes: true,
+      defaults: true,
+    });
+
+    expect(configureWebDefaults).not.toHaveBeenCalled();
   });
 
   it('writes Hermes config under HERMES_HOME', async () => {
@@ -1034,169 +991,6 @@ describe('handleSetupCommand', () => {
     expect(existsSync(path.join(sandboxHome, '.hermes', 'config.yaml'))).toBe(
       false
     );
-  });
-  it('fences the rule into an existing OpenClaw workspace AGENTS.md', async () => {
-    const workspace = path.join(sandboxHome, '.openclaw', 'workspace');
-    mkdirSync(workspace, { recursive: true });
-    const agentsFile = path.join(workspace, 'AGENTS.md');
-    writeFileSync(agentsFile, '# My workspace\n\nKeep this text.\n');
-
-    await handleSetupCommand('mcp', {
-      clients: ['openclaw'],
-      yes: true,
-      rules: true,
-    } as never);
-
-    const written = readFileSync(agentsFile, 'utf-8');
-    expect(written).toContain('# My workspace');
-    expect(written).toContain('Keep this text.');
-    expect(written).toContain('firecrawl_search');
-
-    // A rerun replaces the fenced section rather than adding a second copy.
-    await handleSetupCommand('mcp', {
-      clients: ['openclaw'],
-      yes: true,
-      rules: true,
-    } as never);
-    const rerun = readFileSync(agentsFile, 'utf-8');
-    expect(rerun.match(new RegExp(RULE_MARKER, 'g'))).toHaveLength(2);
-    expect(rerun).toBe(written);
-  });
-
-  it('does not write the OpenClaw rule when MCP registration fails', async () => {
-    const workspace = path.join(sandboxHome, '.openclaw', 'workspace');
-    mkdirSync(workspace, { recursive: true });
-    const agentsFile = path.join(workspace, 'AGENTS.md');
-    writeFileSync(agentsFile, '# Keep\n');
-    vi.mocked(execFileSync).mockImplementation(() => {
-      throw new Error('openclaw missing');
-    });
-
-    await expect(
-      handleSetupCommand('mcp', {
-        clients: ['openclaw'],
-        yes: true,
-        rules: true,
-      } as never)
-    ).rejects.toThrow(/OpenClaw/);
-
-    expect(readFileSync(agentsFile, 'utf-8')).toBe('# Keep\n');
-  });
-
-  it('writes the OpenClaw rule to the workspace the CLI reports', async () => {
-    const moved = path.join(sandboxHome, 'cli-workspace');
-    mkdirSync(moved, { recursive: true });
-    writeFileSync(path.join(moved, 'AGENTS.md'), '# CLI\n');
-    const defaultAgents = path.join(
-      sandboxHome,
-      '.openclaw',
-      'workspace',
-      'AGENTS.md'
-    );
-    mkdirSync(path.dirname(defaultAgents), { recursive: true });
-    writeFileSync(defaultAgents, '# Default\n');
-
-    vi.mocked(execFileSync).mockImplementation((_cmd, args) => {
-      const haystack = Array.isArray(args) ? args.join(' ') : String(args);
-      if (haystack.includes('config') && haystack.includes('get')) {
-        return JSON.stringify(moved);
-      }
-      return '';
-    });
-
-    await handleSetupCommand('mcp', {
-      clients: ['openclaw'],
-      yes: true,
-      rules: true,
-    } as never);
-
-    expect(readFileSync(path.join(moved, 'AGENTS.md'), 'utf-8')).toContain(
-      'firecrawl_search'
-    );
-    expect(readFileSync(defaultAgents, 'utf-8')).toBe('# Default\n');
-  });
-
-  it('expands a ~/ workspace reported by the CLI against this home', async () => {
-    const moved = path.join(sandboxHome, 'tilde-workspace');
-    mkdirSync(moved, { recursive: true });
-    writeFileSync(path.join(moved, 'AGENTS.md'), '# Tilde\n');
-
-    vi.mocked(execFileSync).mockImplementation((_cmd, args) => {
-      const haystack = Array.isArray(args) ? args.join(' ') : String(args);
-      return haystack.includes('config') && haystack.includes('get')
-        ? JSON.stringify('~/tilde-workspace')
-        : '';
-    });
-
-    await handleSetupCommand('mcp', {
-      clients: ['openclaw'],
-      yes: true,
-      rules: true,
-    } as never);
-
-    expect(readFileSync(path.join(moved, 'AGENTS.md'), 'utf-8')).toContain(
-      'firecrawl_search'
-    );
-  });
-
-  it('does not read a ~other workspace as a path under this home', async () => {
-    // `~other/ws` is another account's home to a shell. Treating the tilde as
-    // ours would write the rule into $HOME/other/ws instead.
-    const lookalike = path.join(sandboxHome, 'other', 'ws');
-    mkdirSync(lookalike, { recursive: true });
-    writeFileSync(path.join(lookalike, 'AGENTS.md'), '# Someone else\n');
-
-    vi.mocked(execFileSync).mockImplementation((_cmd, args) => {
-      const haystack = Array.isArray(args) ? args.join(' ') : String(args);
-      return haystack.includes('config') && haystack.includes('get')
-        ? JSON.stringify('~other/ws')
-        : '';
-    });
-
-    await handleSetupCommand('mcp', {
-      clients: ['openclaw'],
-      yes: true,
-      rules: true,
-    } as never);
-
-    expect(readFileSync(path.join(lookalike, 'AGENTS.md'), 'utf-8')).toBe(
-      '# Someone else\n'
-    );
-  });
-
-  it('leaves the OpenClaw rule alone until its workspace exists', async () => {
-    await handleSetupCommand('mcp', {
-      clients: ['openclaw'],
-      yes: true,
-      rules: true,
-    } as never);
-
-    // Creating AGENTS.md before OpenClaw bootstraps it would cost the user the
-    // instructions the launcher seeds that file with.
-    expect(
-      existsSync(path.join(sandboxHome, '.openclaw', 'workspace', 'AGENTS.md'))
-    ).toBe(false);
-  });
-
-  it('follows OPENCLAW_WORKSPACE_DIR when the workspace has moved', async () => {
-    const moved = path.join(sandboxHome, 'elsewhere');
-    mkdirSync(moved, { recursive: true });
-    writeFileSync(path.join(moved, 'AGENTS.md'), '# Moved\n');
-    process.env.OPENCLAW_WORKSPACE_DIR = moved;
-
-    try {
-      await handleSetupCommand('mcp', {
-        clients: ['openclaw'],
-        yes: true,
-        rules: true,
-      } as never);
-
-      expect(readFileSync(path.join(moved, 'AGENTS.md'), 'utf-8')).toContain(
-        'firecrawl_search'
-      );
-    } finally {
-      delete process.env.OPENCLAW_WORKSPACE_DIR;
-    }
   });
 
   it('points every agent at the sign-in endpoint with --oauth', async () => {

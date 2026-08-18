@@ -4,7 +4,6 @@
  */
 
 import { execSync } from 'child_process';
-import { existsSync } from 'fs';
 import os from 'os';
 import path from 'path';
 import readline from 'readline';
@@ -46,7 +45,6 @@ import {
   isMcpLauncherId,
   MCP_CLIENTS,
   MCP_LAUNCHER_OAUTH,
-  MCP_LAUNCHER_RULES,
   mcpTargetName,
   resolveMcpClientId,
   type McpAuthMode,
@@ -54,11 +52,7 @@ import {
   type McpLauncherId,
   type McpTargetId,
 } from '../utils/mcp-clients';
-import {
-  setupMcpClient,
-  writeConfiguredRule,
-  type McpClientResult,
-} from '../utils/mcp-install';
+import { setupMcpClient, type McpClientResult } from '../utils/mcp-install';
 import { runClientCommand } from '../utils/run-client-command';
 
 export type SetupSubcommand =
@@ -98,8 +92,8 @@ export interface SetupOptions {
   oauth?: boolean;
   /** Agents chosen by flag (`--claude`, `--cursor`, ...); skips the picker. */
   clients?: McpTargetId[];
-  /** Force the Firecrawl web rules on or off instead of prompting. */
-  rules?: boolean;
+  /** Force the web-provider defaults step on or off instead of prompting. */
+  defaults?: boolean;
 }
 
 const green = '\x1b[32m';
@@ -455,9 +449,17 @@ async function pickWebAgents(undo: boolean): Promise<WebAgent[] | null> {
  * the user, so nothing this command does should be a surprise afterwards, and
  * a value they set themselves is reported as kept rather than silently skipped.
  */
+function tildePath(target: string): string {
+  const home = os.homedir();
+  return target.startsWith(home + path.sep)
+    ? path.join('~', path.relative(home, target))
+    : target;
+}
+
 async function confirmWebDefaults(
   plan: WebDefaultResult[],
-  undo: boolean
+  undo: boolean,
+  framing: { headline?: string; question?: string } = {}
 ): Promise<boolean> {
   const changes = plan.filter((result) => result.changed);
 
@@ -477,18 +479,100 @@ async function confirmWebDefaults(
   }
 
   console.log('');
-  console.log(undo ? 'This will be reverted:' : 'This will be added:');
+  console.log(
+    framing.headline ??
+      (undo ? 'This will be reverted:' : 'This will be added:')
+  );
   console.log('');
   for (const result of changes) {
     console.log(
-      `  ${bold}${result.agent}${reset} ${dim}${result.path}${reset}`
+      `  ${bold}${result.agent}${reset} ${dim}${tildePath(result.path)}${reset}`
     );
     if (result.preview) console.log(`    ${result.preview}`);
   }
   console.log('');
 
   const { confirm } = await import('@inquirer/prompts');
-  return confirm({ message: 'Apply these changes?', default: true });
+  return confirm({
+    message: framing.question ?? 'Apply these changes?',
+    default: true,
+  });
+}
+
+/** Report what the defaults run actually did, shared by both entry points. */
+function reportWebDefaults(results: WebDefaultResult[], undo: boolean): void {
+  for (const result of results) {
+    const prefix =
+      result.skipped || result.preserved ? '!' : result.changed ? '✓' : '•';
+    console.log(`${prefix} ${result.message}`);
+    console.log(`  ${tildePath(result.path)}`);
+  }
+
+  console.log('');
+  // An agent whose value we kept was not configured, so the closing line has to
+  // stop short of claiming it was.
+  const untouched = results.filter(
+    (result) => result.preserved || result.skipped
+  );
+  if (results.length > 0 && untouched.length === results.length) {
+    console.log('Nothing changed.');
+  } else if (undo) {
+    console.log('Native web tools restored where supported.');
+  } else {
+    console.log(
+      'Firecrawl is now the default web provider for supported AI agents.'
+    );
+  }
+  if (untouched.length > 0 && untouched.length < results.length) {
+    console.log(
+      `${dim}Left ${untouched.map((result) => result.agent).join(' and ')} as you had it.${reset}`
+    );
+  }
+}
+
+/** Agents that both host the MCP server and have a documented web-tool switch. */
+const WEB_DEFAULT_BY_TARGET: Partial<Record<McpTargetId, WebAgent>> = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+};
+
+/**
+ * Second step of `setup mcp`. Registering the server does not stop an agent
+ * reaching for its own web tools first, so offer to hand those over as well.
+ *
+ * Only agents whose server entry landed in this run are offered, so the switch
+ * is never thrown for an agent that has no Firecrawl server to fall back on.
+ * Turning a built-in tool off is a real behavior change, so it is previewed
+ * line by line and confirmed, and automation only gets it by asking.
+ */
+async function offerWebDefaults(
+  options: SetupOptions,
+  nonInteractive: boolean,
+  agents: readonly WebAgent[]
+): Promise<void> {
+  if (agents.length === 0 || options.defaults === false) return;
+  if (options.defaults === undefined && nonInteractive) return;
+
+  const targets = [...new Set(agents)];
+
+  if (options.defaults !== true) {
+    const plan = await configureWebDefaults({
+      undo: false,
+      agents: targets,
+      dryRun: true,
+    });
+    const confirmed = await confirmWebDefaults(plan, false, {
+      headline: `Make Firecrawl the default web provider in ${targets.join(' and ')}? This turns off their own web search and fetch:`,
+      question: 'Apply',
+    });
+    if (!confirmed) return;
+  }
+
+  console.log('');
+  reportWebDefaults(
+    await configureWebDefaults({ undo: false, agents: targets }),
+    false
+  );
 }
 
 export async function handleMakeDefaultCommand(
@@ -522,35 +606,7 @@ export async function handleMakeDefaultCommand(
     if (!(await confirmWebDefaults(plan, undo))) return;
   }
 
-  const results = await configureWebDefaults({ undo, agents });
-
-  for (const result of results) {
-    const prefix =
-      result.skipped || result.preserved ? '!' : result.changed ? '✓' : '•';
-    console.log(`${prefix} ${result.message}`);
-    console.log(`  ${result.path}`);
-  }
-
-  console.log('');
-  // An agent whose value we kept was not configured, so the closing line has to
-  // stop short of claiming it was.
-  const untouched = results.filter(
-    (result) => result.preserved || result.skipped
-  );
-  if (results.length > 0 && untouched.length === results.length) {
-    console.log('Nothing changed.');
-  } else if (undo) {
-    console.log('Native web tools restored where supported.');
-  } else {
-    console.log(
-      'Firecrawl is now the default web provider for supported AI agents.'
-    );
-  }
-  if (untouched.length > 0 && untouched.length < results.length) {
-    console.log(
-      `${dim}Left ${untouched.map((result) => result.agent).join(' and ')} as you had it.${reset}`
-    );
-  }
+  reportWebDefaults(await configureWebDefaults({ undo, agents }), undo);
 }
 
 async function installSkills(
@@ -646,11 +702,7 @@ export async function installMcp(
     );
   }
 
-  const apiKey = options.keyless ? undefined : getApiKey();
   const resolvedAgent = resolveMcpAgent(options.agent);
-  // Same rule as installMcpClients: a stored key cannot go into agent config,
-  // so --agent hermes/openclaw fall back to keyless just like --hermes/--openclaw.
-  const keyless = !isEnvironmentBackedApiKey(apiKey, runtimeEnv);
 
   if (resolvedAgent.kind === 'skills-only') {
     // Skills for this agent have already installed by this point; ending the
@@ -707,59 +759,6 @@ async function pickMcpClients(
 }
 
 /**
- * The path under this user's home when `value` names one, matching the only
- * two forms a shell expands against the current user. `~other/ws` names another
- * account's home, which is not ours to guess, so it stays a literal path
- * instead of silently becoming `$HOME/other/ws`.
- */
-function homeRelativeSuffix(
-  value: string,
-  platform: NodeJS.Platform
-): string | undefined {
-  if (value === '~') return '';
-  if (value.startsWith('~/')) return value.slice(2);
-  if (platform === 'win32' && value.startsWith('~\\')) return value.slice(2);
-  return undefined;
-}
-
-/**
- * Ask OpenClaw where its workspace is. Config can move it, the environment can
- * move it, and a profile changes it again, but that config file is JSON5 and
- * out of reach here, so the launcher itself is the authority. Falls back to the
- * documented defaults whenever the CLI cannot answer.
- */
-function openclawConfiguredWorkspace(
-  ctx: McpContext,
-  id: McpLauncherId
-): string | undefined {
-  if (id !== 'openclaw') return undefined;
-  try {
-    // Same launcher as `openclaw mcp set`. A raw execFileSync('openclaw')
-    // throws on Windows .cmd shims, and the catch used to look like a missing
-    // config value, so the rule landed in the default workspace instead.
-    const stdout = runClientCommand(
-      'openclaw',
-      ['config', 'get', 'agents.defaults.workspace', '--json'],
-      {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-        env: cleanNpmEnv(),
-        // stderr is discarded, so a launcher that wedges or waits on a prompt
-        // would hang setup with nothing on screen. Same bound as doctor's probe.
-        timeout: 8000,
-      }
-    );
-    const value: unknown = JSON.parse(String(stdout));
-    if (typeof value !== 'string' || value === '') return undefined;
-    const suffix = homeRelativeSuffix(value, ctx.platform);
-    const expanded = suffix === undefined ? value : path.join(ctx.home, suffix);
-    return path.join(expanded, 'AGENTS.md');
-  } catch {
-    return undefined;
-  }
-}
-
-/**
  * Launchers own their MCP configuration, so they are installed through their
  * own routine instead of a config write. Failures stay scoped to the one
  * launcher: a missing binary must not cost the user the agents that worked.
@@ -767,8 +766,7 @@ function openclawConfiguredWorkspace(
 async function setupMcpLauncher(
   id: McpLauncherId,
   ctx: McpContext,
-  runtimeEnv: NodeJS.ProcessEnv,
-  rules: boolean
+  runtimeEnv: NodeJS.ProcessEnv
 ): Promise<McpClientResult> {
   const keyless = ctx.auth !== 'env';
   const result: McpClientResult = {
@@ -779,8 +777,6 @@ async function setupMcpLauncher(
     // The mode this run configured, which `keyless` cannot express: it folds
     // oauth in with keyless because neither sends a credential.
     auth: ctx.auth,
-    ruleStatus: 'unsupported',
-    ruleDetail: '',
   };
 
   try {
@@ -804,50 +800,7 @@ async function setupMcpLauncher(
     result.mcpDetail = error instanceof Error ? error.message : String(error);
   }
 
-  const rule = MCP_LAUNCHER_RULES[id];
-  if (!rule) return result;
-  if (!rules || result.mcpStatus === 'failed') {
-    // Same dependency as the file-writing agents: a rule that names Firecrawl
-    // tools is wrong when the server was not registered.
-    result.ruleStatus = 'skipped';
-    return result;
-  }
-
-  if (rule.kind === 'manual') {
-    const written = await writeConfiguredRule(rule, '');
-    result.ruleStatus = written.status;
-    result.ruleDetail = written.path;
-    return result;
-  }
-
-  const rulePath = openclawConfiguredWorkspace(ctx, id) ?? rule.globalPath(ctx);
-  // The launcher creates this file itself on first run, seeded with its own
-  // instructions. Creating it here first would leave the user with our section
-  // and none of that, so the rule waits for a workspace that exists.
-  if (!existsSync(rulePath)) {
-    result.ruleStatus = 'skipped';
-    result.ruleDetail = rulePath;
-    return result;
-  }
-
-  try {
-    const written = await writeConfiguredRule(rule, rulePath);
-    result.ruleStatus = written.status;
-    result.ruleDetail = written.path;
-  } catch (error) {
-    result.ruleStatus = 'failed';
-    result.ruleDetail = error instanceof Error ? error.message : String(error);
-  }
   return result;
-}
-
-async function confirmMcpRules(): Promise<boolean> {
-  const { confirm } = await import('@inquirer/prompts');
-  return confirm({
-    message:
-      'Add rules so agents prefer Firecrawl for web search and scraping?',
-    default: true,
-  });
 }
 
 async function installMcpClients(
@@ -919,49 +872,27 @@ async function installMcpClients(
     ];
   }
 
-  // `-y` stays MCP-only so automation never rewrites instruction files by
-  // surprise; the flags are there when a script does want the rules.
-  const rules =
-    options.rules ?? (nonInteractive ? false : await confirmMcpRules());
-
   const results: McpClientResult[] = [];
   for (const id of selected) {
     results.push(
       isMcpLauncherId(id)
-        ? await setupMcpLauncher(id, ctx, runtimeEnv, rules)
-        : await setupMcpClient(id, { rules, ctx })
+        ? await setupMcpLauncher(id, ctx, runtimeEnv)
+        : await setupMcpClient(id, { ctx })
     );
   }
 
   reportMcpResults(results, ctx, options, Boolean(apiKey));
-  return results.every((result) => result.mcpStatus !== 'failed');
-}
 
-function ruleLine(
-  result: McpClientResult,
-  ctx: McpContext
-): string | undefined {
-  switch (result.ruleStatus) {
-    case 'installed':
-    case 'updated':
-      return `  Rules ${result.ruleStatus} ${dim}${displayPath(result.ruleDetail, ctx)}${reset}`;
-    case 'skipped':
-      return '  Rules skipped';
-    case 'unsupported':
-      // Clients only reach this when rules were requested: setupMcpClient
-      // returns `skipped` whenever rules is false. Hermes has no global rule
-      // file, so `--rules` has to say so rather than going silent. Cursor's
-      // global rules are manual, and the next step is in ruleDetail.
-      return result.ruleDetail
-        ? `  Rules ${dim}not supported by this agent${reset} ${result.ruleDetail}`
-        : `  Rules ${dim}not supported by this agent${reset}`;
-    case 'failed':
-      return `  ${red}Rules failed${reset} ${result.ruleDetail}`;
-    default: {
-      const unreachable: never = result.ruleStatus;
-      return unreachable;
-    }
-  }
+  await offerWebDefaults(
+    options,
+    nonInteractive,
+    results
+      .filter((result) => result.mcpStatus !== 'failed')
+      .map((result) => WEB_DEFAULT_BY_TARGET[result.id])
+      .filter((agent): agent is WebAgent => agent !== undefined)
+  );
+
+  return results.every((result) => result.mcpStatus !== 'failed');
 }
 
 /**
@@ -1049,8 +980,6 @@ function reportMcpResults(
     );
     const signIn = signInLine(result, ctx);
     if (signIn) console.log(signIn);
-    const rules = ruleLine(result, ctx);
-    if (rules) console.log(rules);
   }
 
   console.log('');

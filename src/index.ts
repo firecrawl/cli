@@ -2276,18 +2276,24 @@ setupCommand.addOption(
   new Option('-g, --global', 'Deprecated; global is the default').hideHelp()
 );
 
+// `--defaults` is declared before `--no-defaults` so the pair stays undefined
+// when neither is passed. A negatable option defined on its own would default
+// to true, which would hand over native web tools in unattended runs.
 setupCommand
-  .option('--rules', 'Install rules that prefer Firecrawl for web work (mcp)')
-  .option('--no-rules', 'Skip the rules prompt and install MCP only (mcp)')
+  .option(
+    '--defaults',
+    'Also make Firecrawl the default web provider where supported (mcp)'
+  )
+  .option('--no-defaults', 'Skip the default web provider step (mcp)')
   .addHelpText(
     'after',
     `
 Examples:
-  $ firecrawl setup mcp                      # pick agents, then choose rules
+  $ firecrawl setup mcp                      # pick agents, then choose defaults
   $ firecrawl setup mcp --oauth              # sign in from each agent's browser
   $ firecrawl setup mcp --claude --cursor    # skip the picker
   $ firecrawl setup mcp --yes                # every detected agent, MCP only
-  $ firecrawl setup mcp --yes --rules        # every detected agent, with rules
+  $ firecrawl setup mcp --yes --defaults     # also hand over native web tools
 `
   )
   .action(async (subcommand: SetupSubcommand, options) => {

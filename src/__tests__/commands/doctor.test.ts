@@ -376,7 +376,7 @@ describe('detectAgents', () => {
     });
 
     for (const id of ALL_MCP_CLIENT_IDS) {
-      const result = await setupMcpClient(id, { rules: false, ctx });
+      const result = await setupMcpClient(id, { ctx });
       expect(result.mcpStatus, id).toBe('configured');
     }
 
