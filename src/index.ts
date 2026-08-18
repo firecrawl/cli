@@ -5,7 +5,7 @@
  * Entry point for the CLI application
  */
 
-import { Command, Option } from 'commander';
+import { Command, InvalidArgumentError, Option } from 'commander';
 import { readFileSync } from 'fs';
 import {
   handleScrapeCommand,
@@ -224,6 +224,14 @@ function researchLimit(options: {
   k?: number;
 }): number | undefined {
   return options.k ?? options.limit;
+}
+
+function parsePassageBudget(value: string): number {
+  const budget = Number(value);
+  if (!Number.isInteger(budget) || budget < 256 || budget > 16384) {
+    throw new InvalidArgumentError('must be an integer between 256 and 16384');
+  }
+  return budget;
 }
 
 function parseAgentWebhookOption(
@@ -1067,7 +1075,7 @@ function createDeveloperCommand(): Command {
     .option(
       '--passage-budget <tokens>',
       'Approximate-token budget for all passage text (default: 4096, range: 256-16384)',
-      parseInt,
+      parsePassageBudget,
       4096
     )
     .option(
