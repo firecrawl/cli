@@ -1054,7 +1054,7 @@ function createSearchCommand(): Command {
 function createDeveloperCommand(): Command {
   const developerCmd = new Command('developer')
     .description(
-      'Search an index built for coding agents: issues, merged PRs, repository READMEs, and curated documentation sites. Use it for a programming question: code behaviour, a library or framework, an API contract, an error message, or a known bug. Returns ranked results with id, url, title, and the matched passages in markdown. Kind is the id prefix (doc:, issue:, pull_request:, readme:).'
+      'Search an index built for coding agents: GitHub issues, merged PRs, repository READMEs, and curated documentation sites. Express repository, source, language, topic, license, and other scoping intent in the query text; semantic retrieval handles the scoping.'
     )
     .argument('<query>', 'Natural-language developer question or search phrase')
     .option(
@@ -1063,7 +1063,6 @@ function createDeveloperCommand(): Command {
       parseInt
     )
     .addOption(new Option('--k <number>').argParser(parseInt).hideHelp())
-    .option('--skills-only', 'Search only agent-skill files', false)
     .option(
       '-k, --api-key <key>',
       'Firecrawl API key (overrides global --api-key)'
@@ -1075,8 +1074,11 @@ function createDeveloperCommand(): Command {
     .addHelpText(
       'after',
       `
+Developer search accepts a query and a result count. Put all scoping intent in
+the query text; semantic retrieval handles it.
+
 Examples:
-  $ firecrawl developer "axum middleware ordering" --limit 10
+  $ firecrawl developer "axum middleware ordering in tokio-rs/axum issues" --limit 10
   $ firecrawl developer "tokio select cancellation safety" --json
 `
     )
@@ -1084,7 +1086,6 @@ Examples:
       await handleDeveloperSearchCommand({
         query,
         k: researchLimit(options),
-        skillsOnly: options.skillsOnly,
         apiKey: options.apiKey,
         apiUrl: options.apiUrl,
         output: options.output,

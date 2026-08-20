@@ -23,27 +23,22 @@ describe('handleDeveloperSearchCommand', () => {
   let mockHttpGet: ReturnType<typeof vi.fn>;
 
   // Wrap a payload in the axios envelope returned by `client.http.get`.
-  // Mirrors the `/v2/search/developer` response shape:
-  //   { success, results: [{ id, type, url, title, passages: [{ text }] }] }
-  const mockDeveloperResponse = (
-    results: any[],
-    passageBudgetApplied?: number
-  ) => ({
-    data: {
-      success: true,
-      results,
-      ...(passageBudgetApplied == null
-        ? {}
-        : { passage_budget_applied: passageBudgetApplied }),
-    },
+  const mockDeveloperResponse = (results: any[], extra = {}) => ({
+    data: { success: true, results, ...extra },
   });
 
   const sampleResult = {
     id: 'issue:tokio-rs/tokio#2309',
-    type: 'issue',
     url: 'https://github.com/tokio-rs/tokio/issues/2309',
     title: 'spawn_blocking panics when exceeding the thread limit',
-    passages: [{ text: 'It will panic if this limit is too low.' }],
+    passages: [
+      {
+        text: 'It will panic if this limit is too low.',
+        citation_url:
+          'https://github.com/tokio-rs/tokio/issues/2309#issuecomment-1',
+      },
+    ],
+    license: { state: 'licensed', spdx_id: 'MIT' },
   };
 
   beforeEach(() => {
@@ -76,20 +71,7 @@ describe('handleDeveloperSearchCommand', () => {
       );
     });
 
-    it('passes skills=only when skillsOnly is set', async () => {
-      mockHttpGet.mockResolvedValue(mockDeveloperResponse([sampleResult]));
-
-      await handleDeveloperSearchCommand({
-        query: 'tokio spawn_blocking',
-        skillsOnly: true,
-      });
-
-      expect(mockHttpGet).toHaveBeenCalledWith(
-        '/v2/search/developer?query=tokio+spawn_blocking&skills=only&integration=cli'
-      );
-    });
-
-    it('passes k when a limit is provided', async () => {
+    it('passes k when a result count is provided', async () => {
       mockHttpGet.mockResolvedValue(mockDeveloperResponse([sampleResult]));
 
       await handleDeveloperSearchCommand({
@@ -134,30 +116,21 @@ describe('handleDeveloperSearchCommand', () => {
       expect(content).toContain('It will panic if this limit is too low.');
     });
 
-    it('keeps the legacy local cut when the server omits budget metadata', async () => {
-      mockHttpGet.mockResolvedValue(
-        mockDeveloperResponse([
-          {
-            ...sampleResult,
-            passages: [{ text: 'first passage' }, { text: 'x'.repeat(5000) }],
-          },
-        ])
-      );
-
-      await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
-
-      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
-      expect(content).toContain('first passage\n---\nx');
-      const body = content.split('\n').slice(2).join('\n');
-      expect(body.length).toBeLessThanOrEqual(1200);
-    });
-
-    it('does not cut content after the server applies the passage budget', async () => {
+    it('renders full passages, citations, licenses, and indexing echoes', async () => {
       const passage = 'x'.repeat(5000);
       mockHttpGet.mockResolvedValue(
         mockDeveloperResponse(
-          [{ ...sampleResult, passages: [{ text: passage }] }],
-          4096
+          [{ ...sampleResult, passages: [{ text: passage }], license: 'MIT' }],
+          {
+            repos: [
+              {
+                repo: 'tokio-rs/tokio',
+                indexed: true,
+                types: { issue: true, pullRequest: true, readme: false },
+              },
+            ],
+            sources: [{ source: 'rust', indexed: false }],
+          }
         )
       );
 
@@ -165,12 +138,36 @@ describe('handleDeveloperSearchCommand', () => {
 
       const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
       expect(content).toContain(passage);
+      expect(content).toContain('License: MIT');
+      expect(content).toContain('tokio-rs/tokio: indexed');
+      expect(content).toContain('rust: not indexed');
+    });
+
+    it('renders citation URLs and object license disclosures', async () => {
+      mockHttpGet.mockResolvedValue(mockDeveloperResponse([sampleResult]));
+
+      await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      expect(content).toContain('License: MIT');
+      expect(content).toContain(
+        'Citation: https://github.com/tokio-rs/tokio/issues/2309#issuecomment-1'
+      );
     });
 
     it('prints a placeholder when there are no results', async () => {
       mockHttpGet.mockResolvedValue(mockDeveloperResponse([]));
 
       await handleDeveloperSearchCommand({ query: 'no hits' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0];
+      expect(content).toBe('(no results)');
+    });
+
+    it('tolerates a success response that omits results', async () => {
+      mockHttpGet.mockResolvedValue({ data: { success: true } });
+
+      await handleDeveloperSearchCommand({ query: 'no result field' });
 
       const [content] = vi.mocked(writeOutput).mock.calls[0];
       expect(content).toBe('(no results)');

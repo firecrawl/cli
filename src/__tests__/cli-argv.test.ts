@@ -30,8 +30,26 @@ describe('CLI argv parsing', () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('Usage: firecrawl developer');
     expect(result.stdout).toContain('--limit');
-    expect(result.stdout).toContain('--skills-only');
-    expect(result.stdout).not.toContain('--passage-budget');
+    for (const removedFilter of [
+      '--passages',
+      '--types',
+      '--repos',
+      '--sources',
+      '--language',
+      '--topic',
+      '--license',
+      '--min-stars',
+      '--max-stars',
+      '--archived',
+      '--fork',
+      '--skills-only',
+      '--passage-budget',
+    ]) {
+      expect(result.stdout).not.toContain(removedFilter);
+    }
+    expect(result.stdout).toContain('scoping intent in');
+    // Lean surface: the CLI does not point at the REST API for filters.
+    expect(result.stdout).not.toContain('docs.firecrawl.dev');
     expect(result.stderr).not.toContain('unknown command');
   });
 

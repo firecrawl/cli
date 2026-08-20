@@ -362,19 +362,20 @@ firecrawl search "AI startups funding" --sources news --tbs qdr:w --limit 15
 
 Search an index built for coding agents: GitHub issues, merged pull requests, repository READMEs, and curated documentation sites. Use it for a programming question: code behaviour, a library or framework, an API contract, an error message, or a known bug.
 
+The CLI intentionally keeps this agent-facing surface lean: it accepts only the query and result count. Express repository, source, result-kind, language, topic, license, and other scoping intent in the query text; semantic retrieval handles the scoping. For advanced filters, use the [Developer Index REST API](https://docs.firecrawl.dev/features/developer).
+
 ```bash
 firecrawl developer "axum middleware ordering"
 ```
 
 #### Options
 
-| Option                | Description                               |
-| --------------------- | ----------------------------------------- |
-| `--limit <n>`         | Number of results (default: 10, max: 100) |
-| `--skills-only`       | Search only agent-skill files             |
-| `-o, --output <path>` | Save to file                              |
-| `--json`              | Output as compact JSON                    |
-| `--pretty`            | Pretty print JSON output                  |
+| Option                | Description                                                |
+| --------------------- | ---------------------------------------------------------- |
+| `--limit <n>`         | Number of results (default: 10, max: 100)                  |
+| `-o, --output <path>` | Save to file                                               |
+| `--json`              | Output full response, including citations and index status |
+| `--pretty`            | Pretty print JSON output                                   |
 
 #### Examples
 
@@ -382,7 +383,10 @@ firecrawl developer "axum middleware ordering"
 # Investigate a known bug
 firecrawl developer "tokio spawn_blocking panics thread limit" --limit 10
 
-# Keep the full passages for an agent
+# Put repository and evidence-kind intent directly in the semantic query
+firecrawl developer "tokio select cancellation safety in tokio-rs/tokio issues and merged pull requests"
+
+# Keep the full response, including passages, citations, and licenses
 firecrawl developer "tokio select cancellation safety" --json -o results.json
 ```
 
