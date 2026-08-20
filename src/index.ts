@@ -1054,7 +1054,7 @@ function createSearchCommand(): Command {
 function createDeveloperCommand(): Command {
   const developerCmd = new Command('developer')
     .description(
-      'Search an index built for coding agents: GitHub issues, merged PRs, repository READMEs, and curated documentation sites. Use it for a programming question: code behaviour, a library or framework, an API contract, an error message, or a known bug. Returns ranked results with id, type, url, title, and the matched passages in markdown.'
+      'Search an index built for coding agents: issues, merged PRs, repository READMEs, and curated documentation sites. Use it for a programming question: code behaviour, a library or framework, an API contract, an error message, or a known bug. Returns ranked results with id, url, title, and the matched passages in markdown. Kind is the id prefix (doc:, issue:, pull_request:, readme:).'
     )
     .argument('<query>', 'Natural-language developer question or search phrase')
     .option(

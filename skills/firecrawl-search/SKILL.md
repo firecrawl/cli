@@ -1,7 +1,7 @@
 ---
 name: firecrawl-search
 description: |
-  Web search with full page content, plus a research-paper index (PubMed, arXiv, bioRxiv, medRxiv). Use when no URL is known: finding sources, articles, news, or scientific literature.
+  Web search with full page content. Use when no URL is known: finding sources, articles, or news. For papers use firecrawl-research-index; for library, API, error, or bug questions use firecrawl-developer-index.
 allowed-tools:
   - Bash(firecrawl *)
   - Bash(npx firecrawl-cli *)
@@ -9,7 +9,7 @@ allowed-tools:
 
 # firecrawl search
 
-Web search with optional content scraping. Returns search results as JSON, optionally with full page content. For research papers, route to [Paper search](#paper-search) (`firecrawl research`).
+Web search with optional content scraping. Returns search results as JSON, optionally with full page content.
 
 ## Quick start
 
@@ -22,73 +22,13 @@ firecrawl search "your query" --scrape -o .firecrawl/scraped.json --json
 
 # News from the past day
 firecrawl search "your query" --sources news --tbs qdr:d -o .firecrawl/news.json --json
-
-# Programming question: search GitHub issues, merged PRs, READMEs, and docs
-firecrawl search "your query" --categories developer -o .firecrawl/developer.json --json
-
-# Research papers: use the paper index (`research`, not `search --categories research`)
-firecrawl research search-papers "your query" -o .firecrawl/papers.json --json
 ```
 
 Run `firecrawl search --help` for the full option list.
 
+`--categories developer` weighs the developer index beside ordinary web results in this same call (no passage control, no index filters). `--categories research` is a website filter, not the paper index. Dedicated skills: [firecrawl-developer-index](../firecrawl-developer-index/SKILL.md) and [firecrawl-research-index](../firecrawl-research-index/SKILL.md).
+
 **Done when:** results are saved under `.firecrawl/`, verified non-empty, processed for the request, and one feedback event is sent within the time window (unless opted out).
-
-## Developer search
-
-`--categories developer` adds an index built for coding agents. It covers GitHub
-issues, merged pull requests, repository READMEs, and curated documentation
-sites. Use it for a programming question: an error message, an API contract, a
-library behaviour, or a known bug.
-
-The hits arrive in their own `data.developer` group beside `data.web`. Each hit
-holds `url`, `title`, and `description`, where `description` is the matched
-passage. Read the passages with
-`jq -r '.data.developer[] | .url, .description' .firecrawl/developer.json`.
-
-The dedicated `firecrawl developer` command searches only that index and keeps
-the full matched passages:
-
-```bash
-# Developer search only, with full passages
-firecrawl developer "your query" --limit 10 -o .firecrawl/developer.json --json
-```
-
-Each result holds `id`, `type` (`issue`, `pull_request`, `readme`, `doc`),
-`url`, `title`, and `passages`. Read them with
-`jq -r '.results[] | .url, .passages[].text' .firecrawl/developer.json`.
-
-## Paper search
-
-For actual papers use the `firecrawl research` command group, which searches
-roughly 43M abstracts, around 90% biomedical (PubMed, bioRxiv, medRxiv) plus
-arXiv. (`search --categories research` is a website filter — it only narrows
-ordinary web results to research-affiliated sites.)
-
-Reach for it on any biomedical, clinical, or scientific-literature question —
-it replaces web-searching or scraping PubMed, bioRxiv, medRxiv, or Google
-Scholar by hand:
-
-```bash
-# Find papers by topic -- start here, and run several distinct framings
-firecrawl research search-papers "CRISPR base editing off-target effects" \
-  --limit 20 -o .firecrawl/papers.json --json
-
-# Expand from your strongest hits along the citation graph
-firecrawl research related-papers pmid:40953549 --intent "in vivo delivery" \
-  -o .firecrawl/papers-related.json --json
-
-# Verify a specific claim against the full text before you cite it
-firecrawl research read-paper pmcid:PMC12530322 --question "What was the sample size?" \
-  -o .firecrawl/paper-passages.json --json
-```
-
-Paper ids accept `pmid:`, `pmcid:`, `doi:`, and `arxiv:` forms. `inspect-paper`
-returns canonical metadata for one id. Read hits with
-`jq -r '.results[] | .primaryId, .title' .firecrawl/papers.json`.
-
-See [firecrawl](../firecrawl/SKILL.md) for how paper search fits the
-overall command routing.
 
 ## Tips
 
@@ -145,3 +85,5 @@ fi
 - [firecrawl-scrape](../firecrawl-scrape/SKILL.md) — scrape a specific URL
 - [firecrawl-map](../firecrawl-map/SKILL.md) — discover URLs within a site
 - [firecrawl-crawl](../firecrawl-crawl/SKILL.md) — bulk extract from a site
+- [firecrawl-developer-index](../firecrawl-developer-index/SKILL.md) — issues, merged PRs, READMEs, and docs
+- [firecrawl-research-index](../firecrawl-research-index/SKILL.md) — published papers, not `search --categories research`

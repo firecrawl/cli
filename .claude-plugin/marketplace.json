@@ -18,7 +18,9 @@
         "./skills/firecrawl-monitor",
         "./skills/firecrawl-parse",
         "./skills/firecrawl-scrape",
-        "./skills/firecrawl-search"
+        "./skills/firecrawl-search",
+        "./skills/firecrawl-developer-index",
+        "./skills/firecrawl-research-index"
       ]
     }
   ]

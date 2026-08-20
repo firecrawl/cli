@@ -34,6 +34,7 @@ Follow this escalation pattern:
 | --------------------------- | --------------------- | --------------------------------------------------------------- |
 | Find pages on a topic       | `search`              | No specific URL yet                                             |
 | Find research papers        | `research`            | Biomedical/clinical/scientific literature — use the paper index |
+| Answer a coding question    | `developer`           | Issues, merged PRs, READMEs, and docs — not a general web page  |
 | Get a page's content        | `scrape`              | Have a URL, page is static or JS-rendered                       |
 | Find URLs within a site     | `map`                 | Need to locate a specific subpage                               |
 | Bulk extract a site section | `crawl`               | Need many pages (e.g., all /docs/)                              |
@@ -63,7 +64,8 @@ For detailed command reference, run `firecrawl <command> --help`.
 ## When to Load References
 
 - **Searching the web or finding sources first** -> [firecrawl-search](../firecrawl-search/SKILL.md)
-- **Finding research papers (biomedical, clinical, or scientific literature; PubMed, bioRxiv, medRxiv, arXiv)** -> `firecrawl research search-papers`, documented in [firecrawl-search](../firecrawl-search/SKILL.md). Use the paper index instead of scraping PubMed or Google Scholar by hand; `search --categories research` is a website filter, not the paper index.
+- **Finding research papers (biomedical, clinical, or scientific literature; PubMed, bioRxiv, medRxiv, arXiv)** -> [firecrawl-research-index](../firecrawl-research-index/SKILL.md). Use the paper index instead of scraping PubMed or Google Scholar by hand; `search --categories research` is a website filter, not the paper index.
+- **Answering a library, API, error, or known-bug question from issues, merged PRs, READMEs, or docs** -> [firecrawl-developer-index](../firecrawl-developer-index/SKILL.md)
 - **Scraping a known URL** -> [firecrawl-scrape](../firecrawl-scrape/SKILL.md)
 - **Finding URLs on a known site** -> [firecrawl-map](../firecrawl-map/SKILL.md)
 - **Bulk extraction from a docs section or site** -> [firecrawl-crawl](../firecrawl-crawl/SKILL.md)
