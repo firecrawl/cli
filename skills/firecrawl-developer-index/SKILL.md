@@ -10,17 +10,16 @@ allowed-tools:
 
 Answer a developer question from the primary source: the issue where the bug was reported, the merged pull request that fixed it, the README or documentation page that states the contract. A blog post that describes a behaviour is a weaker answer than the passage that defines it, so reach for the index first and the open web second.
 
-There is **no fixed recipe**. Read the question, decide what kind it is, and choose the approach below. A literal error string wants a different move than "how do I do X". Don't run machinery a question doesn't call for.
+There is **no fixed recipe**. Read the question, decide what kind it is, and choose the approach below.
 
 ## The tools, and what each is uniquely good at
 
-- CLI: **`firecrawl developer <query> [--limit <n>] [--skills-only]`**
+- CLI: **`firecrawl developer <query>`** — run `firecrawl developer --help` for flags.
   HTTP: **`GET|POST https://api.firecrawl.dev/v2/search/developer`**
-  MCP: **`firecrawl_developer_search(query, k?, skills?)`**
-  Ranked results over the whole index. Each carries `id` (`issue:owner/repo#123`), `url`, and the **matched passages in markdown**, so tables and code blocks survive. The artifact kind is the `id` prefix: `doc:`, `issue:`, `pull_request:`, or `readme:`. Hits do not carry a `type` field.
-  The default first move for a developer question. It is the only surface that returns the passages, which is what lets you answer instead of pointing at a page.
-  `--limit` / `k` is 1–100 and defaults to 10. `--skills-only` / `skills="only"` restricts the search to agent-skill files.
-  The CLI and MCP surfaces take query, limit, and skills-only. Repository, source, type, and attribute filters are HTTP-only (below).
+  MCP: **`firecrawl_developer_search`** (`query`, optional `k` 1–100 default 10, `skills="only"`).
+  Ranked results over the whole index. A successful response is `{success, results}` unless `repos` or `sources` was sent. Each hit carries `id`, `url`, `passages`; `title` is often present; `license: {state, spdx_id}` is often present. Kind is the `id` prefix (`doc:`, `issue:`, `pull_request:`, `readme:`). Hits do not carry a `type` field. Untyped queries can also return `web:` prefixes. Passages are `{text}` and sometimes `{text, citation_url}`.
+  The default first move. It is the only surface that returns the passages, which is what lets you answer instead of pointing at a page.
+  Type, repo, source, and repository-attribute filters are HTTP-only (below).
   Keyless; send `Authorization: Bearer $FIRECRAWL_API_KEY` for higher rate limits.
 
 ```bash
@@ -39,12 +38,14 @@ jq -r '.results[] | .id, .url, .passages[].text' .firecrawl/developer.json
   General web fetch and search, for what no primary source states: a comparison between two libraries, an outage, a migration write-up, a project with no public repository or indexed docs.
   Also the follow-through when a hit is the right page but you need all of it — `scrape` the result's `url`.
 
+**Done when:** the answer quotes a matched passage and cites its `url` (fall back to `url` when `title` is absent), or you have moved to the open web because the index had nothing to say.
+
 ## Filters, and what each one costs you
 
-Only the HTTP surface takes these. On `GET`, pass `types=issue,pull_request` or repeat the parameter; on `POST`, pass arrays. All are optional. `firecrawl developer` and `firecrawl_developer_search` do not accept them.
+Only the HTTP surface takes these. On `GET`, pass `types=issue,pull_request` or repeat the parameter; on `POST`, pass arrays. All are optional. Confirm CLI flags with `firecrawl developer --help`.
 
 - `types` — which of `doc`, `issue`, `pull_request`, `readme` to search. Defaults to all four. Narrowing here is the cheapest way to sharpen a query.
-- `repos` (`owner/name`) scopes the repository half, meaning `issue`, `pull_request`, and `readme`; `sources` (documentation source ids, at most 20) scopes the documentation half, meaning `doc`. Passing both **unions** the halves rather than intersecting them. Both echo back in the response with `indexed: true|false` — that is how you tell "not in the index" from "found nothing".
+- `repos` (`owner/name`) scopes the repository half, meaning `issue`, `pull_request`, and `readme`; `sources` (documentation source ids, at most 20) scopes the documentation half, meaning `doc`. Passing both **unions** the halves rather than intersecting them. Both echo back in the response with `indexed: true|false` — that is how you tell "not in the index" from "found nothing". `repos` echoes `{repo, indexed, types: {issue, pullRequest, readme}}`; `sources` echoes `{source, indexed}`.
 - A filter that cannot match any requested `type` is a `400`, not an empty list: `repos` with no repository type in `types`, or `sources` without `doc`.
 - `passages` (1–5, default 1) is the _maximum_ passages per result, not a guarantee. Raise it when one page is clearly the right page but the first passage is the wrong part of it.
 - `language`, `topic`, `license`, `min_stars`, `max_stars`, `archived`, `fork` describe a **repository**. Most documentation pages in the index have no repository behind them, so no repository fact can admit or exclude one. Send any of these without a `sources` scope and the response holds repository evidence only — `issue`, `pull_request`, `readme`. That is the design, not an index fault: do not retry it and do not report the index broken. To keep documentation, drop the repository filters, or scope the documentation half with `sources` and read the `sources` echo to confirm the id is indexed.
