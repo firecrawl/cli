@@ -31,26 +31,8 @@ describe('CLI argv parsing', () => {
     expect(result.stdout).toContain('Usage: firecrawl developer');
     expect(result.stdout).toContain('--limit');
     expect(result.stdout).toContain('--skills-only');
-    expect(result.stdout).toContain('--passage-budget');
+    expect(result.stdout).not.toContain('--passage-budget');
     expect(result.stderr).not.toContain('unknown command');
-  });
-
-  testWithBuiltCli('rejects an invalid developer passage budget', () => {
-    for (const budget of ['not-a-number', '255', '16385']) {
-      const result = spawnSync(
-        process.execPath,
-        [cliPath, 'developer', 'query', '--passage-budget', budget],
-        {
-          cwd: process.cwd(),
-          encoding: 'utf8',
-        }
-      );
-
-      expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain(
-        'must be an integer between 256 and 16384'
-      );
-    }
   });
 
   testWithBuiltCli('lists the research command in root help output', () => {

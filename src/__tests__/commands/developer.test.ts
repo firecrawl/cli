@@ -65,14 +65,14 @@ describe('handleDeveloperSearchCommand', () => {
   });
 
   describe('API call generation', () => {
-    it('calls /v2/search/developer with the query and integration tag', async () => {
+    it('calls /v2/search/developer without a client passage budget', async () => {
       mockHttpGet.mockResolvedValue(mockDeveloperResponse([sampleResult]));
 
       await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
 
       expect(mockHttpGet).toHaveBeenCalledTimes(1);
       expect(mockHttpGet).toHaveBeenCalledWith(
-        '/v2/search/developer?query=tokio+spawn_blocking&passage_budget=4096&integration=cli'
+        '/v2/search/developer?query=tokio+spawn_blocking&integration=cli'
       );
     });
 
@@ -85,7 +85,7 @@ describe('handleDeveloperSearchCommand', () => {
       });
 
       expect(mockHttpGet).toHaveBeenCalledWith(
-        '/v2/search/developer?query=tokio+spawn_blocking&skills=only&passage_budget=4096&integration=cli'
+        '/v2/search/developer?query=tokio+spawn_blocking&skills=only&integration=cli'
       );
     });
 
@@ -98,20 +98,7 @@ describe('handleDeveloperSearchCommand', () => {
       });
 
       expect(mockHttpGet).toHaveBeenCalledWith(
-        '/v2/search/developer?query=tokio+spawn_blocking&k=5&passage_budget=4096&integration=cli'
-      );
-    });
-
-    it('passes a custom passage budget through verbatim', async () => {
-      mockHttpGet.mockResolvedValue(mockDeveloperResponse([sampleResult], 768));
-
-      await handleDeveloperSearchCommand({
-        query: 'tokio spawn_blocking',
-        passageBudget: 768,
-      });
-
-      expect(mockHttpGet).toHaveBeenCalledWith(
-        '/v2/search/developer?query=tokio+spawn_blocking&passage_budget=768&integration=cli'
+        '/v2/search/developer?query=tokio+spawn_blocking&k=5&integration=cli'
       );
     });
 

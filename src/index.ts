@@ -5,7 +5,7 @@
  * Entry point for the CLI application
  */
 
-import { Command, InvalidArgumentError, Option } from 'commander';
+import { Command, Option } from 'commander';
 import { readFileSync } from 'fs';
 import {
   handleScrapeCommand,
@@ -224,14 +224,6 @@ function researchLimit(options: {
   k?: number;
 }): number | undefined {
   return options.k ?? options.limit;
-}
-
-function parsePassageBudget(value: string): number {
-  const budget = Number(value);
-  if (!Number.isInteger(budget) || budget < 256 || budget > 16384) {
-    throw new InvalidArgumentError('must be an integer between 256 and 16384');
-  }
-  return budget;
 }
 
 function parseAgentWebhookOption(
@@ -1073,12 +1065,6 @@ function createDeveloperCommand(): Command {
     .addOption(new Option('--k <number>').argParser(parseInt).hideHelp())
     .option('--skills-only', 'Search only agent-skill files', false)
     .option(
-      '--passage-budget <tokens>',
-      'Approximate-token budget for all passage text (default: 4096, range: 256-16384)',
-      parsePassageBudget,
-      4096
-    )
-    .option(
       '-k, --api-key <key>',
       'Firecrawl API key (overrides global --api-key)'
     )
@@ -1099,7 +1085,6 @@ Examples:
         query,
         k: researchLimit(options),
         skillsOnly: options.skillsOnly,
-        passageBudget: options.passageBudget,
         apiKey: options.apiKey,
         apiUrl: options.apiUrl,
         output: options.output,

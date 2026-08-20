@@ -5,7 +5,6 @@ import type { DeveloperItem, DeveloperSearchOptions } from '../types/developer';
 // The other mount, /v2/developer/search, rejects keyless callers and may be
 // withdrawn.
 const BASE = '/v2/search/developer';
-const DEFAULT_PASSAGE_BUDGET = 4096;
 const LEGACY_MAX_PASSAGE_CHARS = 1200;
 
 async function getDeveloper<T>(
@@ -82,10 +81,6 @@ export async function handleDeveloperSearchCommand(
     params.append('query', options.query);
     if (options.k != null) params.append('k', String(options.k));
     if (options.skillsOnly) params.append('skills', 'only');
-    params.append(
-      'passage_budget',
-      String(options.passageBudget ?? DEFAULT_PASSAGE_BUDGET)
-    );
     const data = await getDeveloper<{
       results?: DeveloperItem[];
       passage_budget_applied?: number;
