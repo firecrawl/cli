@@ -48,7 +48,7 @@ function fmtResult(item: DeveloperItem): string {
   const lines = [`## [${item.id ?? '?'}]${kind} ${item.title ?? '(untitled)'}`];
   if (item.url) lines.push(item.url);
   if (item.license) lines.push(fmtLicense(item.license));
-  const body = item.passages
+  const body = (item.passages ?? [])
     .map((passage) =>
       [
         passage.text,
