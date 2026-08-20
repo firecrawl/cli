@@ -1,30 +1,17 @@
 ---
 name: firecrawl-research-index
-description: Find papers in Firecrawl's research paper index (PubMed, bioRxiv, medRxiv, arXiv). Use for literature-finding of any kind, including clinical and biomedical questions; `search --categories research` is a website filter, not this index.
+description: |
+  Find papers in Firecrawl's research paper index (PubMed, bioRxiv, medRxiv, arXiv). Use for literature-finding of any kind, including clinical and biomedical questions; `search --categories research` is a website filter, not this index.
 allowed-tools:
   - Bash(firecrawl *)
   - Bash(npx firecrawl-cli *)
 ---
 
-# Firecrawl Research Index
+# firecrawl research
 
-Find the research papers that answer a research query. Some questions have a single answer; many have several — and when in doubt, lean toward returning the fuller relevant set (most relevant first) rather than narrowing to one.
+Find the papers that answer a research query. When in doubt, return the relevant set (most relevant first) rather than one hit.
 
-## What is in the index
-
-Paper abstracts, with full text reachable per paper. The largest share of the corpus is **biomedical and life-science** literature — **PubMed** journal articles plus **bioRxiv** and **medRxiv** preprints — so clinical, drug, gene, disease, epidemiology, and public-health questions are in scope. **arXiv** preprints cover computer science, physics, and mathematics. Coverage outside those sources is thinner: a paper that exists only behind a publisher paywall or in a niche venue may not be indexed, and the general web tools below are the fallback when it isn't.
-
-There is **no fixed recipe**. Read the query, decide what kind it is, and choose the approach below.
-
-## The tools, and what each is uniquely good at
-
-Run `firecrawl research <subcommand> --help` for flags. MCP tool arguments are the schema your client shows (`paperId`, not `id`).
-
-- CLI: **`firecrawl research search-papers <query>`**
-  MCP: **`firecrawl_research_search_papers`**
-  Semantic (HyDE) search over **abstracts**. The natural first move for almost any query.
-  A successful response is `{success, results}`. Each hit carries `paperId`, `primaryId` (`pmid:`, `pmcid:`, `doi:`, or `arxiv:`), `ids`, `title`, `abstract`, and `score`.
-  If results look thin or all-alike, re-run with a different framing (sibling domain, rival method, dataset/benchmark name) rather than giving up.
+## Quick start
 
 ```bash
 mkdir -p .firecrawl
@@ -33,50 +20,24 @@ firecrawl research search-papers "CRISPR base editing off-target effects" \
 jq -r '.results[] | .primaryId, .title' .firecrawl/papers.json
 ```
 
-- CLI: **`firecrawl research related-papers <seedIds...> --intent <intent>`**
-  MCP: **`firecrawl_research_related_papers`**
-  Semantic and structural expansion, ranked to your `intent`. `--intent` is required.
-  This reaches papers semantic search _cannot_, and it's how you turn one good hit into the rest of a set.
-  `mode=similar` → niche siblings; `citers` → who uses/builds on the seeds; `references` → what they build on / compare against.
+Run `firecrawl research <subcommand> --help` for flags. MCP arguments use `paperId`, not `id`.
 
-- CLI: **`firecrawl research inspect-paper <paperId>`**
-  MCP: **`firecrawl_research_inspect_paper`**
-  Canonical metadata for **one** paper: title, abstract, authors, categories, source ids, and dates.
-  Use it after `search-papers` or `related-papers` when you need the complete citation/metadata for a candidate, or when you have an id from elsewhere and need to confirm what paper it resolves to.
-  This does **not** read the paper body; use `read-paper` for specific full-text questions.
-
-- CLI: **`firecrawl research read-paper <paperId> --question <question>`**
-  MCP: **`firecrawl_research_read_paper`**
-  In-body passages of **one** paper, to verify a load-bearing constraint (a method actually used, a score actually reported, an affiliation, what a paper compares to).
-  Use it to settle a specific doubt, not on everything.
-
-- CLI: **`firecrawl search <query> --categories research`**
-  MCP: **`firecrawl_search(query, categories: ["research"])`**
-  **Not this index.** This is a _website_ filter: it restricts a normal web search to a short list of research-affiliated domains — the list does include `pubmed.ncbi.nlm.nih.gov`, `biorxiv.org`, `medrxiv.org`, and `arxiv.org` alongside publisher sites — and returns page results in a `research` group beside `web`, each with `url`, `title`, `description` (the matched passage), `position`, and `category: "research"` — web results carry no `category`, so that is the field to key on when merging.
-  So it reaches those sites' **web pages**; what it does not do is query their **paper records** in this index. For a paper-finding task, use `firecrawl research search-papers` and its siblings above.
-
-- CLI: **`firecrawl search <query>` / `firecrawl scrape <url>`**
-  MCP: **`firecrawl_search(query)` / `firecrawl_scrape(url)`**
-  General **web** search and page fetch, for facts that don't live in paper abstracts: benchmark **leaderboards**, rankings, "who scores best / is largest / is most used."
-  Find the ranking on the web, then map the top entries back to papers with `search-papers`.
+A successful `search-papers` response is `{success, results}`. Each hit carries `paperId`, `primaryId` (`pmid:`, `pmcid:`, `doi:`, or `arxiv:`), `ids`, `title`, `abstract`, and `score`.
 
 **Done when:** the answer is a cited paper set (or the one named paper), each kept or dropped against a verified constraint, with `search-papers` as the first move unless the query already named an id.
 
-## Match the approach to the query
+## Tips
 
-- **Single _named_ paper** ("the Qwen3 report") → one `search-papers`, done. This is the only case that truly wants exactly one paper.
-- **Paper by description / by method or technique** ("the paper that introduced X", "training-free N-gram detection of AI text") → find the best match, then assume there's a _family_: expand with `related-papers` and **include the closely-related methods/papers too**. Even when one paper is the exact literal match, surface and keep its neighbors — don't narrow to the single best hit and reason the rest out. Only treat it as one-answer if the query names a specific paper.
-- **Enumeration / method-family** ("papers that do X", "alternatives to Adam", "benchmarks for Y") → the answer is a _set_, and this is where `related-papers` earns its keep: expand several strong anchors with `mode=similar`, re-seed from new strong hits. One search is never enough here.
-- **Exhibiting** ("papers that _use_ / exhibit property P") → the relevant papers apply P but their abstracts may not describe it. Go from P's defining paper outward via `citers`/`references`, and use `read-paper` to confirm a candidate actually uses P.
-- **Superlative / leaderboard** ("best on benchmark X", "largest", "most popular") → the ranking lives on **leaderboards / the web**, not in any single abstract. Use `firecrawl search` / `firecrawl scrape` to find the benchmark's leaderboard or rankings, read off the top models/papers, then `search-papers` each to get its paper. As a fallback, search the benchmark and `read-paper` candidates for reported numbers.
-- **Org / author filtered** ("from \<org\>", "by \<author\>") → topical match isn't enough; verify the affiliation/authorship (metadata or `read-paper`) before keeping a paper.
-- **Compare-against** ("what does paper X benchmark against / build on") → the answer is _inside_ paper X: `read-paper(X, ...)` or `related-papers` with `mode=references`.
+- `search-papers` is the first move. If results look thin or all-alike, re-run with a different framing (sibling domain, rival method, dataset/benchmark name).
+- `related-papers` needs `--intent`. `mode=similar` for siblings, `citers` for who builds on the seeds, `references` for what they build on.
+- `inspect-paper` is metadata for one id. `read-paper` is in-body passages for one constraint (sample size, method, affiliation). Use it to rule a paper out, not to gatekeep.
+- `search --categories research` is a website filter. It returns pages from academic domains, not paper records in this index.
+- Named paper ("the Qwen3 report") → one `search-papers`. Method / family / "papers that do X" → expand with `related-papers` and keep neighbors.
+- Superlative / leaderboard questions live on the web: `firecrawl search` / `firecrawl scrape`, then `search-papers` each top entry.
+- PubMed, bioRxiv, and medRxiv are the largest part of the corpus. Do not send a biomedical query to the open web on the assumption the index is arXiv-only.
 
-## Principles
+## See also
 
-- **Two different features share the word "research."** The paper index is `firecrawl research` / `firecrawl_research_*`. The `categories: ["research"]` option on `firecrawl search` is a website filter — it does point web search at PubMed, bioRxiv, medRxiv, arXiv, and publisher sites, but what comes back is their web pages, not paper records. If a task is about finding papers, the tools in this skill are the ones that read the corpus.
-- **Query shape and subject field are separate.** A clinical-trial question and a machine-learning question take the same shapes above; what differs is only which source the hits come from. Don't send a biomedical or life-science query to the open web on the assumption the corpus is arXiv-only — PubMed, bioRxiv, and medRxiv are the largest part of what `search-papers` reads.
-- **When in doubt, include.** For any topic / method / comparison question, return the relevant _family_, not just the single best match. The neighboring methods are part of a good answer.
-- **Follow the literature, and keep what you find.** The seminal source, the competing methods, the close neighbors are usually a hop away — use `related-papers`, and _include_ them, not just the first hit.
-- **Verify to exclude, not to gatekeep.** Use `read-paper` to rule a paper _out_ when a hard constraint clearly fails (wrong org/author, doesn't actually report the score). When a paper is plausibly relevant, lean toward keeping it rather than demanding proof.
-- **Only drop the clearly off-topic.** Don't pad with papers you're confident are unrelated — but that's a high bar; most plausibly-relevant work should make the cut.
+- [firecrawl-search](../firecrawl-search/SKILL.md) — web pages, including `search --categories research`
+- [firecrawl-scrape](../firecrawl-scrape/SKILL.md) — leaderboards and other non-paper pages
+- [firecrawl-developer-index](../firecrawl-developer-index/SKILL.md) — issues, PRs, READMEs, and docs
