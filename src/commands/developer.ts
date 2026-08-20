@@ -30,7 +30,12 @@ function fmtDeveloper(
 
   return results
     .map((item) => {
-      const kind = item.type ? ` (${item.type})` : '';
+      // The wire carries no type field; the artifact kind is the id prefix
+      // (doc:, issue:, pull_request:, readme:).
+      const prefix = (item.id ?? '').split(':', 1)[0];
+      const kind = ['doc', 'issue', 'pull_request', 'readme'].includes(prefix)
+        ? ` (${prefix})`
+        : '';
       const lines = [
         `## [${item.id ?? '?'}]${kind} ${item.title ?? '(untitled)'}`,
       ];
