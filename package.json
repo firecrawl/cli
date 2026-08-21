@@ -1,6 +1,6 @@
 {
   "name": "firecrawl-cli",
-  "version": "1.22.0",
+  "version": "1.23.0",
   "description": "Command-line interface for Firecrawl. Scrape, crawl, and extract data from any website, and search a ~43M-abstract research paper index (PubMed, bioRxiv, medRxiv, arXiv), directly from your terminal.",
   "main": "dist/index.js",
   "bin": {
