@@ -19,10 +19,14 @@ import { getApiKey } from '../utils/config';
 import {
   buildSkillsInstallArgs,
   BUILD_SKILL_SELECTION,
+  BUILD_SKILLS,
+  CATALOG_REPO,
   cleanNpmEnv,
   CLI_SKILL_SELECTION,
+  CLI_SKILLS,
   SKILL_REPOS,
   WORKFLOW_SKILL_SELECTION,
+  WORKFLOW_SKILLS,
   type SkillSelection,
 } from './skills-install';
 import { hasNpx, installSkillsNative } from './skills-native';
@@ -278,7 +282,7 @@ function resolveMcpAgent(agent: string | undefined): ResolvedMcpAgent {
  * Main setup command handler
  */
 export async function handleSetupCommand(
-  subcommand?: SetupSubcommand,
+  subcommand?: SetupSubcommand | (string & {}),
   options: SetupOptions = {}
 ): Promise<void> {
   if (!subcommand) {
@@ -304,8 +308,15 @@ export async function handleSetupCommand(
     case 'defaults':
       await handleMakeDefaultCommand(options);
       break;
-    default:
-      console.error(`Unknown setup subcommand: ${subcommand}`);
+    default: {
+      const skill = resolveCatalogSkill(subcommand);
+      if (skill) {
+        await installSkills(options, [
+          { repo: CATALOG_REPO, skills: [skill], label: `${skill} skill` },
+        ]);
+        break;
+      }
+      console.error(`Unknown setup subcommand or skill: ${subcommand}`);
       console.log('\nAvailable subcommands:');
       console.log(
         '  core       Install core Firecrawl skills (scrape, search, crawl, interact, indexes); "skills" is an alias'
@@ -322,8 +333,32 @@ export async function handleSetupCommand(
       console.log(
         '  defaults   Make Firecrawl the default web provider (use --undo to restore native web tools)'
       );
+      console.log(
+        '  <skill>    Install one catalog skill by name; the "firecrawl-" prefix is optional (e.g. "developer-index", "seo-audit")'
+      );
       process.exit(1);
+    }
   }
+}
+
+/** Every installable skill across the three catalog families. */
+const ALL_CATALOG_SKILLS: readonly string[] = [
+  ...CLI_SKILLS,
+  ...BUILD_SKILLS,
+  ...WORKFLOW_SKILLS,
+];
+
+/**
+ * Resolve a `setup` argument to a catalog skill name. Accepts the exact name
+ * or a bare name without the `firecrawl-` prefix. Group subcommands are
+ * matched before this runs, so `build` means the group while `firecrawl-build`
+ * still reaches the skill.
+ */
+function resolveCatalogSkill(name: string): string | undefined {
+  if (ALL_CATALOG_SKILLS.includes(name)) return name;
+  const prefixed = `firecrawl-${name}`;
+  if (ALL_CATALOG_SKILLS.includes(prefixed)) return prefixed;
+  return undefined;
 }
 
 async function handleSetupBundle(options: SetupOptions): Promise<void> {

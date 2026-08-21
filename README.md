@@ -28,6 +28,13 @@ firecrawl setup build      # app-integration skills for the Firecrawl API
 firecrawl setup workflows  # end-to-end recipes (lead gen, deep research, ...)
 ```
 
+Or install a single skill by name — the `firecrawl-` prefix is optional:
+
+```bash
+firecrawl setup developer-index
+firecrawl setup seo-audit
+```
+
 These install globally across all detected coding editors by default. Use `--agent <agent>` to scope any of them to one editor.
 
 #### Scope setup to a single harness

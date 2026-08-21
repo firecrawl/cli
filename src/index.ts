@@ -2240,7 +2240,7 @@ program
   )
   .argument(
     '[subcommand]',
-    'What to set up: "core" (alias "skills"), "build", "workflows", "mcp", or "defaults"; omit for an interactive installer'
+    'What to set up: "core" (alias "skills"), "build", "workflows", "mcp", "defaults", or a single catalog skill name (the "firecrawl-" prefix is optional, e.g. "developer-index"); omit for an interactive installer'
   )
   .option('-g, --global', 'Install globally (user-level)')
   .option(

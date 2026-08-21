@@ -101,6 +101,41 @@ describe('handleSetupCommand', () => {
     );
   });
 
+  it('installs a single catalog skill by exact name', async () => {
+    await handleSetupCommand('firecrawl-developer-index', {});
+
+    expect(execSync).toHaveBeenCalledWith(
+      'npx -y skills add firecrawl/skills --full-depth --global --all --skill firecrawl-developer-index',
+      expect.objectContaining({ stdio: 'inherit' })
+    );
+  });
+
+  it('resolves bare skill names by adding the firecrawl- prefix', async () => {
+    await handleSetupCommand('developer-index', {});
+
+    expect(execSync).toHaveBeenCalledWith(
+      'npx -y skills add firecrawl/skills --full-depth --global --all --skill firecrawl-developer-index',
+      expect.objectContaining({ stdio: 'inherit' })
+    );
+  });
+
+  it('prefers the build group over the firecrawl-build skill for bare "build"', async () => {
+    await handleSetupCommand('build', {});
+
+    expect(execSync).toHaveBeenCalledWith(
+      `npx -y skills add firecrawl/skills --full-depth --global --all ${buildSkillFlags}`,
+      expect.objectContaining({ stdio: 'inherit' })
+    );
+
+    vi.mocked(execSync).mockClear();
+    await handleSetupCommand('firecrawl-build', {});
+
+    expect(execSync).toHaveBeenCalledWith(
+      'npx -y skills add firecrawl/skills --full-depth --global --all --skill firecrawl-build',
+      expect.objectContaining({ stdio: 'inherit' })
+    );
+  });
+
   it('installs workflow skills from the catalog as a separate setup option', async () => {
     await handleSetupCommand('workflows', {});
 
