@@ -18,6 +18,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { getApiKey } from '../utils/config';
 import {
   buildSkillsInstallArgs,
+  BUILD_SKILL_SELECTION,
   cleanNpmEnv,
   CLI_SKILL_SELECTION,
   SKILL_REPOS,
@@ -31,7 +32,8 @@ import {
   type WebAgent,
 } from '../utils/web-defaults';
 
-export type SetupSubcommand = 'skills' | 'workflows' | 'mcp' | 'defaults';
+export type SetupSubcommand =
+  'skills' | 'core' | 'build' | 'workflows' | 'mcp' | 'defaults';
 
 type SetupIntegration = SetupSubcommand;
 
@@ -285,8 +287,13 @@ export async function handleSetupCommand(
   }
 
   switch (subcommand) {
+    // `skills` is the historical name for the core set; keep it as an alias.
     case 'skills':
+    case 'core':
       await installSkills(options, [CLI_SKILL_SELECTION]);
+      break;
+    case 'build':
+      await installSkills(options, [BUILD_SKILL_SELECTION]);
       break;
     case 'workflows':
       await installSkills(options, [WORKFLOW_SKILL_SELECTION]);
@@ -301,7 +308,10 @@ export async function handleSetupCommand(
       console.error(`Unknown setup subcommand: ${subcommand}`);
       console.log('\nAvailable subcommands:');
       console.log(
-        '  skills     Install core/build Firecrawl skills into AI coding agents'
+        '  core       Install core Firecrawl skills (scrape, search, crawl, interact, indexes); "skills" is an alias'
+      );
+      console.log(
+        '  build      Install Firecrawl build skills for integrating the API into app code'
       );
       console.log(
         '  workflows  Install Firecrawl workflow skills into AI coding agents'
@@ -325,7 +335,7 @@ async function handleSetupBundle(options: SetupOptions): Promise<void> {
     integrations = await pickSetupIntegrations();
   } else {
     throw new Error(
-      'Setup subcommand is required in non-interactive mode. Use `firecrawl setup --yes` to install skills and MCP, or choose one of: skills, workflows, mcp, defaults.'
+      'Setup subcommand is required in non-interactive mode. Use `firecrawl setup --yes` to install skills and MCP, or choose one of: core, build, workflows, mcp, defaults.'
     );
   }
 

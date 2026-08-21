@@ -20,14 +20,15 @@ npx -y firecrawl-cli@latest init -y --browser
 
 ### Setup Skills, Workflows, and MCP
 
-If you are using an AI coding agent like Claude Code, you can also install the skills manually:
+If you are using an AI coding agent like Claude Code, you can also install skill groups manually — one command per family:
 
 ```bash
-firecrawl setup skills
-firecrawl setup workflows
+firecrawl setup core       # scrape/search/crawl/interact primitives + index skills ("skills" is an alias)
+firecrawl setup build      # app-integration skills for the Firecrawl API
+firecrawl setup workflows  # end-to-end recipes (lead gen, deep research, ...)
 ```
 
-These install globally across all detected coding editors by default. Use `--agent <agent>` to scope either command to one editor.
+These install globally across all detected coding editors by default. Use `--agent <agent>` to scope any of them to one editor.
 
 #### Scope setup to a single harness
 
@@ -78,7 +79,8 @@ npx skills add firecrawl/skills
 To reinstall skills manually:
 
 ```bash
-firecrawl setup skills
+firecrawl setup core
+firecrawl setup build
 firecrawl setup workflows
 ```
 

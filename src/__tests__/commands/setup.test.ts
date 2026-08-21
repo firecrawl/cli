@@ -21,11 +21,13 @@ import {
 } from '../../commands/setup';
 import {
   ALL_SKILL_REPOS,
+  BUILD_SKILLS,
   CLI_SKILLS,
   WORKFLOW_SKILLS,
 } from '../../commands/skills-install';
 
 const cliSkillFlags = `--skill ${CLI_SKILLS.join(' ')}`;
+const buildSkillFlags = `--skill ${BUILD_SKILLS.join(' ')}`;
 const workflowSkillFlags = `--skill ${WORKFLOW_SKILLS.join(' ')}`;
 import { configureWebDefaults } from '../../utils/web-defaults';
 import { getApiKey } from '../../utils/config';
@@ -77,6 +79,24 @@ describe('handleSetupCommand', () => {
 
     expect(execSync).toHaveBeenCalledWith(
       `npx -y skills add firecrawl/skills --full-depth --global --agent cursor ${cliSkillFlags}`,
+      expect.objectContaining({ stdio: 'inherit' })
+    );
+  });
+
+  it('treats "core" as the canonical name for the CLI skill set', async () => {
+    await handleSetupCommand('core', {});
+
+    expect(execSync).toHaveBeenCalledWith(
+      `npx -y skills add firecrawl/skills --full-depth --global --all ${cliSkillFlags}`,
+      expect.objectContaining({ stdio: 'inherit' })
+    );
+  });
+
+  it('installs the build skills from the catalog as their own group', async () => {
+    await handleSetupCommand('build', {});
+
+    expect(execSync).toHaveBeenCalledWith(
+      `npx -y skills add firecrawl/skills --full-depth --global --all ${buildSkillFlags}`,
       expect.objectContaining({ stdio: 'inherit' })
     );
   });

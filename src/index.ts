@@ -2236,11 +2236,11 @@ program
 program
   .command('setup')
   .description(
-    'Set up individual firecrawl integrations (skills, workflows, mcp, defaults)'
+    'Set up individual firecrawl integrations (core, build, workflows, mcp, defaults)'
   )
   .argument(
     '[subcommand]',
-    'What to set up: "skills", "workflows", "mcp", or "defaults"; omit for an interactive installer'
+    'What to set up: "core" (alias "skills"), "build", "workflows", "mcp", or "defaults"; omit for an interactive installer'
   )
   .option('-g, --global', 'Install globally (user-level)')
   .option(

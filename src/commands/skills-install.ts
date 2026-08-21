@@ -50,6 +50,18 @@ export const CLI_SKILLS = [
   'firecrawl-developer-index',
 ] as const;
 
+/**
+ * Build skills, authored in the firecrawl monorepo `skills/` and mirrored
+ * into the catalog. App-integration guidance; not installed by `init`.
+ */
+export const BUILD_SKILLS = [
+  'firecrawl-build',
+  'firecrawl-build-onboarding',
+  'firecrawl-build-scrape',
+  'firecrawl-build-search',
+  'firecrawl-build-interact',
+] as const;
+
 /** Workflow skills, authored in the catalog under skills/workflows/. */
 export const WORKFLOW_SKILLS = [
   'firecrawl-workflows',
@@ -86,6 +98,12 @@ export const CLI_SKILL_SELECTION: SkillSelection = {
   repo: CATALOG_REPO,
   skills: CLI_SKILLS,
   label: 'core firecrawl skills',
+};
+
+export const BUILD_SKILL_SELECTION: SkillSelection = {
+  repo: CATALOG_REPO,
+  skills: BUILD_SKILLS,
+  label: 'firecrawl build skills',
 };
 
 export const WORKFLOW_SKILL_SELECTION: SkillSelection = {
