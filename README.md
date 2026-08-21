@@ -35,6 +35,8 @@ firecrawl setup developer-index
 firecrawl setup seo-audit
 ```
 
+If no API key is found afterwards, an interactive terminal offers a browser login (pass `--browser` to log in without the prompt); non-interactive runs never block — they print a hint and the skills walk agents through setup on first use.
+
 These install globally across all detected coding editors by default. Use `--agent <agent>` to scope any of them to one editor.
 
 #### Scope setup to a single harness

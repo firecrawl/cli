@@ -31,6 +31,8 @@ const buildSkillFlags = `--skill ${BUILD_SKILLS.join(' ')}`;
 const workflowSkillFlags = `--skill ${WORKFLOW_SKILLS.join(' ')}`;
 import { configureWebDefaults } from '../../utils/web-defaults';
 import { getApiKey } from '../../utils/config';
+import { browserLogin, isAuthenticated } from '../../utils/auth';
+import { saveCredentials } from '../../utils/credentials';
 
 vi.mock('child_process', () => ({
   execFileSync: vi.fn(),
@@ -43,6 +45,19 @@ vi.mock('../../utils/web-defaults', () => ({
 
 vi.mock('../../utils/config', () => ({
   getApiKey: vi.fn(() => 'fc-test-key'),
+  updateConfig: vi.fn(),
+}));
+
+vi.mock('../../utils/auth', () => ({
+  isAuthenticated: vi.fn(() => true),
+  browserLogin: vi.fn(async () => ({
+    apiKey: 'fc-browser-key',
+    apiUrl: 'https://api.firecrawl.dev',
+  })),
+}));
+
+vi.mock('../../utils/credentials', () => ({
+  saveCredentials: vi.fn(),
 }));
 
 describe('handleSetupCommand', () => {
@@ -52,6 +67,11 @@ describe('handleSetupCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getApiKey).mockReturnValue('fc-test-key');
+    vi.mocked(isAuthenticated).mockReturnValue(true);
+    vi.mocked(browserLogin).mockResolvedValue({
+      apiKey: 'fc-browser-key',
+      apiUrl: 'https://api.firecrawl.dev',
+    });
     originalHome = process.env.HOME;
     originalApiKey = process.env.FIRECRAWL_API_KEY;
     delete process.env.FIRECRAWL_API_KEY;
@@ -99,6 +119,37 @@ describe('handleSetupCommand', () => {
       `npx -y skills add firecrawl/skills --full-depth --global --all ${buildSkillFlags}`,
       expect.objectContaining({ stdio: 'inherit' })
     );
+  });
+
+  it('does not offer auth when already authenticated', async () => {
+    await handleSetupCommand('core', {});
+
+    expect(browserLogin).not.toHaveBeenCalled();
+  });
+
+  it('prints a hint instead of logging in when unauthenticated and non-interactive', async () => {
+    vi.mocked(isAuthenticated).mockReturnValue(false);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await handleSetupCommand('core', { yes: true });
+
+    expect(browserLogin).not.toHaveBeenCalled();
+    expect(log.mock.calls.flat().join('\n')).toContain(
+      'No Firecrawl API key found'
+    );
+  });
+
+  it('runs the browser login and persists credentials with --browser when unauthenticated', async () => {
+    vi.mocked(isAuthenticated).mockReturnValue(false);
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await handleSetupCommand('core', { yes: true, browser: true });
+
+    expect(browserLogin).toHaveBeenCalled();
+    expect(saveCredentials).toHaveBeenCalledWith({
+      apiKey: 'fc-browser-key',
+      apiUrl: 'https://api.firecrawl.dev',
+    });
   });
 
   it('installs a single catalog skill by exact name', async () => {

@@ -15,7 +15,9 @@ import os from 'os';
 import path from 'path';
 import readline from 'readline';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { getApiKey } from '../utils/config';
+import { getApiKey, updateConfig } from '../utils/config';
+import { browserLogin, isAuthenticated } from '../utils/auth';
+import { saveCredentials } from '../utils/credentials';
 import {
   buildSkillsInstallArgs,
   BUILD_SKILL_SELECTION,
@@ -61,6 +63,10 @@ export interface SetupOptions {
   quiet?: boolean;
   /** Configure the anonymous hosted MCP path even when a stored key exists. */
   keyless?: boolean;
+  /** If no API key is found after installing skills, log in via browser. */
+  browser?: boolean;
+  /** Internal: bundle flow defers the auth offer until every step ran. */
+  skipAuthOffer?: boolean;
 }
 
 const green = '\x1b[32m';
@@ -295,12 +301,15 @@ export async function handleSetupCommand(
     case 'skills':
     case 'core':
       await installSkills(options, [CLI_SKILL_SELECTION]);
+      await offerSkillsAuth(options);
       break;
     case 'build':
       await installSkills(options, [BUILD_SKILL_SELECTION]);
+      await offerSkillsAuth(options);
       break;
     case 'workflows':
       await installSkills(options, [WORKFLOW_SKILL_SELECTION]);
+      await offerSkillsAuth(options);
       break;
     case 'mcp':
       await installMcp(options);
@@ -314,6 +323,7 @@ export async function handleSetupCommand(
         await installSkills(options, [
           { repo: CATALOG_REPO, skills: [skill], label: `${skill} skill` },
         ]);
+        await offerSkillsAuth(options);
         break;
       }
       console.error(`Unknown setup subcommand or skill: ${subcommand}`);
@@ -338,6 +348,53 @@ export async function handleSetupCommand(
       );
       process.exit(1);
     }
+  }
+}
+
+/**
+ * After installing skills, make sure the user can actually run them: the
+ * skills shell out to this CLI, which needs an API key. Never block
+ * automation on a login — the browser flow runs only when `--browser` asks
+ * for it or an interactive user says yes; otherwise print a one-line hint.
+ * Users already authenticated via FIRECRAWL_API_KEY or stored credentials
+ * (e.g. from an earlier init or MCP setup) skip all of this silently.
+ */
+async function offerSkillsAuth(options: SetupOptions): Promise<void> {
+  if (options.skipAuthOffer) return;
+
+  if (isAuthenticated()) return;
+
+  let login = options.browser ?? false;
+  if (!login && !options.yes && process.stdin.isTTY) {
+    const { confirm } = await import('@inquirer/prompts');
+    login = await confirm({
+      message:
+        'No Firecrawl API key found. Log in now so the skills work right away?',
+      default: true,
+    });
+  }
+
+  if (!login) {
+    console.log(
+      `${dim}No Firecrawl API key found. Skills walk agents through setup on first use; to be ready now, run "firecrawl login" or export FIRECRAWL_API_KEY.${reset}`
+    );
+    return;
+  }
+
+  try {
+    const result = await browserLogin();
+    saveCredentials({ apiKey: result.apiKey, apiUrl: result.apiUrl });
+    updateConfig({ apiKey: result.apiKey, apiUrl: result.apiUrl });
+    const teamSuffix = result.teamName ? ` (Team: ${result.teamName})` : '';
+    console.log(`${green}✓${reset} Authenticated${teamSuffix}`);
+  } catch (error) {
+    console.error(
+      'Authentication failed:',
+      error instanceof Error ? error.message : 'Unknown error'
+    );
+    console.log(
+      `${dim}You can authenticate later with: firecrawl login${reset}`
+    );
   }
 }
 
@@ -383,8 +440,16 @@ async function handleSetupBundle(options: SetupOptions): Promise<void> {
     ...options,
     global: options.project ? undefined : (options.global ?? true),
   };
+  const skillIntegrations: SetupIntegration[] = ['skills', 'workflows'];
   for (const integration of integrations) {
-    await handleSetupCommand(integration, bundleOptions);
+    // Offer auth once after the whole bundle instead of per step.
+    await handleSetupCommand(integration, {
+      ...bundleOptions,
+      skipAuthOffer: true,
+    });
+  }
+  if (integrations.some((i) => skillIntegrations.includes(i))) {
+    await offerSkillsAuth(bundleOptions);
   }
 }
 

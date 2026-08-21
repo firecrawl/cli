@@ -2260,6 +2260,10 @@ program
     'Configure anonymous hosted MCP even when an API key is stored'
   )
   .option(
+    '--browser',
+    'If no API key is found after installing skills, log in via browser'
+  )
+  .option(
     '--undo',
     'Undo setup defaults by re-enabling native web tools where supported'
   )
