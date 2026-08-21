@@ -54,11 +54,11 @@ describe('handleInitCommand', () => {
     });
 
     expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --all --yes ${cliSkillFlags}`,
+      `npx -y skills add firecrawl/skills --full-depth --global --yes ${cliSkillFlags}`,
       expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'] })
     );
     expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --all --yes ${workflowSkillFlags}`,
+      `npx -y skills add firecrawl/skills --full-depth --global --yes ${workflowSkillFlags}`,
       expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'] })
     );
     // Build skills are intentionally no longer installed by init.

@@ -139,12 +139,18 @@ export function buildSkillsInstallArgs(
     args.push('--global');
   }
 
-  const installToAllAgents = options.agent ? false : (options.all ?? true);
+  // `skills add --all` means "ALL skills to all agents" and overrides any
+  // --skill filter, so a skill-scoped install must never pass it. Scoped
+  // installs use --yes instead: same promptless install to every detected
+  // agent, but the --skill list is respected.
+  const skillScoped = Boolean(options.skills?.length);
+  const installToAllAgents =
+    !skillScoped && (options.agent ? false : (options.all ?? true));
   if (installToAllAgents) {
     args.push('--all');
   }
 
-  if (options.yes) {
+  if (options.yes || skillScoped) {
     args.push('--yes');
   }
 

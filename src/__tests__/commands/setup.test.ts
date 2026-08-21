@@ -89,7 +89,7 @@ describe('handleSetupCommand', () => {
     await handleSetupCommand('skills', {});
 
     expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --all ${cliSkillFlags}`,
+      `npx -y skills add firecrawl/skills --full-depth --global --yes ${cliSkillFlags}`,
       expect.objectContaining({ stdio: 'inherit' })
     );
   });
@@ -98,7 +98,7 @@ describe('handleSetupCommand', () => {
     await handleSetupCommand('skills', { agent: 'cursor' });
 
     expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --agent cursor ${cliSkillFlags}`,
+      `npx -y skills add firecrawl/skills --full-depth --global --yes --agent cursor ${cliSkillFlags}`,
       expect.objectContaining({ stdio: 'inherit' })
     );
   });
@@ -107,7 +107,7 @@ describe('handleSetupCommand', () => {
     await handleSetupCommand('core', {});
 
     expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --all ${cliSkillFlags}`,
+      `npx -y skills add firecrawl/skills --full-depth --global --yes ${cliSkillFlags}`,
       expect.objectContaining({ stdio: 'inherit' })
     );
   });
@@ -116,7 +116,7 @@ describe('handleSetupCommand', () => {
     await handleSetupCommand('build', {});
 
     expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --all ${buildSkillFlags}`,
+      `npx -y skills add firecrawl/skills --full-depth --global --yes ${buildSkillFlags}`,
       expect.objectContaining({ stdio: 'inherit' })
     );
   });
@@ -156,7 +156,7 @@ describe('handleSetupCommand', () => {
     await handleSetupCommand('firecrawl-developer-index', {});
 
     expect(execSync).toHaveBeenCalledWith(
-      'npx -y skills add firecrawl/skills --full-depth --global --all --skill firecrawl-developer-index',
+      'npx -y skills add firecrawl/skills --full-depth --global --yes --skill firecrawl-developer-index',
       expect.objectContaining({ stdio: 'inherit' })
     );
   });
@@ -165,7 +165,7 @@ describe('handleSetupCommand', () => {
     await handleSetupCommand('developer-index', {});
 
     expect(execSync).toHaveBeenCalledWith(
-      'npx -y skills add firecrawl/skills --full-depth --global --all --skill firecrawl-developer-index',
+      'npx -y skills add firecrawl/skills --full-depth --global --yes --skill firecrawl-developer-index',
       expect.objectContaining({ stdio: 'inherit' })
     );
   });
@@ -174,7 +174,7 @@ describe('handleSetupCommand', () => {
     await handleSetupCommand('build', {});
 
     expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --all ${buildSkillFlags}`,
+      `npx -y skills add firecrawl/skills --full-depth --global --yes ${buildSkillFlags}`,
       expect.objectContaining({ stdio: 'inherit' })
     );
 
@@ -182,7 +182,7 @@ describe('handleSetupCommand', () => {
     await handleSetupCommand('firecrawl-build', {});
 
     expect(execSync).toHaveBeenCalledWith(
-      'npx -y skills add firecrawl/skills --full-depth --global --all --skill firecrawl-build',
+      'npx -y skills add firecrawl/skills --full-depth --global --yes --skill firecrawl-build',
       expect.objectContaining({ stdio: 'inherit' })
     );
   });
@@ -191,7 +191,7 @@ describe('handleSetupCommand', () => {
     await handleSetupCommand('workflows', {});
 
     expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --all ${workflowSkillFlags}`,
+      `npx -y skills add firecrawl/skills --full-depth --global --yes ${workflowSkillFlags}`,
       expect.objectContaining({ stdio: 'inherit' })
     );
   });
@@ -232,7 +232,7 @@ describe('handleSetupCommand', () => {
     await handleSetupCommand(undefined, { yes: true });
 
     expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --all --yes ${cliSkillFlags}`,
+      `npx -y skills add firecrawl/skills --full-depth --global --yes ${cliSkillFlags}`,
       expect.objectContaining({ stdio: 'inherit' })
     );
     expect(execFileSync).toHaveBeenCalledWith(
