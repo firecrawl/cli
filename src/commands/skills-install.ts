@@ -29,8 +29,8 @@ export const ALL_SKILL_REPOS = [
 export const CATALOG_REPO = 'firecrawl/skills';
 
 /**
- * CLI skills, authored in firecrawl/cli and mirrored into the catalog under
- * skills/cli/. Selection is name-based (`--skill`), so the catalog's
+ * Core skills, authored in firecrawl/cli and mirrored into the catalog under
+ * skills/core/. Selection is name-based (`--skill`), so the catalog's
  * directory layout doesn't matter.
  */
 export const CLI_SKILLS = [

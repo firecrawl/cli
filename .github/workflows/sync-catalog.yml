@@ -1,6 +1,6 @@
-name: Sync CLI skills to catalog
+name: Sync core skills to catalog
 
-# Mirrors skills/ into firecrawl/skills under skills/cli/.
+# Mirrors skills/ into firecrawl/skills under skills/core/.
 # The catalog copy is a read-only mirror; PRs against it are redirected here.
 
 on:
@@ -34,18 +34,18 @@ jobs:
           ssh-key: ${{ secrets.CATALOG_DEPLOY_KEY }}
           path: catalog
 
-      - name: Sync skills/cli
+      - name: Sync skills/core
         run: |
           cd catalog
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          rm -rf skills/cli
-          mkdir -p skills/cli
-          cp -R ../cli/skills/. skills/cli/
+          rm -rf skills/core
+          mkdir -p skills/core
+          cp -R ../cli/skills/. skills/core/
 
-          cat > skills/cli/README.md <<'EOF'
-          # CLI skills (mirror)
+          cat > skills/core/README.md <<'EOF'
+          # Core skills (mirror)
 
           Mirror of [`firecrawl/cli`](https://github.com/firecrawl/cli/tree/main/skills) — do not edit here.
           PR changes against `firecrawl/cli`; CI overwrites this directory on every sync.
