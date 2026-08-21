@@ -37,3 +37,7 @@ coverage/
 *.temp
 
 .firecrawl/
+
+# npm artifacts — this repo is pnpm-managed; a stray package-lock.json
+# hijacks bun's lockfile migration in release-binaries
+package-lock.json
