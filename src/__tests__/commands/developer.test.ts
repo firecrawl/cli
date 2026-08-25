@@ -143,6 +143,60 @@ describe('handleDeveloperSearchCommand', () => {
       expect(content).toContain('rust: not indexed');
     });
 
+    it('prints a result URL only when its id does not contain it', async () => {
+      const duplicateUrl = 'https://docs.rs/tokio/latest/tokio';
+      mockHttpGet.mockResolvedValue(
+        mockDeveloperResponse([
+          sampleResult,
+          {
+            id: `web:${duplicateUrl}`,
+            url: duplicateUrl,
+            title: 'Tokio docs',
+            passages: [{ text: 'Runtime documentation.' }],
+          },
+          {
+            id: `web:${duplicateUrl}/search`,
+            url: duplicateUrl,
+            title: 'Tokio search',
+            passages: [{ text: 'Search documentation.' }],
+          },
+        ])
+      );
+
+      await handleDeveloperSearchCommand({ query: 'tokio runtime' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      expect(content.split(duplicateUrl).length - 1).toBe(3);
+      expect(content).toContain(
+        `## [web:${duplicateUrl}/search] Tokio search\n${duplicateUrl}\n`
+      );
+      expect(content).toContain(
+        '\nhttps://github.com/tokio-rs/tokio/issues/2309\n'
+      );
+    });
+
+    it('does not render separators for empty passages', async () => {
+      mockHttpGet.mockResolvedValue(
+        mockDeveloperResponse([
+          {
+            ...sampleResult,
+            passages: [
+              { text: '' },
+              { text: ' ' },
+              { text: 'The answer.' },
+              {},
+            ],
+          },
+        ])
+      );
+
+      await handleDeveloperSearchCommand({ query: 'tokio runtime' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      expect(content).toContain('\nThe answer.');
+      expect(content).not.toContain('---');
+    });
+
     it('renders citation URLs and object license disclosures', async () => {
       mockHttpGet.mockResolvedValue(mockDeveloperResponse([sampleResult]));
 

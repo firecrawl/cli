@@ -38,6 +38,10 @@ function fmtLicense(license: DeveloperLicense | string): string {
   return `License: ${license.state.replace('_', ' ')}`;
 }
 
+function idEncodesUrl(id: string | undefined, url: string): boolean {
+  return id === url || id?.endsWith(`:${url}`) === true;
+}
+
 function fmtResult(item: DeveloperItem): string {
   // The wire carries no type field; the artifact kind is the id prefix
   // (doc:, issue:, pull_request:, readme:).
@@ -46,7 +50,7 @@ function fmtResult(item: DeveloperItem): string {
     ? ` (${prefix})`
     : '';
   const lines = [`## [${item.id ?? '?'}]${kind} ${item.title ?? '(untitled)'}`];
-  if (item.url) lines.push(item.url);
+  if (item.url && !idEncodesUrl(item.id, item.url)) lines.push(item.url);
   if (item.license) lines.push(fmtLicense(item.license));
   const body = (item.passages ?? [])
     .map((passage) =>
@@ -57,6 +61,7 @@ function fmtResult(item: DeveloperItem): string {
         .filter(Boolean)
         .join('\n')
     )
+    .filter((passage) => passage.trim().length > 0)
     .join('\n---\n')
     .trim();
   lines.push(body || '(no content)');
