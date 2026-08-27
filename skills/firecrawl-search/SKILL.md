@@ -87,3 +87,4 @@ fi
 - [firecrawl-crawl](../firecrawl-crawl/SKILL.md) — bulk extract from a site
 - [firecrawl-developer-index](../firecrawl-developer-index/SKILL.md) — issues, merged PRs, READMEs, and docs
 - [firecrawl-research-index](../firecrawl-research-index/SKILL.md) — published papers, not `search --categories research`
+- [firecrawl-build-search](https://github.com/firecrawl/skills/tree/main/skills/build/firecrawl-build-search) — building search into an app instead of running it here

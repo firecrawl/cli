@@ -55,3 +55,4 @@ firecrawl agent "<job-id>" --cancel
 - [firecrawl-scrape](../firecrawl-scrape/SKILL.md) — simpler single-page extraction
 - [firecrawl-interact](../firecrawl-interact/SKILL.md) — scrape + interact for manual page interaction (more control)
 - [firecrawl-crawl](../firecrawl-crawl/SKILL.md) — bulk extraction without AI
+- [firecrawl-build-scrape](https://github.com/firecrawl/skills/tree/main/skills/build/firecrawl-build-scrape) — building structured extraction into an app instead of running it here

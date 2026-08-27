@@ -78,3 +78,4 @@ Read [goals.md](goals.md) when writing or refining `--goal` (and `--queries` for
 - [firecrawl-scrape](../firecrawl-scrape/SKILL.md) — one-off scrape; escalate to `monitor` when checks become recurring
 - [firecrawl-crawl](../firecrawl-crawl/SKILL.md) — one-off crawl; pair with `--crawl-url` here for recurring crawl diffs
 - [firecrawl](../firecrawl/SKILL.md) — top-level workflow guide
+- [firecrawl-build-scrape](https://github.com/firecrawl/skills/tree/main/skills/build/firecrawl-build-scrape) — building recurring checks into an app instead of running it here

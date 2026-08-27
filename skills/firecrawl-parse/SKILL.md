@@ -46,3 +46,4 @@ Run `firecrawl parse --help` for the full option list.
 ## See also
 
 - [firecrawl-scrape](../firecrawl-scrape/SKILL.md) — same idea for URLs
+- [firecrawl-build-scrape](https://github.com/firecrawl/skills/tree/main/skills/build/firecrawl-build-scrape) — building document extraction into an app instead of running it here

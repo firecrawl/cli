@@ -41,3 +41,4 @@ Run `firecrawl crawl --help` for the full option list.
 - [firecrawl-scrape](../firecrawl-scrape/SKILL.md) — scrape individual pages
 - [firecrawl-map](../firecrawl-map/SKILL.md) — discover URLs before deciding to crawl
 - [firecrawl-download](../firecrawl-download/SKILL.md) — download site to local files (uses map + scrape)
+- [firecrawl-build-scrape](https://github.com/firecrawl/skills/tree/main/skills/build/firecrawl-build-scrape) — building bulk extraction into an app instead of running it here

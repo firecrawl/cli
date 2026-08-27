@@ -67,3 +67,7 @@ There is **no fixed recipe**. Read the query, decide what kind it is, and choose
 - **Follow the literature, and keep what you find.** The seminal source, the competing methods, the close neighbors are usually a hop away — use `related_papers`, and _include_ them, not just the first hit. Stopping at one good result is the most common way to leave the reader with half an answer.
 - **Verify to exclude, not to gatekeep.** Use `read_paper` to rule a paper _out_ when a hard constraint clearly fails (wrong org/author, doesn't actually report the score). When a paper is plausibly relevant, lean toward keeping it rather than demanding proof.
 - **Only drop the clearly off-topic.** Don't pad with papers you're confident are unrelated — but that's a high bar; most plausibly-relevant work should make the cut.
+
+## See also
+
+- [firecrawl-build-search](https://github.com/firecrawl/skills/tree/main/skills/build/firecrawl-build-search) — building the paper index into an app instead of querying it here

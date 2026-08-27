@@ -57,3 +57,7 @@ Only the HTTP surface takes these. On `GET`, pass `types=issue,pull_request` or 
 - **A merge supersedes a report.** When an issue and a pull request disagree, the merged pull request is the current behaviour. Say which one you read.
 - **Scope last, not first.** Search the whole index, then narrow with `types`, `repos`, or `sources` once you know what the hits look like. Scoping first hides the result that would have told you where to look.
 - **Go to the web when the index has nothing to say.** Trade-offs, ecosystem opinion, and anything about an unindexed project are web questions. Don't force them through the index, and don't dress a general web page up as a primary source.
+
+## See also
+
+- [firecrawl-build-search](https://github.com/firecrawl/skills/tree/main/skills/build/firecrawl-build-search) — building the developer index into an app instead of querying it here

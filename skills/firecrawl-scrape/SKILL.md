@@ -51,3 +51,4 @@ Run `firecrawl scrape --help` for the full option list.
 - [firecrawl-search](../firecrawl-search/SKILL.md) — find pages when you don't have a URL
 - [firecrawl-interact](../firecrawl-interact/SKILL.md) — when scrape can't get the content, use `interact` to click, fill forms, etc.
 - [firecrawl-download](../firecrawl-download/SKILL.md) — bulk download an entire site to local files
+- [firecrawl-build-scrape](https://github.com/firecrawl/skills/tree/main/skills/build/firecrawl-build-scrape) — building scrape into an app instead of running it here

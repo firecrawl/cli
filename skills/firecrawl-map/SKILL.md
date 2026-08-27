@@ -37,3 +37,4 @@ Run `firecrawl map --help` for the full option list (sitemap handling, subdomain
 - [firecrawl-scrape](../firecrawl-scrape/SKILL.md) — scrape the URLs you discover
 - [firecrawl-crawl](../firecrawl-crawl/SKILL.md) — bulk extract instead of map + scrape
 - [firecrawl-download](../firecrawl-download/SKILL.md) — download entire site (uses map internally)
+- [firecrawl-build-search](https://github.com/firecrawl/skills/tree/main/skills/build/firecrawl-build-search) — building URL discovery into an app instead of running it here

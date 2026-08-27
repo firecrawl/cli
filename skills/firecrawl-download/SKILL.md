@@ -41,3 +41,4 @@ Run `firecrawl x download --help` for the full option list, including which scra
 - [firecrawl-map](../firecrawl-map/SKILL.md) — just discover URLs without downloading
 - [firecrawl-scrape](../firecrawl-scrape/SKILL.md) — scrape individual pages
 - [firecrawl-crawl](../firecrawl-crawl/SKILL.md) — bulk extract as JSON (not local files)
+- [firecrawl-build-scrape](https://github.com/firecrawl/skills/tree/main/skills/build/firecrawl-build-scrape) — building bulk extraction into an app instead of running it here
