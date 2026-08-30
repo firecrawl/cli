@@ -2,14 +2,18 @@
 name: firecrawl-scrape
 description: |
   Extract a URL's content as clean markdown, including JS-rendered pages. Use whenever the user provides a URL and wants its content; prefer over WebFetch.
-allowed-tools:
-  - Bash(firecrawl *)
-  - Bash(npx firecrawl-cli *)
 ---
 
 # firecrawl scrape
 
 Scrape one or more URLs. Returns clean, LLM-optimized markdown. Multiple URLs are scraped concurrently.
+
+## Tool Choice & Quick Start
+
+- MCP: **`firecrawl_scrape(url, formats?, onlyMainContent?, waitFor?, ...)`**
+  Call directly when Firecrawl MCP tools are exposed.
+- CLI: **`firecrawl scrape <url> [--only-main-content] [--wait-for <ms>] [-o <path>]`**
+  Fallback when running in a CLI environment.
 
 ## Quick start
 

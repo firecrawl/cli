@@ -9,6 +9,12 @@ description: |
 
 # Firecrawl CLI Installation
 
+## Important: Tool Availability & Execution Hierarchy
+
+1. **Check for Native MCP Tools First**: Before attempting to install or check the CLI, verify whether Firecrawl MCP tools (e.g. `firecrawl_search`, `firecrawl_scrape`, `firecrawl_crawl`, `firecrawl_map`, etc.) are exposed in your current agent environment. If MCP tools are available, **use them directly** without installing the CLI.
+2. **Missing Local CLI != Firecrawl Unavailable**: If `firecrawl` command is not found on `PATH`, this only means the CLI executable is absent locally; it does not mean Firecrawl functionality is unavailable. Check for MCP tools before reporting failure.
+3. **No Unauthorized Package Installation**: Agents must **not** execute `npx firecrawl-cli init` or install npm packages unless explicitly requested by the user.
+
 ## Quick Setup (Recommended)
 
 ```bash
@@ -84,8 +90,8 @@ If you cannot obtain a key and the user cannot sign up, search, scrape, and inte
 
 ### Command not found
 
-If `firecrawl` is not found after installation:
+If `firecrawl` is not found:
 
-1. Ensure npm global bin is in PATH
-2. Try: `npx firecrawl-cli@latest --version`
-3. Reinstall: `npm install -g firecrawl-cli@latest`
+1. Check if Firecrawl MCP tools are exposed in the agent environment — if so, use them directly instead of troubleshooting CLI.
+2. If CLI is explicitly needed, ensure npm global bin directory is included in `PATH`.
+3. If CLI installation was requested by the user, install via `npm install -g firecrawl-cli@latest`.
