@@ -331,7 +331,7 @@ describe('handleSetupCommand', () => {
     await handleSetupCommand(undefined, { yes: true });
 
     expect(execSync).toHaveBeenCalledWith(
-      'npx -y skills add firecrawl/cli --full-depth --global --all --yes',
+      `npx -y skills add firecrawl/skills --full-depth --global --yes ${cliSkillFlags}`,
       expect.objectContaining({ stdio: 'inherit' })
     );
     expect(log.mock.calls.flat().join('\n')).toContain(
