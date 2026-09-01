@@ -3,17 +3,235 @@
  */
 
 import type {
+  AgentEffort,
+  AgentExchangeOptions,
+  AgentMode,
   AgentOptions,
+  AgentPendingApproval,
   AgentResult,
   AgentStatus,
   AgentStatusResult,
+  AgentSuggestion,
+  AgentThread,
+  AgentThreadOptions,
+  AgentThreadResult,
+  AgentThreadRun,
 } from '../types/agent';
-import type { AgentWebhookConfig } from 'firecrawl';
+import type { AgentStatusResponse, AgentWebhookConfig } from 'firecrawl';
 import { getClient } from '../utils/client';
+import { getConfig, validateConfig } from '../utils/config';
+import {
+  forgetThread,
+  getRememberedThread,
+  rememberThread,
+} from '../utils/agent-threads';
 import { isJobId } from '../utils/job';
 import { writeOutput } from '../utils/output';
 import { createSpinner } from '../utils/spinner';
 import { readFileSync } from 'fs';
+
+const DEFAULT_API_URL = 'https://api.firecrawl.dev';
+
+/**
+ * Fixed prompts sent when resolving a pending approval, so the run continues
+ * without the user retyping their intent.
+ */
+export const APPROVE_PROMPT = 'Approved. Make that call, and nothing else.';
+export const DECLINE_PROMPT =
+  'Do not make that call. Answer from what you already have, or tell me what you would need.';
+
+const THREADS_UNSUPPORTED = 'This Firecrawl API does not support threads yet';
+
+/**
+ * firecrawl@4.24.0 predates threads: `prepareAgentPayload` whitelists request
+ * keys (so threadId/mode/effort/exchange would be dropped) and the response
+ * types omit the new fields (which the API does return). Starts that use the
+ * new fields therefore go over raw HTTP — the same escape hatch monitor.ts and
+ * parse.ts use — and status responses are read through a widened type. Both
+ * workarounds can go once the SDK ships the fields from spec 11.3; the pinned
+ * version here is 4.24.0.
+ */
+type ThreadAwareAgentStatus = AgentStatusResponse & {
+  threadId?: string;
+  threadTurn?: number;
+  mode?: AgentMode;
+  message?: string;
+  suggestions?: AgentSuggestion[];
+  pendingApproval?: AgentPendingApproval;
+};
+
+type ThreadAwareStartResponse = {
+  success: boolean;
+  id: string;
+  threadId?: string;
+  threadTurn?: number;
+  error?: string;
+};
+
+class AgentApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string
+  ) {
+    super(message);
+    this.name = 'AgentApiError';
+  }
+}
+
+function resolveApiBase(options: { apiKey?: string; apiUrl?: string }): {
+  baseUrl: string;
+  apiKey?: string;
+} {
+  const config = getConfig();
+  const apiKey = options.apiKey || config.apiKey;
+  validateConfig(apiKey);
+  const baseUrl = (options.apiUrl || config.apiUrl || DEFAULT_API_URL).replace(
+    /\/$/,
+    ''
+  );
+  return { baseUrl, apiKey };
+}
+
+async function agentApiRequest(
+  path: string,
+  options: { apiKey?: string; apiUrl?: string },
+  init: { method?: string; body?: unknown } = {}
+): Promise<any> {
+  const { baseUrl, apiKey } = resolveApiBase(options);
+
+  const headers: Record<string, string> = { 'X-Origin': 'cli' };
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+  if (init.body !== undefined) headers['Content-Type'] = 'application/json';
+
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: init.method ?? 'GET',
+    headers,
+    body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as any;
+
+  if (!response.ok || payload?.success === false) {
+    const message =
+      payload?.error ||
+      `HTTP ${response.status}: ${response.statusText || 'Request failed'}`;
+    throw new AgentApiError(message, response.status, payload?.code);
+  }
+
+  return payload;
+}
+
+/**
+ * An old API rejects the thread fields with a 400 from its strict schema, and a
+ * deployment without threads reports them as disabled. Both mean the same thing
+ * to the user.
+ */
+function mapThreadSupportError(error: unknown): string | null {
+  if (!(error instanceof AgentApiError)) return null;
+  if (error.status === 503 && error.code === 'threads_disabled') {
+    return THREADS_UNSUPPORTED;
+  }
+  if (error.status !== 400) return null;
+  const namesUnknownKey =
+    /unrecognized|unknown key|unexpected key|not allowed|not recognized/i.test(
+      error.message
+    );
+  const namesThreadField = /threadId|thread_id|\bmode\b|exchange|effort/i.test(
+    error.message
+  );
+  return namesUnknownKey && namesThreadField ? THREADS_UNSUPPORTED : null;
+}
+
+function isThreadGoneError(error: unknown): boolean {
+  if (!(error instanceof AgentApiError)) return false;
+  if (error.status === 404 || error.status === 410) return true;
+  return (
+    error.code === 'thread_not_found' ||
+    error.code === 'thread_expired' ||
+    /thread_not_found|thread_expired/.test(error.message)
+  );
+}
+
+export interface AgentStartParams {
+  prompt: string;
+  urls?: string[];
+  schema?: Record<string, unknown>;
+  model?: string;
+  maxCredits?: number;
+  webhook?: string | AgentWebhookConfig;
+  threadId?: string;
+  mode?: AgentMode;
+  effort?: AgentEffort;
+  exchange?: AgentExchangeOptions;
+}
+
+/** Request body for POST /v2/agent. New keys are only sent when set. */
+export function buildAgentStartBody(
+  params: AgentStartParams
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    prompt: params.prompt,
+    integration: 'cli',
+  };
+
+  if (params.urls && params.urls.length > 0) body.urls = params.urls;
+  if (params.schema) body.schema = params.schema;
+  if (params.model) body.model = params.model;
+  if (params.maxCredits !== undefined) body.maxCredits = params.maxCredits;
+  if (params.webhook) body.webhook = params.webhook;
+  if (params.threadId) body.threadId = params.threadId;
+  if (params.mode) body.mode = params.mode;
+  if (params.effort) body.effort = params.effort;
+  if (params.exchange && Object.keys(params.exchange).length > 0) {
+    body.exchange = params.exchange;
+  }
+
+  return body;
+}
+
+/** True when the request needs fields the pinned SDK cannot send. */
+function needsRawStart(params: AgentStartParams): boolean {
+  return Boolean(
+    params.threadId || params.mode || params.effort || params.exchange
+  );
+}
+
+/**
+ * Which thread this run continues, if any. `--thread` wins over `--continue`,
+ * `--continue` falls back to the thread remembered for this API key, and
+ * `--approve`/`--decline` continue that same thread without asking for a flag.
+ */
+export function resolveThreadIntent(
+  options: Pick<
+    AgentOptions,
+    'thread' | 'continue' | 'new' | 'exchange' | 'apiKey'
+  >,
+  remembered: string | null
+): { threadId?: string; fromMemory: boolean; missingMemory: boolean } {
+  if (options.thread) {
+    return {
+      threadId: options.thread,
+      fromMemory: false,
+      missingMemory: false,
+    };
+  }
+
+  const resolvingApproval = Boolean(
+    options.exchange?.approve || options.exchange?.decline
+  );
+  const wantsContinue = Boolean(options.continue) || resolvingApproval;
+
+  if (!wantsContinue || options.new) {
+    return { fromMemory: false, missingMemory: false };
+  }
+
+  if (!remembered) {
+    return { fromMemory: false, missingMemory: true };
+  }
+
+  return { threadId: remembered, fromMemory: true, missingMemory: false };
+}
 
 /**
  * Extract detailed error message from API errors
@@ -70,6 +288,23 @@ function normalizeAgentStatus(status: AgentStatusFromApi): AgentStatus {
   return status as AgentStatus;
 }
 
+/** Thread-aware status fields the API returns and the pinned SDK does not type */
+function threadFields(
+  status: AgentStatusResponse
+): Partial<NonNullable<AgentStatusResult['data']>> {
+  const s = status as ThreadAwareAgentStatus;
+  return {
+    ...(s.threadId ? { threadId: s.threadId } : {}),
+    ...(s.threadTurn !== undefined ? { threadTurn: s.threadTurn } : {}),
+    ...(s.mode ? { mode: s.mode } : {}),
+    ...(s.message ? { message: s.message } : {}),
+    ...(s.suggestions && s.suggestions.length > 0
+      ? { suggestions: s.suggestions }
+      : {}),
+    ...(s.pendingApproval ? { pendingApproval: s.pendingApproval } : {}),
+  };
+}
+
 /**
  * Execute agent status check (with optional wait/polling)
  */
@@ -96,6 +331,7 @@ async function checkAgentStatus(
           data: status.data,
           creditsUsed: status.creditsUsed,
           expiresAt: status.expiresAt,
+          ...threadFields(status),
         },
       };
     } catch (error) {
@@ -144,6 +380,7 @@ async function checkAgentStatus(
             data: agentStatus.data,
             creditsUsed: agentStatus.creditsUsed,
             expiresAt: agentStatus.expiresAt,
+            ...threadFields(agentStatus),
           },
         };
       }
@@ -158,6 +395,7 @@ async function checkAgentStatus(
             data: agentStatus.data,
             creditsUsed: agentStatus.creditsUsed,
             expiresAt: agentStatus.expiresAt,
+            ...threadFields(agentStatus),
           },
           error: agentStatus.error,
         };
@@ -173,6 +411,7 @@ async function checkAgentStatus(
             data: agentStatus.data,
             creditsUsed: agentStatus.creditsUsed,
             expiresAt: agentStatus.expiresAt,
+            ...threadFields(agentStatus),
           },
         };
       }
@@ -205,6 +444,99 @@ async function checkAgentStatus(
 }
 
 /**
+ * Prompt to send for this turn. Resolving an approval carries its own fixed
+ * prompt so the user does not have to restate anything.
+ */
+export function resolveStartPrompt(
+  options: Pick<AgentOptions, 'prompt' | 'exchange'>
+): string {
+  if (options.prompt && options.prompt.trim()) return options.prompt;
+  if (options.exchange?.approve) return APPROVE_PROMPT;
+  if (options.exchange?.decline) return DECLINE_PROMPT;
+  return options.prompt;
+}
+
+/**
+ * Start a run, continuing a thread when one is asked for or remembered, and
+ * record the thread the API reports back.
+ */
+async function startAgentRun(
+  options: AgentOptions,
+  params: AgentStartParams,
+  onNotice: (message: string) => void
+): Promise<ThreadAwareStartResponse> {
+  const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
+
+  const attempt = async (
+    attemptParams: AgentStartParams
+  ): Promise<ThreadAwareStartResponse> => {
+    try {
+      if (!needsRawStart(attemptParams)) {
+        const response = await app.startAgent({
+          prompt: attemptParams.prompt,
+          ...(attemptParams.urls ? { urls: attemptParams.urls } : {}),
+          ...(attemptParams.schema ? { schema: attemptParams.schema } : {}),
+          ...(attemptParams.model
+            ? { model: attemptParams.model as 'spark-1-pro' | 'spark-1-mini' }
+            : {}),
+          ...(attemptParams.maxCredits !== undefined
+            ? { maxCredits: attemptParams.maxCredits }
+            : {}),
+          ...(attemptParams.webhook ? { webhook: attemptParams.webhook } : {}),
+          integration: 'cli',
+        });
+        return response as ThreadAwareStartResponse;
+      }
+
+      return (await agentApiRequest('/v2/agent', options, {
+        method: 'POST',
+        body: buildAgentStartBody(attemptParams),
+      })) as ThreadAwareStartResponse;
+    } catch (error) {
+      const unsupported = mapThreadSupportError(error);
+      if (unsupported) throw new Error(unsupported);
+      throw error;
+    }
+  };
+
+  const remembered = getRememberedThread(options.apiKey)?.lastThreadId ?? null;
+  const intent = resolveThreadIntent(options, remembered);
+  if (intent.missingMemory) {
+    onNotice('No remembered thread; starting a new one.');
+  }
+
+  let response: ThreadAwareStartResponse;
+  try {
+    response = await attempt({ ...params, threadId: intent.threadId });
+  } catch (error) {
+    if (!isThreadGoneError(error)) throw error;
+
+    if (intent.threadId && intent.threadId === remembered) {
+      forgetThread(options.apiKey);
+    }
+
+    // A resolved approval only means something inside its thread, so a lost
+    // thread there is a hard error rather than a fresh start.
+    const resolvingApproval = Boolean(
+      params.exchange?.approve || params.exchange?.decline
+    );
+    if (!intent.fromMemory || resolvingApproval) throw error;
+
+    onNotice('That thread is gone; starting a new one.');
+    response = await attempt({ ...params, threadId: undefined });
+  }
+
+  if (response?.threadId) {
+    rememberThread(options.apiKey, {
+      threadId: response.threadId,
+      runId: response.id,
+    });
+  }
+
+  return response;
+}
+
+/**
  * Execute agent command
  */
 export async function executeAgent(
@@ -212,7 +544,8 @@ export async function executeAgent(
 ): Promise<AgentResult | AgentStatusResult> {
   try {
     const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
-    const { prompt, status, cancel, wait, pollInterval, timeout } = options;
+    const { status, cancel, wait, pollInterval, timeout } = options;
+    const prompt = resolveStartPrompt(options);
 
     if (cancel) {
       const cancelled = await app.cancelAgent(prompt);
@@ -246,20 +579,7 @@ export async function executeAgent(
     }
 
     // Build agent options
-    const agentParams: {
-      prompt: string;
-      urls?: string[];
-      schema?: Record<string, unknown>;
-      model?: 'spark-1-pro' | 'spark-1-mini';
-      maxCredits?: number;
-      pollInterval?: number;
-      timeout?: number;
-      webhook?: string | AgentWebhookConfig;
-      integration?: string;
-    } = {
-      prompt,
-      integration: 'cli',
-    };
+    const agentParams: AgentStartParams = { prompt };
 
     if (options.urls && options.urls.length > 0) {
       agentParams.urls = options.urls;
@@ -268,7 +588,7 @@ export async function executeAgent(
       agentParams.schema = schema;
     }
     if (options.model) {
-      agentParams.model = options.model as 'spark-1-pro' | 'spark-1-mini';
+      agentParams.model = options.model;
     }
     if (options.maxCredits !== undefined) {
       agentParams.maxCredits = options.maxCredits;
@@ -276,16 +596,31 @@ export async function executeAgent(
     if (options.webhook) {
       agentParams.webhook = options.webhook;
     }
+    if (options.mode) {
+      agentParams.mode = options.mode;
+    }
+    if (options.effort) {
+      agentParams.effort = options.effort;
+    }
+    if (options.exchange && Object.keys(options.exchange).length > 0) {
+      agentParams.exchange = options.exchange;
+    }
 
     // If wait mode, use polling with spinner
     if (wait) {
       const spinner = createSpinner('Starting agent...');
       spinner.start();
 
+      const notice = (message: string) => {
+        spinner.stop();
+        process.stderr.write(`${message}\n`);
+        spinner.start();
+      };
+
       // Start agent first
-      let response;
+      let response: ThreadAwareStartResponse;
       try {
-        response = await app.startAgent(agentParams);
+        response = await startAgentRun(options, agentParams, notice);
       } catch (error) {
         spinner.fail('Failed to start agent');
         return {
@@ -294,6 +629,7 @@ export async function executeAgent(
         };
       }
       const jobId = response.id;
+      const threadId = response.threadId;
 
       // Handle Ctrl+C gracefully
       const handleInterrupt = () => {
@@ -329,6 +665,8 @@ export async function executeAgent(
                 data: agentStatus.data,
                 creditsUsed: agentStatus.creditsUsed,
                 expiresAt: agentStatus.expiresAt,
+                ...(threadId ? { threadId } : {}),
+                ...threadFields(agentStatus),
               },
             };
           }
@@ -344,6 +682,8 @@ export async function executeAgent(
                 data: agentStatus.data,
                 creditsUsed: agentStatus.creditsUsed,
                 expiresAt: agentStatus.expiresAt,
+                ...(threadId ? { threadId } : {}),
+                ...threadFields(agentStatus),
               },
               error: agentStatus.error,
             };
@@ -368,9 +708,15 @@ export async function executeAgent(
     const spinner = createSpinner('Starting agent...');
     spinner.start();
 
-    let response;
+    const notice = (message: string) => {
+      spinner.stop();
+      process.stderr.write(`${message}\n`);
+      spinner.start();
+    };
+
+    let response: ThreadAwareStartResponse;
     try {
-      response = await app.startAgent(agentParams);
+      response = await startAgentRun(options, agentParams, notice);
     } catch (error) {
       spinner.fail('Failed to start agent');
       return {
@@ -386,6 +732,7 @@ export async function executeAgent(
       data: {
         jobId: response.id,
         status: 'processing',
+        ...(response.threadId ? { threadId: response.threadId } : {}),
       },
     };
   } catch (error) {
@@ -396,6 +743,80 @@ export async function executeAgent(
   }
 }
 
+function truncate(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+function renderTable(headers: string[], rows: string[][]): string[] {
+  const widths = headers.map((header, i) =>
+    Math.max(header.length, ...rows.map((row) => (row[i] ?? '').length))
+  );
+  const line = (cells: string[]) =>
+    cells
+      .map((cell, i) =>
+        i === cells.length - 1 ? cell : cell.padEnd(widths[i])
+      )
+      .join('  ')
+      .trimEnd();
+  return [line(headers), ...rows.map(line)];
+}
+
+/**
+ * Render an approval the run is waiting on, plus the commands that resolve it.
+ * Everything shown comes straight off the API response.
+ */
+export function formatPendingApproval(
+  pendingApproval: AgentPendingApproval
+): string {
+  const lines: string[] = [];
+  lines.push(`Awaiting approval: ${pendingApproval.id}`);
+
+  if (typeof pendingApproval.reason === 'string' && pendingApproval.reason) {
+    lines.push(pendingApproval.reason);
+  }
+
+  const calls = Array.isArray(pendingApproval.calls)
+    ? pendingApproval.calls
+    : [];
+  if (calls.length > 0) {
+    const rows = calls.map((call) => {
+      const args =
+        (call.input as unknown) ??
+        (call as Record<string, unknown>).arguments ??
+        (call as Record<string, unknown>).parameters;
+      const credits = call.creditsEstimate;
+      return [
+        String(call.provider ?? ''),
+        String(call.capability ?? ''),
+        args === undefined ? '' : truncate(JSON.stringify(args), 80),
+        credits === undefined || credits === null ? '-' : String(credits),
+      ];
+    });
+    lines.push(
+      ...renderTable(
+        ['Provider', 'Capability', 'Arguments', 'Est. credits'],
+        rows
+      )
+    );
+  }
+
+  lines.push(`  firecrawl agent --approve ${pendingApproval.id}`);
+  lines.push(`  firecrawl agent --decline ${pendingApproval.id}`);
+
+  return lines.join('\n');
+}
+
+/** Render follow-ups as the commands that run them */
+export function formatSuggestions(suggestions: AgentSuggestion[]): string {
+  const lines: string[] = ['Try next:'];
+  for (const suggestion of suggestions) {
+    const prompt = suggestion.prompt || suggestion.label;
+    if (!prompt) continue;
+    lines.push(`  firecrawl agent --continue "${prompt.replace(/"/g, '\\"')}"`);
+  }
+  return lines.join('\n');
+}
+
 /**
  * Format agent status in human-readable way
  */
@@ -403,6 +824,13 @@ function formatAgentStatus(data: AgentStatusResult['data']): string {
   if (!data) return '';
 
   const lines: string[] = [];
+
+  // In chat mode the reply is the answer, so it leads the output
+  if (data.message) {
+    lines.push(data.message);
+    lines.push('');
+  }
+
   lines.push(`Job ID: ${data.id}`);
   lines.push(`Status: ${data.status}`);
 
@@ -429,6 +857,16 @@ function formatAgentStatus(data: AgentStatusResult['data']): string {
     lines.push(JSON.stringify(data.data, null, 2));
   }
 
+  if (data.pendingApproval) {
+    lines.push('');
+    lines.push(formatPendingApproval(data.pendingApproval));
+  }
+
+  if (data.suggestions && data.suggestions.length > 0) {
+    lines.push('');
+    lines.push(formatSuggestions(data.suggestions));
+  }
+
   return lines.join('\n') + '\n';
 }
 
@@ -441,6 +879,16 @@ export async function handleAgentCommand(options: AgentOptions): Promise<void> {
   if (!result.success) {
     console.error('Error:', result.error);
     process.exit(1);
+  }
+
+  // Every start reports the thread it belongs to. It goes to stderr so piped
+  // stdout keeps the shape callers already parse; --json carries it instead.
+  const startedRun =
+    !options.status && !options.cancel && !isJobId(options.prompt ?? '');
+  const threadId =
+    result.data && 'threadId' in result.data ? result.data.threadId : undefined;
+  if (threadId && startedRun && !options.json) {
+    process.stderr.write(`Thread: ${threadId}  (continue with --continue)\n`);
   }
 
   // Handle status result (completed agent job with data)
@@ -476,6 +924,9 @@ export async function handleAgentCommand(options: AgentOptions): Promise<void> {
     const jobData = {
       jobId: agentResult.data.jobId,
       status: agentResult.data.status,
+      ...(agentResult.data.threadId
+        ? { threadId: agentResult.data.threadId }
+        : {}),
     };
 
     outputContent = options.pretty
@@ -486,6 +937,109 @@ export async function handleAgentCommand(options: AgentOptions): Promise<void> {
       ? JSON.stringify(agentResult.data, null, 2)
       : JSON.stringify(agentResult.data);
   }
+
+  writeOutput(outputContent, options.output, !!options.output);
+}
+
+/**
+ * Fetch one conversation. GET /v2/agent/threads/:id has no SDK method in
+ * firecrawl@4.24.0, so it is called directly.
+ */
+export async function executeAgentThread(
+  threadId: string,
+  options: AgentThreadOptions = {}
+): Promise<AgentThreadResult> {
+  try {
+    const payload = await agentApiRequest(
+      `/v2/agent/threads/${encodeURIComponent(threadId)}?includeData=true`,
+      options
+    );
+    const thread = (payload?.thread ?? payload?.data) as
+      | AgentThread
+      | undefined;
+    if (!thread) {
+      return { success: false, error: `Thread not found: ${threadId}` };
+    }
+    return { success: true, thread };
+  } catch (error) {
+    const unsupported = mapThreadSupportError(error);
+    return {
+      success: false,
+      error: unsupported ?? extractErrorMessage(error),
+    };
+  }
+}
+
+function formatThreadRun(run: AgentThreadRun): string[] {
+  const heading = [
+    `Turn ${run.turn}`,
+    run.mode,
+    run.status,
+    run.creditsUsed !== undefined && run.creditsUsed !== null
+      ? `${run.creditsUsed} credits`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const lines: string[] = [heading];
+
+  if (run.prompt) {
+    lines.push(`  You: ${run.prompt}`);
+  }
+  if (run.message) {
+    lines.push(`  Agent: ${run.message}`);
+  }
+  if (run.data !== undefined && run.data !== null) {
+    lines.push('  Result:');
+    lines.push(JSON.stringify(run.data, null, 2));
+  }
+  if (run.pendingApproval) {
+    lines.push(formatPendingApproval(run.pendingApproval));
+  }
+  if (run.suggestions && run.suggestions.length > 0) {
+    lines.push(formatSuggestions(run.suggestions));
+  }
+
+  return lines;
+}
+
+/** Render a thread as its turns, oldest first */
+export function formatThread(thread: AgentThread): string {
+  const lines: string[] = [`Thread: ${thread.id}`];
+  if (thread.status) lines.push(`Status: ${thread.status}`);
+  if (thread.updatedAt) lines.push(`Updated: ${thread.updatedAt}`);
+
+  const runs = [...(thread.runs ?? [])].sort((a, b) => a.turn - b.turn);
+  for (const run of runs) {
+    lines.push('');
+    lines.push(...formatThreadRun(run));
+  }
+
+  return lines.join('\n') + '\n';
+}
+
+/**
+ * Handle `firecrawl agent thread <id>` output
+ */
+export async function handleAgentThreadCommand(
+  threadId: string,
+  options: AgentThreadOptions = {}
+): Promise<void> {
+  const result = await executeAgentThread(threadId, options);
+
+  if (!result.success || !result.thread) {
+    console.error('Error:', result.error);
+    process.exit(1);
+  }
+
+  const outputContent = options.json
+    ? JSON.stringify(
+        { success: true, thread: result.thread },
+        null,
+        options.pretty ? 2 : 0
+      )
+    : formatThread(result.thread);
 
   writeOutput(outputContent, options.output, !!options.output);
 }

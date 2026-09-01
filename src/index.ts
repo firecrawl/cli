@@ -39,7 +39,7 @@ import {
   parseEndpointFeedbackCliOptions,
   parseEndpointFeedbackEndpoint,
 } from './commands/feedback';
-import { handleAgentCommand } from './commands/agent';
+import { handleAgentCommand, handleAgentThreadCommand } from './commands/agent';
 import {
   handleBrowserLaunch,
   handleBrowserExecute,
@@ -1518,7 +1518,7 @@ function createAgentCommand(): Command {
   const agentCmd = new Command('agent')
     .description('Run an AI agent to extract data from the web')
     .argument(
-      '<prompt-or-job-id>',
+      '[prompt-or-job-id]',
       'Natural language prompt describing data to extract, or job ID to check status'
     )
     .option('--urls <urls>', 'Comma-separated URLs to focus extraction on')
@@ -1540,6 +1540,42 @@ function createAgentCommand(): Command {
       parseInt
     )
     .option('--webhook <url-or-json>', 'Webhook URL or webhook configuration')
+    .option('--thread <id>', 'Continue the thread with this ID')
+    .option(
+      '--continue',
+      'Continue the last thread started with this API key',
+      false
+    )
+    .option('--new', 'Ignore any remembered thread and start a new one', false)
+    .option(
+      '--mode <mode>',
+      'Run mode: extract (default, returns JSON) or chat (the agent may reply in prose)'
+    )
+    .option('--effort <level>', 'Effort level: low, medium, or high')
+    .option('--exchange', 'Enable Firecrawl Exchange data providers', false)
+    .option(
+      '--toolkits <list>',
+      'Comma-separated Exchange toolkits to limit the run to'
+    )
+    .option(
+      '--max-calls <number>',
+      'Maximum Exchange provider calls for this run',
+      parseInt
+    )
+    .option('--require-approval', 'Ask before each paid Exchange call', false)
+    .option(
+      '--approve <approvalId>',
+      'Approve a pending approval and continue the thread'
+    )
+    .option(
+      '--always',
+      'With --approve, stop asking again in this thread',
+      false
+    )
+    .option(
+      '--decline <approvalId>',
+      'Decline a pending approval and continue the thread'
+    )
     .option('--status', 'Check status of existing agent job', false)
     .option('--cancel', 'Cancel active agent job by job ID', false)
     .option(
@@ -1566,13 +1602,50 @@ function createAgentCommand(): Command {
     .option('--json', 'Output as JSON format', false)
     .option('--pretty', 'Pretty print JSON output', false)
     .action(async (promptOrJobId, options) => {
+      const resolvingApproval = !!(options.approve || options.decline);
+
+      if (!promptOrJobId && !resolvingApproval) {
+        console.error(
+          'Error: a prompt or job ID is required (or use --approve/--decline).'
+        );
+        process.exit(1);
+      }
+
+      const prompt = promptOrJobId ?? '';
+
       // Auto-detect if it's a job ID (UUID format)
-      const isStatusCheck = options.status || isJobId(promptOrJobId);
+      const isStatusCheck = options.status || isJobId(prompt);
       const isCancel = options.cancel;
 
-      if ((isStatusCheck || isCancel) && !isJobId(promptOrJobId)) {
+      if ((isStatusCheck || isCancel) && !isJobId(prompt)) {
         console.error(
           'Error: --status and --cancel require a job ID, not a prompt.'
+        );
+        process.exit(1);
+      }
+
+      if (options.continue && options.new) {
+        console.error('Error: use --continue or --new, not both.');
+        process.exit(1);
+      }
+
+      if (options.approve && options.decline) {
+        console.error('Error: use --approve or --decline, not both.');
+        process.exit(1);
+      }
+
+      const validModes = ['extract', 'chat'];
+      if (options.mode && !validModes.includes(options.mode)) {
+        console.error(
+          `Error: Invalid mode "${options.mode}". Valid modes: ${validModes.join(', ')}`
+        );
+        process.exit(1);
+      }
+
+      const validEfforts = ['low', 'medium', 'high'];
+      if (options.effort && !validEfforts.includes(options.effort)) {
+        console.error(
+          `Error: Invalid effort "${options.effort}". Valid levels: ${validEfforts.join(', ')}`
         );
         process.exit(1);
       }
@@ -1623,8 +1696,28 @@ function createAgentCommand(): Command {
         process.exit(1);
       }
 
+      const exchange: Record<string, unknown> = {};
+      if (options.exchange) exchange.enabled = true;
+      if (options.toolkits) {
+        exchange.toolkits = options.toolkits
+          .split(',')
+          .map((t: string) => t.trim())
+          .filter((t: string) => t.length > 0);
+      }
+      if (options.maxCalls !== undefined) exchange.maxCalls = options.maxCalls;
+      if (options.requireApproval) exchange.requireApproval = true;
+      if (options.approve) {
+        exchange.approve = {
+          approvalId: options.approve,
+          ...(options.always ? { always: true } : {}),
+        };
+      }
+      if (options.decline) {
+        exchange.decline = { approvalId: options.decline };
+      }
+
       const agentOptions = {
-        prompt: promptOrJobId,
+        prompt,
         urls,
         schema,
         model: options.model,
@@ -1640,10 +1733,48 @@ function createAgentCommand(): Command {
         json: options.json,
         pretty: options.pretty,
         webhook,
+        thread: options.thread,
+        continue: options.continue,
+        new: options.new,
+        mode: options.mode,
+        effort: options.effort,
+        ...(Object.keys(exchange).length > 0 ? { exchange } : {}),
       };
 
       await handleAgentCommand(agentOptions);
     });
+
+  agentCmd
+    .command('thread')
+    .description('Print an agent thread conversation')
+    .argument('<threadId>', 'Thread ID')
+    .option(
+      '-k, --api-key <key>',
+      'Firecrawl API key (overrides global --api-key)'
+    )
+    .option('--api-url <url>', 'API URL (overrides global --api-url)')
+    .option('-o, --output <path>', 'Output file path (default: stdout)')
+    .option('--json', 'Output as JSON format', false)
+    .option('--pretty', 'Pretty print JSON output', false)
+    .action(async (threadId, options) => {
+      await handleAgentThreadCommand(threadId, {
+        apiKey: options.apiKey,
+        apiUrl: options.apiUrl,
+        output: options.output,
+        json: options.json,
+        pretty: options.pretty,
+      });
+    });
+
+  agentCmd.addHelpText(
+    'after',
+    `
+Threads:
+  $ firecrawl agent --mode chat "List the pricing tiers on example.com" --wait
+  $ firecrawl agent --continue "Which tier includes SSO?" --wait
+  $ firecrawl agent thread <thread-id>
+`
+  );
 
   return agentCmd;
 }
