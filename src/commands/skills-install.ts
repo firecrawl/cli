@@ -8,9 +8,10 @@
  *
  * - firecrawl/firecrawl-workflows: outcome-focused Firecrawl workflow skills
  *
- * `firecrawl init` installs both groups by default. `firecrawl setup skills`
- * installs core/build skills, and `firecrawl setup workflows` installs workflow
- * skills.
+ * `firecrawl init` installs core CLI skills and workflow skills.
+ * `firecrawl setup skills` (alias `setup core`) installs core CLI skills,
+ * `firecrawl setup build` installs build skills, and
+ * `firecrawl setup workflows` installs workflow skills.
  */
 export const SKILL_REPOS = ['firecrawl/cli', 'firecrawl/skills'] as const;
 
