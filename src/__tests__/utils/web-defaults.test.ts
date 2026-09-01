@@ -149,6 +149,27 @@ describe('configureWebDefaults', () => {
     );
   });
 
+  it('preserves a byte order mark and CRLF while disabling Codex web search', async () => {
+    await write('.codex/config.toml', '\uFEFFmodel = "gpt-5"\r\n');
+
+    await configureWebDefaults({ agents: ['Codex'] });
+
+    expect(await read('.codex/config.toml')).toBe(
+      '\uFEFFmodel = "gpt-5"\r\nweb_search = "disabled"\r\n'
+    );
+  });
+
+  it('preserves a byte order mark and CRLF while restoring Codex web search', async () => {
+    await write(
+      '.codex/config.toml',
+      '\uFEFFmodel = "gpt-5"\r\nweb_search = "disabled"\r\n'
+    );
+
+    await configureWebDefaults({ agents: ['Codex'], undo: true });
+
+    expect(await read('.codex/config.toml')).toBe('\uFEFFmodel = "gpt-5"\r\n');
+  });
+
   it('keeps comments in Claude settings.json', async () => {
     await write(
       '.claude/settings.json',

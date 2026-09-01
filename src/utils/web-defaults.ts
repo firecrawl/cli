@@ -245,7 +245,12 @@ async function configureCodexDefaults(
   dryRun: boolean
 ): Promise<WebDefaultResult> {
   const filePath = path.join(codexHome(createMcpContext()), 'config.toml');
-  const raw = (await readText(filePath)) ?? '';
+  const stored = (await readText(filePath)) ?? '';
+  // TOML parsers reject a UTF-8 byte order mark even though Windows editors
+  // commonly add one. Parse and edit the document without it, then restore it
+  // on every write just as the MCP config writer does.
+  const bom = stored.startsWith('\uFEFF') ? '\uFEFF' : '';
+  const raw = bom ? stored.slice(1) : stored;
   const eol = raw.includes('\r\n') ? '\r\n' : '\n';
   const base = {
     agent: 'Codex' as const,
@@ -261,7 +266,7 @@ async function configureCodexDefaults(
       };
     }
     if (!dryRun)
-      await writeText(filePath, `${CODEX_WEB_SEARCH_DISABLED}${eol}`);
+      await writeText(filePath, `${bom}${CODEX_WEB_SEARCH_DISABLED}${eol}`);
     return {
       ...base,
       changed: true,
@@ -302,7 +307,10 @@ async function configureCodexDefaults(
     }
     if (!dryRun) {
       const { start, end } = lineBounds(raw, node.range[0]);
-      await writeText(filePath, `${raw.slice(0, start)}${raw.slice(end)}`);
+      await writeText(
+        filePath,
+        `${bom}${raw.slice(0, start)}${raw.slice(end)}`
+      );
     }
     return {
       ...base,
@@ -351,7 +359,7 @@ async function configureCodexDefaults(
     };
   }
 
-  if (!dryRun) await writeText(filePath, next);
+  if (!dryRun) await writeText(filePath, `${bom}${next}`);
   return {
     ...base,
     changed: true,
