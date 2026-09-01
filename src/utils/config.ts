@@ -2,7 +2,8 @@
  * Global configuration system
  */
 
-import { loadCredentials } from './credentials';
+import * as path from 'path';
+import { getConfigDirectoryPath, loadCredentials } from './credentials';
 
 export interface GlobalConfig {
   apiKey?: string;
@@ -98,6 +99,14 @@ export function validateConfig(apiKey?: string): void {
       'API key is required. Set FIRECRAWL_API_KEY environment variable, use --api-key flag, or run "firecrawl config" to set the API key.'
     );
   }
+}
+
+/**
+ * Path of the remembered agent threads file, next to credentials.json,
+ * browser-session.json and interact-session.json
+ */
+export function getAgentThreadsPath(): string {
+  return path.join(getConfigDirectoryPath(), 'agent-threads.json');
 }
 
 /**
