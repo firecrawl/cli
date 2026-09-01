@@ -57,6 +57,10 @@ export interface AgentOptions {
   schema?: Record<string, unknown>;
   /** Path to JSON schema file */
   schemaFile?: string;
+  /** Send an empty URL list, clearing URLs inherited from the thread */
+  clearUrls?: boolean;
+  /** Send a null schema, clearing a schema inherited from the thread */
+  clearSchema?: boolean;
   /** Webhook URL or webhook config */
   webhook?: string | AgentWebhookConfig;
   /** Cancel active agent job by ID */

@@ -157,6 +157,10 @@ export interface AgentStartParams {
   prompt: string;
   urls?: string[];
   schema?: Record<string, unknown>;
+  /** Send `urls: []`, which the API reads as "drop the thread's URLs" */
+  clearUrls?: boolean;
+  /** Send `schema: null`, which the API reads as "drop the thread's schema" */
+  clearSchema?: boolean;
   model?: string;
   maxCredits?: number;
   webhook?: string | AgentWebhookConfig;
@@ -175,8 +179,13 @@ export function buildAgentStartBody(
     integration: 'cli',
   };
 
+  // A follow-up inherits the previous turn's URLs and schema unless it sends an
+  // empty list or an explicit null, so clearing is its own request key rather
+  // than an absent one.
   if (params.urls && params.urls.length > 0) body.urls = params.urls;
+  else if (params.clearUrls) body.urls = [];
   if (params.schema) body.schema = params.schema;
+  else if (params.clearSchema) body.schema = null;
   if (params.model) body.model = params.model;
   if (params.maxCredits !== undefined) body.maxCredits = params.maxCredits;
   if (params.webhook) body.webhook = params.webhook;
@@ -193,7 +202,12 @@ export function buildAgentStartBody(
 /** True when the request needs fields the pinned SDK cannot send. */
 function needsRawStart(params: AgentStartParams): boolean {
   return Boolean(
-    params.threadId || params.mode || params.effort || params.exchange
+    params.threadId ||
+    params.mode ||
+    params.effort ||
+    params.exchange ||
+    params.clearUrls ||
+    params.clearSchema
   );
 }
 
@@ -595,6 +609,12 @@ export async function executeAgent(
     }
     if (schema) {
       agentParams.schema = schema;
+    }
+    if (options.clearUrls) {
+      agentParams.clearUrls = true;
+    }
+    if (options.clearSchema) {
+      agentParams.clearSchema = true;
     }
     if (options.model) {
       agentParams.model = options.model;

@@ -1523,6 +1523,10 @@ function createAgentCommand(): Command {
     )
     .option('--urls <urls>', 'Comma-separated URLs to focus extraction on')
     .option(
+      '--no-urls',
+      'Drop the URLs inherited from the thread (follow-ups only)'
+    )
+    .option(
       '--model <model>',
       'Model to use: spark-1-mini (default, cheaper) or spark-1-pro (higher accuracy)'
     )
@@ -1533,6 +1537,10 @@ function createAgentCommand(): Command {
     .option(
       '--schema-file <path>',
       'Path to JSON schema file for structured output'
+    )
+    .option(
+      '--no-schema',
+      'Drop the schema inherited from the thread (follow-ups only)'
     )
     .option(
       '--max-credits <number>',
@@ -1601,8 +1609,16 @@ function createAgentCommand(): Command {
     .option('-o, --output <path>', 'Output file path (default: stdout)')
     .option('--json', 'Output as JSON format', false)
     .option('--pretty', 'Pretty print JSON output', false)
-    .action(async (promptOrJobId, options) => {
+    .action(async (promptOrJobId, options, command) => {
       const resolvingApproval = !!(options.approve || options.decline);
+
+      // Commander stores --urls and --no-urls under one key, so passing both
+      // looks like whichever came last. Read the flags as typed to catch it.
+      const rawArgs: string[] = command.parent?.rawArgs ?? [];
+      const passed = (flag: string) =>
+        rawArgs.some((arg) => arg === flag || arg.startsWith(`${flag}=`));
+      const clearUrls = options.urls === false;
+      const clearSchema = options.schema === false;
 
       if (!promptOrJobId && !resolvingApproval) {
         console.error(
@@ -1631,6 +1647,25 @@ function createAgentCommand(): Command {
 
       if (options.approve && options.decline) {
         console.error('Error: use --approve or --decline, not both.');
+        process.exit(1);
+      }
+
+      if (clearUrls && passed('--urls')) {
+        console.error('Error: use --urls or --no-urls, not both.');
+        process.exit(1);
+      }
+
+      if (clearSchema && (passed('--schema') || options.schemaFile)) {
+        console.error(
+          'Error: use --schema/--schema-file or --no-schema, not both.'
+        );
+        process.exit(1);
+      }
+
+      if ((clearUrls || clearSchema) && !options.thread && !options.continue) {
+        console.error(
+          'Error: --no-urls and --no-schema only apply to a follow-up. Pass --thread <id> or --continue.'
+        );
         process.exit(1);
       }
 
@@ -1720,6 +1755,8 @@ function createAgentCommand(): Command {
         prompt,
         urls,
         schema,
+        clearUrls,
+        clearSchema,
         model: options.model,
         maxCredits: options.maxCredits,
         status: isStatusCheck,

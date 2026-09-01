@@ -443,6 +443,90 @@ describe('agent threads', () => {
     });
   });
 
+  describe('clearing inherited URLs and schema', () => {
+    it('sends an empty URL list for --no-urls', async () => {
+      rememberThread(API_KEY, { threadId: 'thread-1' });
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, { success: true, id: 'run-11', threadId: 'thread-1' })
+      );
+
+      await executeAgent({
+        prompt: 'Look anywhere on the site now',
+        continue: true,
+        clearUrls: true,
+        apiKey: API_KEY,
+      });
+
+      expect(lastRequestBody(mockFetch)).toEqual({
+        prompt: 'Look anywhere on the site now',
+        integration: 'cli',
+        threadId: 'thread-1',
+        urls: [],
+      });
+    });
+
+    it('sends a null schema for --no-schema', async () => {
+      rememberThread(API_KEY, { threadId: 'thread-1' });
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, { success: true, id: 'run-12', threadId: 'thread-1' })
+      );
+
+      await executeAgent({
+        prompt: 'Just answer in prose',
+        continue: true,
+        clearSchema: true,
+        apiKey: API_KEY,
+      });
+
+      const body = lastRequestBody(mockFetch);
+      expect(body.schema).toBeNull();
+      expect('urls' in body).toBe(false);
+    });
+
+    it('clears both at once', async () => {
+      rememberThread(API_KEY, { threadId: 'thread-1' });
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, { success: true, id: 'run-13', threadId: 'thread-1' })
+      );
+
+      await executeAgent({
+        prompt: 'Start clean',
+        thread: 'thread-1',
+        clearUrls: true,
+        clearSchema: true,
+        apiKey: API_KEY,
+      });
+
+      expect(lastRequestBody(mockFetch)).toEqual({
+        prompt: 'Start clean',
+        integration: 'cli',
+        threadId: 'thread-1',
+        urls: [],
+        schema: null,
+      });
+    });
+
+    it('prefers explicit URLs and schema over clearing them', async () => {
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, { success: true, id: 'run-14', threadId: 'thread-1' })
+      );
+
+      await executeAgent({
+        prompt: 'follow up',
+        thread: 'thread-1',
+        urls: ['https://example.com/pricing'],
+        schema: { type: 'object' },
+        clearUrls: true,
+        clearSchema: true,
+        apiKey: API_KEY,
+      });
+
+      const body = lastRequestBody(mockFetch);
+      expect(body.urls).toEqual(['https://example.com/pricing']);
+      expect(body.schema).toEqual({ type: 'object' });
+    });
+  });
+
   describe('thread precedence', () => {
     it('prefers --thread, then --continue, then a new thread', () => {
       expect(
@@ -481,6 +565,31 @@ describe('agent threads', () => {
       expect(result).toEqual({
         success: true,
         data: { jobId: 'run-1', status: 'processing' },
+      });
+    });
+
+    it('sends URLs, schema and credits exactly as it did before threads', async () => {
+      mockClient.startAgent.mockResolvedValue({ success: true, id: 'run-1' });
+
+      await executeAgent({
+        prompt: 'Get the main features listed',
+        urls: ['https://example.com/features'],
+        schema: { type: 'object', properties: { name: { type: 'string' } } },
+        model: 'spark-1-pro',
+        maxCredits: 100,
+        webhook: 'https://example.com/hook',
+        apiKey: API_KEY,
+      });
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockClient.startAgent).toHaveBeenCalledWith({
+        prompt: 'Get the main features listed',
+        urls: ['https://example.com/features'],
+        schema: { type: 'object', properties: { name: { type: 'string' } } },
+        model: 'spark-1-pro',
+        maxCredits: 100,
+        webhook: 'https://example.com/hook',
+        integration: 'cli',
       });
     });
   });

@@ -681,6 +681,17 @@ firecrawl agent --new "Start over on example.org" --wait
 firecrawl agent thread <thread-id>
 ```
 
+A follow-up inherits the URLs and schema of the previous turn unless you say
+otherwise, so there are two flags to drop them:
+
+```bash
+# Stop focusing on the URLs from earlier turns
+firecrawl agent --continue --no-urls "Look anywhere on the site now" --wait
+
+# Drop the schema and let the agent answer in prose
+firecrawl agent --continue --no-schema --mode chat "Summarise what changed" --wait
+```
+
 #### Agent Options
 
 | Option                      | Description                                                   |
@@ -691,6 +702,8 @@ firecrawl agent thread <thread-id>
 | `--schema-file <path>`      | Path to JSON schema file for structured output                |
 | `--max-credits <number>`    | Maximum credits to spend (job fails if exceeded)              |
 | `--webhook <url-or-json>`   | Webhook URL or configuration                                  |
+| `--no-urls`                 | Drop the URLs inherited from the thread (follow-ups only)     |
+| `--no-schema`               | Drop the schema inherited from the thread (follow-ups only)   |
 | `--thread <id>`             | Continue the thread with this ID                              |
 | `--continue`                | Continue the last thread started with this API key            |
 | `--new`                     | Ignore any remembered thread and start a new one              |

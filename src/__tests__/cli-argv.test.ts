@@ -124,6 +124,71 @@ describe('CLI argv parsing', () => {
     expect(result.stderr).not.toContain('unknown command');
   });
 
+  testWithBuiltCli('offers flags that clear inherited URLs and schema', () => {
+    const result = spawnSync(process.execPath, [cliPath, 'agent', '--help'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(0);
+    const flattened = result.stdout.replace(/\s+/g, ' ');
+    expect(flattened).toContain('--no-urls');
+    expect(flattened).toContain('--no-schema');
+  });
+
+  testWithBuiltCli('requires a thread to clear URLs or schema', () => {
+    for (const flag of ['--no-urls', '--no-schema']) {
+      const result = spawnSync(
+        process.execPath,
+        [cliPath, 'agent', flag, 'a prompt'],
+        { cwd: process.cwd(), encoding: 'utf8' }
+      );
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        'only apply to a follow-up. Pass --thread <id> or --continue.'
+      );
+    }
+  });
+
+  testWithBuiltCli('rejects clearing a value that is also being set', () => {
+    const urls = spawnSync(
+      process.execPath,
+      [
+        cliPath,
+        'agent',
+        '--continue',
+        '--urls',
+        'https://example.com',
+        '--no-urls',
+        'a prompt',
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' }
+    );
+
+    expect(urls.status).toBe(1);
+    expect(urls.stderr).toContain('use --urls or --no-urls, not both.');
+
+    const schema = spawnSync(
+      process.execPath,
+      [
+        cliPath,
+        'agent',
+        '--continue',
+        '--schema',
+        '{"type":"object"}',
+        '--no-schema',
+        'a prompt',
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' }
+    );
+
+    expect(schema.status).toBe(1);
+    expect(schema.stderr).toContain(
+      'use --schema/--schema-file or --no-schema, not both.'
+    );
+  });
+
   testWithBuiltCli('parses the agent thread subcommand', () => {
     const result = spawnSync(
       process.execPath,
