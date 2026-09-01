@@ -660,6 +660,27 @@ firecrawl agent <job-id>
 firecrawl agent <job-id> --wait
 ```
 
+#### Threads
+
+An agent run belongs to a thread. Follow-ups continue that thread with the full
+context of the earlier turns, so you only send the new question. Every start
+prints its thread ID, and the last thread you started is remembered per API key.
+
+```bash
+# Start a conversation; chat mode lets the agent answer in prose
+firecrawl agent --mode chat "List the pricing tiers on example.com" --wait
+
+# Follow up on the last thread started with this API key
+firecrawl agent --continue "Which tier includes SSO?" --wait
+
+# Continue a specific thread, or force a new one
+firecrawl agent --thread <thread-id> "And the annual price?" --wait
+firecrawl agent --new "Start over on example.org" --wait
+
+# Print a whole conversation
+firecrawl agent thread <thread-id>
+```
+
 #### Agent Options
 
 | Option                      | Description                                                   |
@@ -670,6 +691,18 @@ firecrawl agent <job-id> --wait
 | `--schema-file <path>`      | Path to JSON schema file for structured output                |
 | `--max-credits <number>`    | Maximum credits to spend (job fails if exceeded)              |
 | `--webhook <url-or-json>`   | Webhook URL or configuration                                  |
+| `--thread <id>`             | Continue the thread with this ID                              |
+| `--continue`                | Continue the last thread started with this API key            |
+| `--new`                     | Ignore any remembered thread and start a new one              |
+| `--mode <mode>`             | `extract` (default, returns JSON) or `chat` (prose replies)   |
+| `--effort <level>`          | Effort level: `low`, `medium`, or `high`                      |
+| `--exchange`                | Enable Firecrawl Exchange data providers                      |
+| `--toolkits <list>`         | Comma-separated Exchange toolkits to limit the run to         |
+| `--max-calls <number>`      | Maximum Exchange provider calls for this run                  |
+| `--require-approval`        | Ask before each paid Exchange call                            |
+| `--approve <approvalId>`    | Approve a pending approval and continue the thread            |
+| `--always`                  | With `--approve`, stop asking again in this thread            |
+| `--decline <approvalId>`    | Decline a pending approval and continue the thread            |
 | `--status`                  | Check status of existing agent job                            |
 | `--cancel`                  | Cancel an active agent job by job ID                          |
 | `--wait`                    | Wait for agent to complete before returning results           |
