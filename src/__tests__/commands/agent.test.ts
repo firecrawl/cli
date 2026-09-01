@@ -14,6 +14,7 @@ import {
   formatPendingApproval,
   formatThread,
   handleAgentCommand,
+  resolveThreadIntent,
 } from '../../commands/agent';
 import { getClient } from '../../utils/client';
 import { getRememberedThread, rememberThread } from '../../utils/agent-threads';
@@ -439,6 +440,27 @@ describe('agent threads', () => {
       expect(rendered.indexOf('Turn 1')).toBeLessThan(
         rendered.indexOf('Turn 2')
       );
+    });
+  });
+
+  describe('thread precedence', () => {
+    it('prefers --thread, then --continue, then a new thread', () => {
+      expect(
+        resolveThreadIntent({ thread: 'thread-9', continue: true }, 'thread-1')
+      ).toMatchObject({ threadId: 'thread-9', fromMemory: false });
+      expect(resolveThreadIntent({ continue: true }, 'thread-1')).toMatchObject(
+        { threadId: 'thread-1', fromMemory: true }
+      );
+      expect(resolveThreadIntent({}, 'thread-1').threadId).toBeUndefined();
+      expect(
+        resolveThreadIntent({ continue: true, new: true }, 'thread-1').threadId
+      ).toBeUndefined();
+      expect(
+        resolveThreadIntent(
+          { exchange: { approve: { approvalId: 'a1' } } },
+          'thread-1'
+        )
+      ).toMatchObject({ threadId: 'thread-1', fromMemory: true });
     });
   });
 
