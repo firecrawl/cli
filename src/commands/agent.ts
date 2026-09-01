@@ -501,6 +501,18 @@ async function startAgentRun(
 
   const remembered = getRememberedThread(options.apiKey)?.lastThreadId ?? null;
   const intent = resolveThreadIntent(options, remembered);
+
+  // An approval only exists inside a thread, so there is nothing to resolve
+  // without one.
+  const resolvingApproval = Boolean(
+    params.exchange?.approve || params.exchange?.decline
+  );
+  if (resolvingApproval && !intent.threadId) {
+    throw new Error(
+      'No thread to resolve that approval in. Pass --thread <id>.'
+    );
+  }
+
   if (intent.missingMemory) {
     onNotice('No remembered thread; starting a new one.');
   }
@@ -515,11 +527,8 @@ async function startAgentRun(
       forgetThread(options.apiKey);
     }
 
-    // A resolved approval only means something inside its thread, so a lost
-    // thread there is a hard error rather than a fresh start.
-    const resolvingApproval = Boolean(
-      params.exchange?.approve || params.exchange?.decline
-    );
+    // A lost thread is a hard error while resolving an approval: there is
+    // nothing to approve in a fresh one.
     if (!intent.fromMemory || resolvingApproval) throw error;
 
     onNotice('That thread is gone; starting a new one.');

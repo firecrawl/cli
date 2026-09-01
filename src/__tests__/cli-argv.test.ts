@@ -97,6 +97,48 @@ describe('CLI argv parsing', () => {
     }
   );
 
+  testWithBuiltCli('exposes the agent thread flags and subcommand', () => {
+    const result = spawnSync(process.execPath, [cliPath, 'agent', '--help'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(0);
+    const flattened = result.stdout.replace(/\s+/g, ' ');
+    for (const flag of [
+      '--thread',
+      '--continue',
+      '--new',
+      '--mode',
+      '--effort',
+      '--exchange',
+      '--toolkits',
+      '--max-calls',
+      '--require-approval',
+      '--approve',
+      '--decline',
+    ]) {
+      expect(flattened).toContain(flag);
+    }
+    expect(flattened).toContain('thread [options] <threadId>');
+    expect(result.stderr).not.toContain('unknown command');
+  });
+
+  testWithBuiltCli('parses the agent thread subcommand', () => {
+    const result = spawnSync(
+      process.execPath,
+      [cliPath, 'agent', 'thread', '--help'],
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      }
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Usage: firecrawl agent thread');
+    expect(result.stderr).not.toContain('unknown command');
+  });
+
   testWithBuiltCli(
     'exposes explicit keyless MCP setup and launch flags',
     () => {
