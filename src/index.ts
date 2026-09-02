@@ -60,6 +60,7 @@ import {
 } from './commands/init';
 import { handleMakeDefaultCommand, handleSetupCommand } from './commands/setup';
 import type { SetupSubcommand } from './commands/setup';
+import { ALL_MCP_TARGET_IDS, mcpTargetName } from './utils/mcp-clients';
 import { handleEnvPullCommand } from './commands/env';
 import { handleStatusCommand } from './commands/status';
 import { handleDoctorCommand } from './commands/doctor';
@@ -2233,7 +2234,7 @@ program
     });
   });
 
-program
+const setupCommand = program
   .command('setup')
   .description(
     'Set up individual firecrawl integrations (core, build, workflows, mcp, defaults)'
@@ -2242,14 +2243,9 @@ program
     '[subcommand]',
     'What to set up: "core" (alias "skills"), "build", "workflows", "mcp", "defaults", or a single catalog skill name (the "firecrawl-" prefix is optional, e.g. "developer-index"); omit for an interactive installer'
   )
-  .option('-g, --global', 'Install globally (user-level)')
-  .option(
-    '--project',
-    'For "mcp", install into project scope (stored API keys are never written to project files)'
-  )
   .option(
     '-a, --agent <agent>',
-    'Limit to a specific agent; required for environment-backed MCP setup, or use "all" to update every launch integration'
+    'Limit to a specific agent, or use "all" to update every supported agent rather than only the detected ones'
   )
   .option(
     '-y, --yes',
@@ -2259,6 +2255,7 @@ program
     '--keyless',
     'Configure anonymous hosted MCP even when an API key is stored'
   )
+  .option('--oauth', 'Point agents at the sign-in endpoint instead (mcp)')
   .option(
     '--browser',
     'If no API key is found after installing skills, log in via browser'
@@ -2266,9 +2263,49 @@ program
   .option(
     '--undo',
     'Undo setup defaults by re-enabling native web tools where supported'
+  );
+
+// Per-agent flags for `setup mcp`, so scripts can skip the picker.
+for (const id of ALL_MCP_TARGET_IDS) {
+  setupCommand.option(`--${id}`, `Set up ${mcpTargetName(id)} (mcp)`);
+}
+
+// `-g` is the old way to ask for the global scope that is now the default.
+// Kept so existing scripts keep running, hidden because it does nothing.
+setupCommand.addOption(
+  new Option('-g, --global', 'Deprecated; global is the default').hideHelp()
+);
+
+// `--defaults` is declared before `--no-defaults` so the pair stays undefined
+// when neither is passed. A negatable option defined on its own would default
+// to true, which would hand over native web tools in unattended runs.
+setupCommand
+  .option(
+    '--defaults',
+    'Also make Firecrawl the default web provider where supported (mcp)'
+  )
+  .option('--no-defaults', 'Skip the default web provider step (mcp)')
+  .addHelpText(
+    'after',
+    `
+Examples:
+  $ firecrawl setup mcp                      # pick agents, then choose defaults
+  $ firecrawl setup mcp --oauth              # sign in from each agent's browser
+  $ firecrawl setup mcp --claude --cursor    # skip the picker
+  $ firecrawl setup mcp --yes                # every detected agent, MCP only
+  $ firecrawl setup mcp --yes --defaults     # also hand over native web tools
+`
   )
   .action(async (subcommand: SetupSubcommand, options) => {
-    await handleSetupCommand(subcommand, options);
+    if (options.global) {
+      console.error(
+        'Note: -g/--global is deprecated for setup. Global is the default.'
+      );
+    }
+    await handleSetupCommand(subcommand, {
+      ...options,
+      clients: ALL_MCP_TARGET_IDS.filter((id) => options[id] === true),
+    });
   });
 
 program

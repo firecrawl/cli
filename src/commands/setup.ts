@@ -3,18 +3,10 @@
  * Installs firecrawl skill files and MCP server into AI coding agents
  */
 
-import { execFileSync, execSync } from 'child_process';
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from 'fs';
+import { execSync } from 'child_process';
 import os from 'os';
 import path from 'path';
 import readline from 'readline';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { getApiKey, updateConfig } from '../utils/config';
 import { browserLogin, isAuthenticated } from '../utils/auth';
 import { saveCredentials } from '../utils/credentials';
@@ -31,12 +23,37 @@ import {
   WORKFLOW_SKILLS,
   type SkillSelection,
 } from './skills-install';
-import { hasNpx, installSkillsNative } from './skills-native';
+import {
+  hasNpx,
+  installSkillsNative,
+  isSkillsAgentName,
+} from './skills-native';
 import {
   configureWebDefaults,
   WEB_AGENTS,
   type WebAgent,
+  type WebDefaultResult,
 } from '../utils/web-defaults';
+import {
+  ALL_MCP_CLIENT_IDS,
+  FIRECRAWL_MCP_URL,
+  ALL_MCP_LAUNCHER_IDS,
+  ALL_MCP_TARGET_IDS,
+  detectMcpClients,
+  detectMcpLaunchers,
+  FIRECRAWL_MCP_OAUTH_URL,
+  isMcpLauncherId,
+  MCP_CLIENTS,
+  MCP_LAUNCHER_OAUTH,
+  mcpTargetName,
+  resolveMcpClientId,
+  type McpAuthMode,
+  type McpContext,
+  type McpLauncherId,
+  type McpTargetId,
+} from '../utils/mcp-clients';
+import { setupMcpClient, type McpClientResult } from '../utils/mcp-install';
+import { runClientCommand } from '../utils/run-client-command';
 
 export type SetupSubcommand =
   | 'skills'
@@ -49,15 +66,14 @@ export type SetupSubcommand =
 type SetupIntegration = SetupSubcommand;
 
 type ResolvedMcpAgent =
-  | { kind: 'add-mcp'; agent?: string; all?: boolean }
-  | { kind: 'hermes' }
+  | { kind: 'clients'; ids?: McpTargetId[] }
+  | { kind: 'launchers' }
+  | { kind: 'skills-only'; agent: string }
   | { kind: 'openclaw' }
   | { kind: 'all-launchers' };
 
 export interface SetupOptions {
   global?: boolean;
-  /** Explicitly install MCP into project scope. */
-  project?: boolean;
   agent?: string;
   undo?: boolean;
   /** Skip the interactive harness picker and apply to all agents. */
@@ -72,20 +88,20 @@ export interface SetupOptions {
   browser?: boolean;
   /** Internal: bundle flow defers the auth offer until every step ran. */
   skipAuthOffer?: boolean;
+  /** Point agents at the sign-in endpoint instead of sending a credential. */
+  oauth?: boolean;
+  /** Agents chosen by flag (`--claude`, `--cursor`, ...); skips the picker. */
+  clients?: McpTargetId[];
+  /** Force the web-provider defaults step on or off instead of prompting. */
+  defaults?: boolean;
 }
 
 const green = '\x1b[32m';
+const red = '\x1b[31m';
+const bold = '\x1b[1m';
 const dim = '\x1b[2m';
 const reset = '\x1b[0m';
-const ADD_MCP_PACKAGE = 'add-mcp@1.14.0';
 const ENV_API_KEY = 'FIRECRAWL_API_KEY';
-const ADD_MCP_LAUNCH_AGENTS = [
-  'claude-code',
-  'vscode',
-  'codex',
-  'opencode',
-  'cursor',
-] as const;
 
 const SKILL_REPO_LABELS: Record<string, string> = {
   'firecrawl/cli': 'Core CLI skills',
@@ -97,109 +113,8 @@ function skillRepoLabel(repo: string): string {
   return SKILL_REPO_LABELS[repo] ?? repo;
 }
 
-const CMD_META_CHARS = /([()%!^"<>&|])/g;
-
-function rejectCommandControlCharacters(value: string, label: string): void {
-  if (/[\0\r\n]/.test(value)) {
-    throw new Error(`${label} contains an unsupported control character.`);
-  }
-}
-
-/** Quote one argv value for cmd.exe using the same two-layer escaping model as
- * established Windows spawn libraries: first the C runtime, then cmd.exe. */
-function escapeCmdArg(arg: string): string {
-  rejectCommandControlCharacters(arg, 'Command argument');
-  const quoted = `"${arg
-    .replace(/(\\*)"/g, '$1$1\\"')
-    .replace(/(\\*)$/, '$1$1')}"`;
-  return quoted.replace(CMD_META_CHARS, '^$1');
-}
-
-function windowsPathExtensions(env: NodeJS.ProcessEnv): string[] {
-  const configured = env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD';
-  return configured
-    .split(';')
-    .map((extension) => extension.trim())
-    .filter(Boolean);
-}
-
-/** Resolve the actual Windows launcher instead of assuming every tool is a
- * `.cmd` shim. Native `.exe` clients must bypass cmd.exe entirely. */
-function resolveWindowsCommand(
-  command: string,
-  env: NodeJS.ProcessEnv
-): string {
-  rejectCommandControlCharacters(command, 'Command');
-  const hasPath = /[\\/]/.test(command);
-  const hasExtension = path.extname(command) !== '';
-  const candidates = hasExtension
-    ? [command]
-    : windowsPathExtensions(env).map((extension) => `${command}${extension}`);
-  const pathEntries = hasPath
-    ? ['']
-    : (env.PATH ?? env.Path ?? env.path ?? '')
-        .split(path.delimiter)
-        .map((entry) => entry.replace(/^"|"$/g, ''))
-        .filter(Boolean);
-
-  for (const directory of pathEntries) {
-    for (const candidate of candidates) {
-      const resolved = directory ? path.join(directory, candidate) : candidate;
-      if (existsSync(resolved)) return resolved;
-    }
-  }
-
-  // Let CreateProcess perform its normal resolution for native executables.
-  // Crucially, do not silently rewrite an unknown command to `<name>.cmd`.
-  return command;
-}
-
-/**
- * Cross-platform, injection-safe replacement for `execFileSync`.
- *
- * On win32, external tools ship as `.cmd`/`.bat` shims (npx.cmd, npm.cmd,
- * codex.cmd, openclaw.cmd). Node's `execFile`/`execFileSync` calls CreateProcess
- * directly and CANNOT launch a `.cmd`/`.bat` file — it throws ENOENT/EINVAL. The
- * only reliable way is to route through the shell (cmd.exe). To keep the argv
- * safety this file relies on (secrets must never be shell-interpreted), we
- * escape every argument for cmd.exe ourselves instead of letting the shell
- * re-split a joined string.
- *
- * On every other platform we spawn the binary directly with no shell, exactly as
- * `execFileSync` did before.
- */
-function runClientCommand(
-  command: string,
-  args: string[],
-  options: Parameters<typeof execFileSync>[2]
-): void {
-  rejectCommandControlCharacters(command, 'Command');
-  for (const arg of args)
-    rejectCommandControlCharacters(arg, 'Command argument');
-
-  if (process.platform !== 'win32') {
-    execFileSync(command, args, options);
-    return;
-  }
-
-  const env = options?.env ?? process.env;
-  const resolved = resolveWindowsCommand(command, env);
-  if (!/\.(?:cmd|bat)$/i.test(resolved)) {
-    execFileSync(resolved, args, options);
-    return;
-  }
-
-  const line = [escapeCmdArg(resolved), ...args.map(escapeCmdArg)].join(' ');
-  const comspec = env.ComSpec ?? env.COMSPEC ?? 'cmd.exe';
-  const windowsOptions = {
-    ...options,
-    windowsVerbatimArguments: true,
-  } as Parameters<typeof execFileSync>[2];
-  execFileSync(comspec, ['/d', '/s', '/c', `"${line}"`], windowsOptions);
-}
-
-function firecrawlHostedMcpUrl(): string {
-  return 'https://mcp.firecrawl.dev/v2/mcp';
+function firecrawlHostedMcpUrl(oauth = false): string {
+  return oauth ? FIRECRAWL_MCP_OAUTH_URL : FIRECRAWL_MCP_URL;
 }
 
 function isEnvironmentBackedApiKey(
@@ -255,37 +170,30 @@ function firecrawlMcpHeaders(
 }
 
 function resolveMcpAgent(agent: string | undefined): ResolvedMcpAgent {
-  if (!agent) return { kind: 'add-mcp' };
+  if (!agent) return { kind: 'clients' };
 
   const normalized = agent.trim().toLowerCase();
   switch (normalized) {
     case '*':
     case 'all':
+      return { kind: 'all-launchers' };
     case 'launchers':
     case 'launcher':
-      return { kind: 'all-launchers' };
-    case 'claude':
-    case 'claude-code':
-      return { kind: 'add-mcp', agent: 'claude-code' };
-    case 'code':
-    case 'vscode':
-    case 'vs-code':
-      return { kind: 'add-mcp', agent: 'vscode' };
-    case 'codex':
-    case 'codex-app':
-    case 'codex-desktop':
-    case 'codex-gui':
-      return { kind: 'add-mcp', agent: 'codex' };
-    case 'opencode':
-    case 'open-code':
-      return { kind: 'add-mcp', agent: 'opencode' };
-    case 'hermes':
-    case 'hermes-agent':
-      return { kind: 'hermes' };
+      return { kind: 'launchers' };
     case 'openclaw':
       return { kind: 'openclaw' };
-    default:
-      return { kind: 'add-mcp', agent };
+    default: {
+      const id = resolveMcpClientId(normalized);
+      if (id) return { kind: 'clients', ids: [id] };
+      // A name we install skills for but write no MCP config for is not an
+      // error; the caller may have already installed skills for it.
+      if (isSkillsAgentName(normalized)) {
+        return { kind: 'skills-only', agent };
+      }
+      throw new Error(
+        `Unknown agent "${agent}" for setup mcp. Use one of: ${ALL_MCP_TARGET_IDS.join(', ')}, all.`
+      );
+    }
   }
 }
 
@@ -443,7 +351,7 @@ async function handleSetupBundle(options: SetupOptions): Promise<void> {
 
   const bundleOptions = {
     ...options,
-    global: options.project ? undefined : (options.global ?? true),
+    global: options.global ?? true,
   };
   const skillIntegrations: SetupIntegration[] = ['skills', 'workflows'];
   for (const integration of integrations) {
@@ -536,6 +444,137 @@ async function pickWebAgents(undo: boolean): Promise<WebAgent[] | null> {
   return selected;
 }
 
+/**
+ * Show the exact edit each agent will receive, then ask. These files belong to
+ * the user, so nothing this command does should be a surprise afterwards, and
+ * a value they set themselves is reported as kept rather than silently skipped.
+ */
+function tildePath(target: string): string {
+  const home = os.homedir();
+  return target.startsWith(home + path.sep)
+    ? path.join('~', path.relative(home, target))
+    : target;
+}
+
+async function confirmWebDefaults(
+  plan: WebDefaultResult[],
+  undo: boolean,
+  framing: { headline?: string; question?: string } = {}
+): Promise<boolean> {
+  const changes = plan.filter((result) => result.changed);
+
+  for (const result of plan) {
+    if (result.preserved || result.skipped) {
+      console.log(`${dim}${result.message}${reset}`);
+    }
+  }
+
+  if (changes.length === 0) {
+    console.log(
+      undo
+        ? 'Native web tools are already enabled for the selected agents.'
+        : 'The selected agents are already set up. Nothing to change.'
+    );
+    return false;
+  }
+
+  console.log('');
+  console.log(
+    framing.headline ??
+      (undo ? 'This will be reverted:' : 'This will be added:')
+  );
+  console.log('');
+  for (const result of changes) {
+    console.log(
+      `  ${bold}${result.agent}${reset} ${dim}${tildePath(result.path)}${reset}`
+    );
+    if (result.preview) console.log(`    ${result.preview}`);
+  }
+  console.log('');
+
+  const { confirm } = await import('@inquirer/prompts');
+  return confirm({
+    message: framing.question ?? 'Apply these changes?',
+    default: true,
+  });
+}
+
+/** Report what the defaults run actually did, shared by both entry points. */
+function reportWebDefaults(results: WebDefaultResult[], undo: boolean): void {
+  for (const result of results) {
+    const prefix =
+      result.skipped || result.preserved ? '!' : result.changed ? '✓' : '•';
+    console.log(`${prefix} ${result.message}`);
+    console.log(`  ${tildePath(result.path)}`);
+  }
+
+  console.log('');
+  // An agent whose value we kept was not configured, so the closing line has to
+  // stop short of claiming it was.
+  const untouched = results.filter(
+    (result) => result.preserved || result.skipped
+  );
+  if (results.length > 0 && untouched.length === results.length) {
+    console.log('Nothing changed.');
+  } else if (undo) {
+    console.log('Native web tools restored where supported.');
+  } else {
+    console.log(
+      'Firecrawl is now the default web provider for supported AI agents.'
+    );
+  }
+  if (untouched.length > 0 && untouched.length < results.length) {
+    console.log(
+      `${dim}Left ${untouched.map((result) => result.agent).join(' and ')} as you had it.${reset}`
+    );
+  }
+}
+
+/** Agents that both host the MCP server and have a documented web-tool switch. */
+const WEB_DEFAULT_BY_TARGET: Partial<Record<McpTargetId, WebAgent>> = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+};
+
+/**
+ * Second step of `setup mcp`. Registering the server does not stop an agent
+ * reaching for its own web tools first, so offer to hand those over as well.
+ *
+ * Only agents whose server entry landed in this run are offered, so the switch
+ * is never thrown for an agent that has no Firecrawl server to fall back on.
+ * Turning a built-in tool off is a real behavior change, so it is previewed
+ * line by line and confirmed, and automation only gets it by asking.
+ */
+async function offerWebDefaults(
+  options: SetupOptions,
+  nonInteractive: boolean,
+  agents: readonly WebAgent[]
+): Promise<void> {
+  if (agents.length === 0 || options.defaults === false) return;
+  if (options.defaults === undefined && nonInteractive) return;
+
+  const targets = [...new Set(agents)];
+
+  if (options.defaults !== true) {
+    const plan = await configureWebDefaults({
+      undo: false,
+      agents: targets,
+      dryRun: true,
+    });
+    const confirmed = await confirmWebDefaults(plan, false, {
+      headline: `Make Firecrawl the default web provider in ${targets.join(' and ')}? This turns off their own web search and fetch:`,
+      question: 'Apply',
+    });
+    if (!confirmed) return;
+  }
+
+  console.log('');
+  reportWebDefaults(
+    await configureWebDefaults({ undo: false, agents: targets }),
+    false
+  );
+}
+
 export async function handleMakeDefaultCommand(
   options: SetupOptions = {}
 ): Promise<void> {
@@ -560,22 +599,14 @@ export async function handleMakeDefaultCommand(
     agents = picked;
   }
 
-  const results = await configureWebDefaults({ undo, agents });
-
-  for (const result of results) {
-    const prefix = result.skipped ? '!' : result.changed ? '✓' : '•';
-    console.log(`${prefix} ${result.message}`);
-    console.log(`  ${result.path}`);
+  // `--yes` and non-interactive runs keep their existing behavior; a prompt
+  // nobody can answer would just hang a script.
+  if (!options.yes && process.stdin.isTTY) {
+    const plan = await configureWebDefaults({ undo, agents, dryRun: true });
+    if (!(await confirmWebDefaults(plan, undo))) return;
   }
 
-  console.log('');
-  if (undo) {
-    console.log('Native web tools restored where supported.');
-  } else {
-    console.log(
-      'Firecrawl is now the default web provider for supported AI agents.'
-    );
-  }
+  reportWebDefaults(await configureWebDefaults({ undo, agents }), undo);
 }
 
 async function installSkills(
@@ -659,217 +690,382 @@ export async function installMcp(
   // client it starts. This lets MCP config keep an indirect env reference
   // without mutating the parent shell or exposing the key to setup commands.
   runtimeEnv: NodeJS.ProcessEnv = process.env
-): Promise<void> {
-  if (options.global && options.project) {
-    throw new Error('Choose either --global or --project, not both.');
+  // True only when every agent this run targeted was configured. Quiet callers
+  // report their own outcome and are not told about a partial run by an
+  // exception, so they have to be told by the return value.
+): Promise<boolean> {
+  // Checked before anything else reports or returns, so no branch can accept a
+  // combination the writers reject.
+  if (options.oauth && options.keyless) {
+    throw new Error(
+      'Choose either --oauth or --keyless. Signing in and running anonymously are different endpoints.'
+    );
   }
 
-  const apiKey = options.keyless ? undefined : getApiKey();
   const resolvedAgent = resolveMcpAgent(options.agent);
-  if (resolvedAgent.kind === 'all-launchers' && options.project && apiKey) {
-    throw new Error(
-      'Authenticated --agent all setup does not support --project because Codex requires a global environment-backed MCP configuration. Choose one --agent for project setup, use --agent all --global, or run keyless setup.'
+
+  if (resolvedAgent.kind === 'skills-only') {
+    // Skills for this agent have already installed by this point; ending the
+    // run here would fail a command that mostly succeeded.
+    console.log(
+      `Firecrawl does not write MCP config for ${resolvedAgent.agent}. Point it at ${FIRECRAWL_MCP_URL} to connect it yourself.`
     );
+    return false;
   }
-  if (!options.agent && isEnvironmentBackedApiKey(apiKey, runtimeEnv)) {
-    throw new Error(
-      "Environment-backed MCP setup requires --agent so Firecrawl can use that client's native variable syntax. Choose a supported client or use --agent all; the API key will not be written literally."
-    );
-  }
-  if (resolvedAgent.kind === 'hermes') {
-    await installHermesMcp(runtimeEnv, options.keyless);
-    return;
-  }
-  assertSubprocessSafeCredential(apiKey, runtimeEnv);
+
   if (resolvedAgent.kind === 'openclaw') {
-    await installOpenClawMcp(runtimeEnv, options.keyless);
-    return;
+    // Routed through the same reporter as every other target so the keyless
+    // fallback is stated rather than implied by a bare installer log line.
+    return installMcpClients(options, runtimeEnv, [resolvedAgent.kind]);
+  }
+  if (resolvedAgent.kind === 'launchers') {
+    return installMcpClients(options, runtimeEnv, [...ALL_MCP_LAUNCHER_IDS]);
   }
   if (resolvedAgent.kind === 'all-launchers') {
-    await installAllMcpLaunchers(options, runtimeEnv);
-    return;
-  }
-
-  await installAddMcp(options, resolvedAgent, runtimeEnv);
-}
-
-async function installAllMcpLaunchers(
-  options: SetupOptions,
-  runtimeEnv: NodeJS.ProcessEnv
-): Promise<void> {
-  for (const agent of ADD_MCP_LAUNCH_AGENTS) {
-    await installAddMcp(
-      { ...options, yes: true },
-      { kind: 'add-mcp', agent },
-      runtimeEnv
-    );
-  }
-  await installHermesMcp(runtimeEnv, options.keyless);
-  await installOpenClawMcp(runtimeEnv, options.keyless);
-}
-
-async function installAddMcp(
-  options: SetupOptions,
-  resolvedAgent: Extract<ResolvedMcpAgent, { kind: 'add-mcp' }>,
-  runtimeEnv: NodeJS.ProcessEnv
-): Promise<void> {
-  const mcpUrl = firecrawlHostedMcpUrl();
-  const apiKey = options.keyless ? undefined : getApiKey();
-  // Codex has no Authorization template in environmentHeaderForAgent. Its
-  // native bearer-token option is the verified env indirection, so this must
-  // remain before the generic firecrawlMcpHeaders path.
-  if (
-    resolvedAgent.agent === 'codex' &&
-    !options.project &&
-    apiKey &&
-    isEnvironmentBackedApiKey(apiKey, runtimeEnv)
-  ) {
-    installCodexMcpFromEnvironment(options, mcpUrl);
-    return;
-  }
-
-  const headers = firecrawlMcpHeaders(resolvedAgent.agent, apiKey, runtimeEnv);
-  const useGlobal = !options.project && Boolean(options.global);
-
-  const args = [
-    '-y',
-    ADD_MCP_PACKAGE,
-    mcpUrl,
-    '--name',
-    'firecrawl',
-    '--transport',
-    'http',
-  ];
-
-  if (headers?.Authorization) {
-    args.push('--header', `Authorization: ${headers.Authorization}`);
-  }
-
-  if (useGlobal) {
-    args.push('--global');
-  }
-
-  if (resolvedAgent.agent) {
-    args.push('--agent', resolvedAgent.agent);
-  } else if (resolvedAgent.all) {
-    args.push('--all');
-  }
-
-  if (options.yes) {
-    args.push('--yes');
-  }
-
-  if (!options.quiet) {
-    console.log('Configuring Firecrawl MCP...\n');
-  }
-
-  try {
-    runClientCommand('npx', args, {
-      stdio: 'inherit',
-      env: cleanNpmEnv(),
+    return installMcpClients(options, runtimeEnv, undefined, {
+      includeAllLaunchers: true,
     });
-    if (options.quiet) {
-      const target = resolvedAgent.agent
-        ? ` for ${resolvedAgent.agent}`
-        : resolvedAgent.all
-          ? ' for launch integrations'
-          : '';
-      console.log(`  ${green}✓${reset} Firecrawl MCP configured${target}`);
+  }
+
+  return installMcpClients(options, runtimeEnv, resolvedAgent.ids);
+}
+
+/** Shorten a path for display: relative inside the project, `~` under home. */
+function displayPath(target: string, ctx: McpContext): string {
+  const relative = path.relative(ctx.cwd, target);
+  if (relative && !relative.startsWith('..') && !path.isAbsolute(relative)) {
+    return relative;
+  }
+  if (target === ctx.home) return '~';
+  return target.startsWith(ctx.home + path.sep)
+    ? path.join('~', path.relative(ctx.home, target))
+    : target;
+}
+
+async function pickMcpClients(
+  detected: readonly McpTargetId[]
+): Promise<McpTargetId[]> {
+  const { checkbox } = await import('@inquirer/prompts');
+  return checkbox<McpTargetId>({
+    message: 'Which agents do you want to set up?',
+    loop: false,
+    pageSize: detected.length,
+    choices: detected.map((id) => ({
+      name: mcpTargetName(id),
+      value: id,
+      checked: true,
+    })),
+  });
+}
+
+/**
+ * Launchers own their MCP configuration, so they are installed through their
+ * own routine instead of a config write. Failures stay scoped to the one
+ * launcher: a missing binary must not cost the user the agents that worked.
+ */
+async function setupMcpLauncher(
+  id: McpLauncherId,
+  ctx: McpContext,
+  runtimeEnv: NodeJS.ProcessEnv
+): Promise<McpClientResult> {
+  const keyless = ctx.auth !== 'env';
+  const result: McpClientResult = {
+    id,
+    name: mcpTargetName(id),
+    mcpStatus: 'failed',
+    mcpDetail: '',
+    // The mode this run configured, which `keyless` cannot express: it folds
+    // oauth in with keyless because neither sends a credential.
+    auth: ctx.auth,
+  };
+
+  try {
+    switch (id) {
+      case 'openclaw':
+        await installOpenClawMcp(
+          runtimeEnv,
+          keyless,
+          true,
+          ctx.auth === 'oauth'
+        );
+        result.mcpDetail = 'via the openclaw CLI';
+        break;
+      default: {
+        const unreachable: never = id;
+        throw new Error(`No installer for launcher ${String(unreachable)}`);
+      }
     }
-  } catch {
-    throw new Error('Failed to configure Firecrawl MCP.');
+    result.mcpStatus = 'configured';
+  } catch (error) {
+    result.mcpDetail = error instanceof Error ? error.message : String(error);
+  }
+
+  return result;
+}
+
+async function installMcpClients(
+  options: SetupOptions,
+  runtimeEnv: NodeJS.ProcessEnv,
+  explicitIds?: McpTargetId[],
+  { includeAllLaunchers = false } = {}
+): Promise<boolean> {
+  const apiKey = options.oauth || options.keyless ? undefined : getApiKey();
+  // Sign-in is a different endpoint rather than a different credential, so it
+  // overrides the key lookup entirely. Otherwise a stored key cannot be written
+  // into agent config, so authenticated setup requires the variable to be
+  // exported where the agent will read it.
+  const auth: McpAuthMode = options.oauth
+    ? 'oauth'
+    : isEnvironmentBackedApiKey(apiKey, runtimeEnv)
+      ? 'env'
+      : 'keyless';
+
+  const ctx: McpContext = {
+    // Resolved so path comparisons hold even for an unnormalized HOME.
+    home: path.resolve(os.homedir()),
+    cwd: path.resolve(process.cwd()),
+    platform: process.platform,
+    env: runtimeEnv,
+    auth,
+  };
+  // Prompts only make sense when someone is there to answer them.
+  const nonInteractive = Boolean(options.yes) || !process.stdin.isTTY;
+
+  // Naming targets is what skips the picker below; nothing here needs `yes`,
+  // which would also answer the rules prompt on the user's behalf.
+  let selected = includeAllLaunchers
+    ? [...ALL_MCP_CLIENT_IDS]
+    : (explicitIds ?? options.clients);
+  if (!selected || selected.length === 0) {
+    const detected: McpTargetId[] = [
+      ...(await detectMcpClients(ctx)),
+      ...detectMcpLaunchers(ctx),
+    ];
+    if (detected.length === 0 && !includeAllLaunchers) {
+      const message =
+        'No coding agents detected. Pass an agent flag such as --claude or --cursor.';
+      // Interactive setup needs a picker. Non-interactive `-y` / `setup --yes`
+      // must not fail the rest of the bundle after skills already installed.
+      if (!nonInteractive) {
+        throw new Error(message);
+      }
+      if (!options.quiet) console.log(message);
+      return false;
+    }
+    if (nonInteractive) {
+      selected = detected;
+    } else {
+      selected = await pickMcpClients(detected);
+      if (selected.length === 0) {
+        console.log('No agents selected. Nothing changed.');
+        return false;
+      }
+    }
+  }
+
+  // `--agent all` reaches every integration whether or not it looks installed,
+  // which is what the flag has always meant.
+  if (includeAllLaunchers) {
+    selected = [
+      ...selected.filter((id) => !isMcpLauncherId(id)),
+      ...ALL_MCP_LAUNCHER_IDS,
+    ];
+  }
+
+  const results: McpClientResult[] = [];
+  for (const id of selected) {
+    results.push(
+      isMcpLauncherId(id)
+        ? await setupMcpLauncher(id, ctx, runtimeEnv)
+        : await setupMcpClient(id, { ctx })
+    );
+  }
+
+  reportMcpResults(results, ctx, options, Boolean(apiKey));
+
+  // The handover is an offer on top of the work this command was asked to do,
+  // so an unreadable settings file or a permissions error reports itself and
+  // leaves the MCP result standing rather than failing the whole run.
+  try {
+    await offerWebDefaults(
+      options,
+      nonInteractive,
+      results
+        .filter((result) => result.mcpStatus !== 'failed')
+        .map((result) => WEB_DEFAULT_BY_TARGET[result.id])
+        .filter((agent): agent is WebAgent => agent !== undefined)
+    );
+  } catch (error) {
+    console.log(
+      `${red}Could not set the default web provider${reset} ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+
+  assertMcpOutcome(results, options);
+
+  return results.every((result) => result.mcpStatus !== 'failed');
+}
+
+/**
+ * Explain any gap between the credential the user has and what actually got
+ * written, so a keyless fallback is never silent.
+ */
+function authNotes(
+  results: McpClientResult[],
+  ctx: McpContext,
+  hasApiKey: boolean
+): string[] {
+  const succeeded = results.filter((result) => result.mcpStatus !== 'failed');
+  if (succeeded.length === 0) return [];
+
+  if (ctx.auth === 'oauth') {
+    // Deliberately not "each agent prompts you": Codex, Hermes, and OpenClaw
+    // wait for the command printed above their entry instead.
+    return ['Sign in from each agent the first time you use it.'];
+  }
+
+  if (!hasApiKey) {
+    return [
+      `Running keyless (search, scrape, parse). Export ${ENV_API_KEY} where your agents run, then rerun to authenticate.`,
+    ];
+  }
+
+  if (ctx.auth !== 'env') {
+    return [
+      `Configured keyless: your stored key is never written into agent config. Export ${ENV_API_KEY} where your agents run, then rerun to authenticate.`,
+    ];
+  }
+
+  return [];
+}
+
+/**
+ * The command that signs this agent in. Only the agents that need one say
+ * anything: the rest prompt on their own, and the footer already tells the
+ * person to expect that.
+ */
+function signInLine(
+  result: McpClientResult,
+  ctx: McpContext
+): string | undefined {
+  if (ctx.auth !== 'oauth' || result.mcpStatus === 'failed') return undefined;
+  const spec = isMcpLauncherId(result.id)
+    ? MCP_LAUNCHER_OAUTH[result.id]
+    : MCP_CLIENTS[result.id].oauth;
+  return spec?.nextStep
+    ? `  Sign in: ${dim}${spec.nextStep}${reset}`
+    : undefined;
+}
+
+function reportMcpResults(
+  results: McpClientResult[],
+  ctx: McpContext,
+  options: SetupOptions,
+  hasApiKey: boolean
+): void {
+  const succeeded = results.filter((result) => result.mcpStatus !== 'failed');
+
+  if (options.quiet) {
+    for (const result of results) {
+      console.log(
+        result.mcpStatus === 'failed'
+          ? `  ${red}✗${reset} Firecrawl MCP failed for ${result.name}: ${result.mcpDetail}`
+          : `  ${green}✓${reset} Firecrawl MCP configured for ${result.name}`
+      );
+    }
+    for (const note of authNotes(results, ctx, hasApiKey)) {
+      console.log(`  ${dim}${note}${reset}`);
+    }
+    return;
+  }
+
+  for (const result of results) {
+    console.log(`${bold}${result.name}${reset}`);
+    console.log(
+      result.mcpStatus === 'failed'
+        ? `  ${red}MCP failed${reset} ${result.mcpDetail}`
+        : `  MCP ${result.mcpStatus} ${dim}${displayPath(result.mcpDetail, ctx)}${reset}`
+    );
+    const signIn = signInLine(result, ctx);
+    if (signIn) console.log(signIn);
+  }
+
+  console.log('');
+  console.log(
+    `Firecrawl MCP set up for ${succeeded.length}/${results.length} agents. Restart your agents to load it.`
+  );
+  for (const note of authNotes(results, ctx, hasApiKey)) {
+    console.log(`${dim}${note}${reset}`);
   }
 }
 
-function installCodexMcpFromEnvironment(
-  options: SetupOptions,
-  mcpUrl: string
+/**
+ * Raise the aggregate failure, kept apart from reporting so it can run after
+ * the web-provider step. That step is already scoped to agents whose entry
+ * landed, so one broken config must not cost a working agent the handover the
+ * caller asked for.
+ *
+ * Quiet mode is embedded in a larger command that reports its own outcome, so
+ * it still fails only when nothing landed at all.
+ */
+function assertMcpOutcome(
+  results: McpClientResult[],
+  options: SetupOptions
 ): void {
-  if (!options.quiet) {
-    console.log('Configuring Firecrawl MCP...\n');
+  const failed = results.filter((result) => result.mcpStatus === 'failed');
+  if (failed.length === 0) return;
+
+  if (options.quiet) {
+    if (failed.length === results.length) {
+      throw new Error('Failed to configure Firecrawl MCP.');
+    }
+    return;
   }
 
-  try {
-    runClientCommand(
-      'codex',
-      [
-        'mcp',
-        'add',
-        'firecrawl',
-        '--url',
-        mcpUrl,
-        '--bearer-token-env-var',
-        'FIRECRAWL_API_KEY',
-      ],
-      { stdio: 'inherit', env: cleanNpmEnv() }
-    );
-    if (options.quiet) {
-      console.log(`  ${green}✓${reset} Firecrawl MCP configured for codex`);
-    }
-  } catch {
-    throw new Error('Failed to configure Firecrawl MCP for Codex.');
-  }
+  throw new Error(
+    `Firecrawl MCP failed for ${failed.map((result) => result.name).join(', ')}.`
+  );
 }
 
 function firecrawlMcpConfig(
   agent?: string,
   runtimeEnv: NodeJS.ProcessEnv = process.env,
-  keyless = false
+  keyless = false,
+  oauth = false
 ): {
   url: string;
   headers?: Record<string, string>;
   transport?: string;
 } {
   return {
-    url: firecrawlHostedMcpUrl(),
+    url: firecrawlHostedMcpUrl(oauth),
+    // Sign-in replaces the credential rather than travelling beside it, so the
+    // key is dropped here too. Callers already choose one or the other, but a
+    // helper this public must not put credential configuration on the sign-in
+    // endpoint just because it was called directly.
     headers: firecrawlMcpHeaders(
       agent,
-      keyless ? undefined : getApiKey(),
+      keyless || oauth ? undefined : getApiKey(),
       runtimeEnv
     ),
   };
 }
 
-export async function installHermesMcp(
-  runtimeEnv: NodeJS.ProcessEnv = process.env,
-  keyless = false
-): Promise<void> {
-  const config = firecrawlMcpConfig('hermes', runtimeEnv, keyless);
-  const configPath = path.join(os.homedir(), '.hermes', 'config.yaml');
-  mkdirSync(path.dirname(configPath), { recursive: true });
-
-  const existing = existsSync(configPath)
-    ? readFileSync(configPath, 'utf-8')
-    : '';
-  const root = (parseYaml(existing || '{}') ?? {}) as Record<string, unknown>;
-  const mcpServers =
-    typeof root.mcp_servers === 'object' &&
-    root.mcp_servers !== null &&
-    !Array.isArray(root.mcp_servers)
-      ? (root.mcp_servers as Record<string, unknown>)
-      : {};
-
-  mcpServers.firecrawl = config;
-  root.mcp_servers = mcpServers;
-  writeFileSync(configPath, stringifyYaml(root), {
-    encoding: 'utf-8',
-    mode: 0o600,
-  });
-  if (process.platform !== 'win32') {
-    chmodSync(configPath, 0o600);
-  }
-  console.log(`Hermes Agent MCP configured at ${configPath}.`);
-}
-
 export async function installOpenClawMcp(
   runtimeEnv: NodeJS.ProcessEnv = process.env,
-  keyless = false
+  keyless = false,
+  /** Suppress standalone logging when a caller renders its own summary. */
+  quiet = false,
+  oauth = false
 ): Promise<void> {
   const config = {
-    ...firecrawlMcpConfig('openclaw', runtimeEnv, keyless),
+    ...firecrawlMcpConfig('openclaw', runtimeEnv, keyless, oauth),
     transport: 'streamable-http',
+    ...(oauth ? MCP_LAUNCHER_OAUTH.openclaw?.entry : undefined),
   };
-  console.log('Configuring Firecrawl MCP for OpenClaw...\n');
+  if (!quiet) console.log('Configuring Firecrawl MCP for OpenClaw...\n');
 
   try {
     runClientCommand(
