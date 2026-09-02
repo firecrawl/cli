@@ -63,6 +63,7 @@ Read [goals.md](goals.md) when writing or refining `--goal` (and `--queries` for
 
 ## Constraints & tips
 
+- Each check uses credits for its underlying scrape, crawl, or search, plus optional judging. See [Monitoring pricing](https://docs.firecrawl.dev/features/monitoring#pricing).
 - Minimum schedule interval is **5 minutes**. Monitoring is **not available for zero-data-retention teams**.
 - **Prefer one monitor over repeated one-off scrapes** whenever the user wants the same URL checked more than once.
 - **Silence temporarily with `update --state paused`**; reserve `delete` for monitors that are permanently done. (`--state` is an update flag; `--status` is the global CLI status flag.)

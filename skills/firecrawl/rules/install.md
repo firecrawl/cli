@@ -15,7 +15,7 @@ description: |
 npx -y firecrawl-cli@latest init -y --browser
 ```
 
-This installs `firecrawl-cli` globally, authenticates via browser, and installs core, build, and workflow skills.
+This installs `firecrawl-cli` globally, authenticates via browser, and installs core and workflow skills. Build skills are a separate step: `firecrawl setup build`.
 
 This setup is safe to re-run when the CLI is missing, stale, or only partially configured.
 
@@ -31,6 +31,7 @@ To install skills manually:
 
 ```bash
 firecrawl setup skills
+firecrawl setup build
 firecrawl setup workflows
 ```
 
