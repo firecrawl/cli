@@ -143,6 +143,82 @@ describe('handleDeveloperSearchCommand', () => {
       expect(content).toContain('rust: not indexed');
     });
 
+    it('collapses blank runs and caps each passage at 40 rendered lines', async () => {
+      const passage = [
+        'First line.  ',
+        '',
+        '',
+        '',
+        ...Array.from({ length: 50 }, (_, index) => `Line ${index + 2}`),
+      ].join('\n');
+      mockHttpGet.mockResolvedValue(
+        mockDeveloperResponse([
+          {
+            ...sampleResult,
+            passages: [
+              {
+                text: passage,
+                citation_url: 'https://example.com/citation',
+              },
+            ],
+          },
+        ])
+      );
+
+      await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      expect(content).not.toContain('First line.  ');
+      expect(content).not.toContain('\n\n\n');
+      expect(content).toContain(
+        '… (14 more lines; use --json for the full passage)'
+      );
+      expect(content).not.toContain('Line 39\n');
+      expect(content).toContain('Citation: https://example.com/citation');
+      const passageBlock = content.split('\n').slice(3);
+      expect(passageBlock).toHaveLength(40);
+    });
+
+    it('keeps a long fenced passage balanced within the line cap', async () => {
+      const passage = [
+        '```rust',
+        ...Array.from(
+          { length: 50 },
+          (_, index) => `let value_${index} = ${index};`
+        ),
+        '```',
+      ].join('\n');
+      mockHttpGet.mockResolvedValue(
+        mockDeveloperResponse([
+          { ...sampleResult, passages: [{ text: passage }] },
+        ])
+      );
+
+      await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      const passageBlock = content.split('\n').slice(3);
+      expect(passageBlock).toHaveLength(40);
+      expect(passageBlock.filter((line) => line === '```')).toHaveLength(1);
+      expect(passageBlock.at(-2)).toBe('```');
+      expect(passageBlock.at(-1)).toContain('use --json');
+    });
+
+    it('renders every passage without a passage-count cap', async () => {
+      const passages = Array.from({ length: 45 }, (_, index) => ({
+        text: `unique passage ${index + 1}`,
+      }));
+      mockHttpGet.mockResolvedValue(
+        mockDeveloperResponse([{ ...sampleResult, passages }])
+      );
+
+      await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      for (const passage of passages) expect(content).toContain(passage.text);
+      expect(content.split('\n---\n')).toHaveLength(45);
+    });
+
     it('prints a result URL only when its id does not contain it', async () => {
       const duplicateUrl = 'https://docs.rs/tokio/latest/tokio';
       mockHttpGet.mockResolvedValue(

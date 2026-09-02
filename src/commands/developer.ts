@@ -42,6 +42,97 @@ function idEncodesUrl(id: string | undefined, url: string): boolean {
   return id === url || id?.endsWith(`:${url}`) === true;
 }
 
+const MAX_RENDERED_PASSAGE_LINES = 40;
+
+function normalizedPassageLines(text: string | undefined): string[] {
+  const lines: string[] = [];
+  let blank = false;
+  for (const rawLine of (text ?? '').split(/\r?\n/)) {
+    const line = rawLine.trimEnd();
+    if (line.length === 0) {
+      if (lines.length > 0 && !blank) lines.push('');
+      blank = true;
+    } else {
+      lines.push(line);
+      blank = false;
+    }
+  }
+  while (lines.at(-1) === '') lines.pop();
+  return lines;
+}
+
+interface OpenFence {
+  marker: '`' | '~';
+  length: number;
+}
+
+function observeFence(
+  line: string,
+  open: OpenFence | undefined
+): OpenFence | undefined {
+  const match = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+  if (!match) return open;
+  const run = match[1];
+  const marker = run[0] as OpenFence['marker'];
+  const tail = match[2].trim();
+  if (open) {
+    return marker === open.marker && run.length >= open.length && tail === ''
+      ? undefined
+      : open;
+  }
+  if (marker === '`' && tail.includes('`')) return undefined;
+  return { marker, length: run.length };
+}
+
+function cappedPassageLines(lines: string[], capacity: number): string[] {
+  if (lines.length <= capacity) return lines;
+
+  // Reserve one line for the truncation notice. Prefer the last boundary that
+  // is outside a fenced block, so a terminal cap does not recreate the old
+  // character-slice bug that left Markdown fences open.
+  const contentCapacity = capacity - 1;
+  let open: OpenFence | undefined;
+  let lastSafe = 0;
+  for (let index = 0; index < contentCapacity; index += 1) {
+    open = observeFence(lines[index], open);
+    if (!open) lastSafe = index + 1;
+  }
+
+  let kept: string[];
+  let sourceLines: number;
+  if (lastSafe > 0) {
+    kept = lines.slice(0, lastSafe);
+    sourceLines = lastSafe;
+  } else if (open && contentCapacity >= 2) {
+    // A passage can itself begin with a long fence. Keep a bounded preview and
+    // render its closing marker before the notice.
+    sourceLines = contentCapacity - 1;
+    kept = [...lines.slice(0, sourceLines), open.marker.repeat(open.length)];
+  } else {
+    sourceLines = contentCapacity;
+    kept = lines.slice(0, sourceLines);
+  }
+  kept.push(
+    `… (${lines.length - sourceLines} more lines; use --json for the full passage)`
+  );
+  return kept;
+}
+
+function fmtPassage(
+  passage: Partial<DeveloperItem['passages'][number]>
+): string {
+  const citation = passage.citation_url
+    ? `Citation: ${passage.citation_url}`
+    : undefined;
+  const metadataLines = citation ? 1 : 0;
+  const lines = cappedPassageLines(
+    normalizedPassageLines(passage.text),
+    MAX_RENDERED_PASSAGE_LINES - metadataLines
+  );
+  if (citation) lines.push(citation);
+  return lines.join('\n');
+}
+
 function fmtResult(item: DeveloperItem): string {
   // The wire carries no type field; the artifact kind is the id prefix
   // (doc:, issue:, pull_request:, readme:).
@@ -53,15 +144,8 @@ function fmtResult(item: DeveloperItem): string {
   if (item.url && !idEncodesUrl(item.id, item.url)) lines.push(item.url);
   if (item.license) lines.push(fmtLicense(item.license));
   const body = (item.passages ?? [])
-    .map((passage) =>
-      [
-        passage.text,
-        passage.citation_url && `Citation: ${passage.citation_url}`,
-      ]
-        .filter(Boolean)
-        .join('\n')
-    )
-    .filter((passage) => passage.trim().length > 0)
+    .map(fmtPassage)
+    .filter((passage) => passage.length > 0)
     .join('\n---\n')
     .trim();
   lines.push(body || '(no content)');
