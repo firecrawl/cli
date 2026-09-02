@@ -204,6 +204,41 @@ describe('handleDeveloperSearchCommand', () => {
       expect(passageBlock.at(-1)).toContain('use --json');
     });
 
+    it.each([
+      {
+        name: 'block quote',
+        passage: [
+          '> ```rust',
+          ...Array.from({ length: 50 }, (_, index) => `> let value_${index};`),
+          '> ```',
+        ].join('\n'),
+        close: '> ```',
+      },
+      {
+        name: 'list item',
+        passage: [
+          '- ```rust',
+          ...Array.from({ length: 50 }, (_, index) => `  let value_${index};`),
+          '  ```',
+        ].join('\n'),
+        close: '  ```',
+      },
+    ])('keeps a long $name fence balanced', async ({ passage, close }) => {
+      mockHttpGet.mockResolvedValue(
+        mockDeveloperResponse([
+          { ...sampleResult, passages: [{ text: passage }] },
+        ])
+      );
+
+      await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      const passageBlock = content.split('\n').slice(3);
+      expect(passageBlock).toHaveLength(40);
+      expect(passageBlock.at(-2)).toBe(close);
+      expect(passageBlock.at(-1)).toContain('use --json');
+    });
+
     it('renders every passage without a passage-count cap', async () => {
       const passages = Array.from({ length: 45 }, (_, index) => ({
         text: `unique passage ${index + 1}`,

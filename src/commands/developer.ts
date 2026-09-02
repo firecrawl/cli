@@ -64,24 +64,57 @@ function normalizedPassageLines(text: string | undefined): string[] {
 interface OpenFence {
   marker: '`' | '~';
   length: number;
+  closingPrefix: string;
+}
+
+function fenceCandidate(line: string): {
+  run: string;
+  tail: string;
+  closingPrefix: string;
+} | null {
+  let rest = line;
+  let closingPrefix = '';
+  while (true) {
+    const quote = rest.match(/^( {0,3}>[ \t]?)/);
+    if (quote) {
+      rest = rest.slice(quote[1].length);
+      closingPrefix += quote[1];
+      continue;
+    }
+    const list = rest.match(/^( {0,3}(?:[-+*]|\d+[.)])[ \t]+)/);
+    if (list) {
+      rest = rest.slice(list[1].length);
+      closingPrefix += ' '.repeat(list[1].length);
+      continue;
+    }
+    break;
+  }
+  const match = rest.match(/^( {0,3})(`{3,}|~{3,})(.*)$/);
+  return match
+    ? {
+        run: match[2],
+        tail: match[3],
+        closingPrefix: closingPrefix + match[1],
+      }
+    : null;
 }
 
 function observeFence(
   line: string,
   open: OpenFence | undefined
 ): OpenFence | undefined {
-  const match = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
-  if (!match) return open;
-  const run = match[1];
+  const candidate = fenceCandidate(line);
+  if (!candidate) return open;
+  const { run, tail: rawTail, closingPrefix } = candidate;
   const marker = run[0] as OpenFence['marker'];
-  const tail = match[2].trim();
+  const tail = rawTail.trim();
   if (open) {
     return marker === open.marker && run.length >= open.length && tail === ''
       ? undefined
       : open;
   }
   if (marker === '`' && tail.includes('`')) return undefined;
-  return { marker, length: run.length };
+  return { marker, length: run.length, closingPrefix };
 }
 
 function cappedPassageLines(lines: string[], capacity: number): string[] {
@@ -107,7 +140,10 @@ function cappedPassageLines(lines: string[], capacity: number): string[] {
     // A passage can itself begin with a long fence. Keep a bounded preview and
     // render its closing marker before the notice.
     sourceLines = contentCapacity - 1;
-    kept = [...lines.slice(0, sourceLines), open.marker.repeat(open.length)];
+    kept = [
+      ...lines.slice(0, sourceLines),
+      `${open.closingPrefix}${open.marker.repeat(open.length)}`,
+    ];
   } else {
     sourceLines = contentCapacity;
     kept = lines.slice(0, sourceLines);
