@@ -1521,10 +1521,6 @@ function createAgentCommand(): Command {
       '[prompt-or-job-id]',
       'Natural language prompt describing data to extract, or job ID to check status'
     )
-    // Keep the positive option ahead of its negation, here and for --schema
-    // below. Commander defaults a negated flag to `true` unless the positive
-    // one is already declared, and a `true` here would reach the URL split on
-    // every run that does not pass --urls. `cli-argv.test.ts` pins the order.
     .option('--urls <urls>', 'Comma-separated URLs to focus extraction on')
     .option(
       '--no-urls',
@@ -1621,6 +1617,16 @@ function createAgentCommand(): Command {
       const rawArgs: string[] = command.parent?.rawArgs ?? [];
       const passed = (flag: string) =>
         rawArgs.some((arg) => arg === flag || arg.startsWith(`${flag}=`));
+
+      // That one key carries three different answers: a string when a value
+      // was given, false when the flag cleared it, and nothing when neither
+      // appeared. Splitting them here means the parsing below never has to
+      // ask which, and never inherits whatever Commander chose to default the
+      // attribute to.
+      const urlsValue =
+        typeof options.urls === 'string' ? options.urls : undefined;
+      const schemaValue =
+        typeof options.schema === 'string' ? options.schema : undefined;
       const clearUrls = options.urls === false;
       const clearSchema = options.schema === false;
 
@@ -1691,8 +1697,8 @@ function createAgentCommand(): Command {
 
       // Parse URLs
       let urls: string[] | undefined;
-      if (options.urls) {
-        urls = options.urls
+      if (urlsValue) {
+        urls = urlsValue
           .split(',')
           .map((u: string) => u.trim())
           .filter((u: string) => u.length > 0);
@@ -1700,9 +1706,9 @@ function createAgentCommand(): Command {
 
       // Parse inline schema
       let schema: Record<string, unknown> | undefined;
-      if (options.schema) {
+      if (schemaValue) {
         try {
-          schema = JSON.parse(options.schema) as Record<string, unknown>;
+          schema = JSON.parse(schemaValue) as Record<string, unknown>;
         } catch {
           console.error('Error: Invalid JSON in --schema option');
           process.exit(1);

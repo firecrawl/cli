@@ -170,12 +170,10 @@ describe('CLI argv parsing', () => {
   });
 
   /**
-   * Commander gives a negated flag a `true` default only when no positive
-   * option already shares its name, so `--urls <urls>` and `--schema <json>`
-   * being declared *before* `--no-urls` and `--no-schema` is the only reason
-   * an ordinary run leaves them unset. Swap either pair and every agent run
-   * without that flag calls `.split()` on `true` and dies before it asks for
-   * anything. Nothing at the call site shows that, so it is pinned here.
+   * `--urls` and `--no-urls` share one attribute, and so do the schema pair.
+   * A run that passes neither must reach the request with both unset: leaking
+   * anything else into them puts a non-string through the URL split or the
+   * schema parse and kills the command before it asks for anything.
    */
   testWithBuiltCli(
     'leaves URLs and schema unset when neither flag is passed',
