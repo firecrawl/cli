@@ -179,6 +179,60 @@ describe('handleDeveloperSearchCommand', () => {
       expect(passageBlock).toHaveLength(40);
     });
 
+    it('keeps citation line breaks inside the passage line budget', async () => {
+      const passage = Array.from(
+        { length: 50 },
+        (_, index) => `Line ${index + 1}`
+      ).join('\n');
+      mockHttpGet.mockResolvedValue(
+        mockDeveloperResponse([
+          {
+            ...sampleResult,
+            passages: [
+              {
+                text: passage,
+                citation_url: 'https://example.com/one\r\ntwo\nthree',
+              },
+            ],
+          },
+        ])
+      );
+
+      await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      const passageBlock = content.split('\n').slice(3);
+      expect(passageBlock).toHaveLength(40);
+      expect(passageBlock.at(-2)).toBe(
+        '… (12 more lines; use --json for the full passage)'
+      );
+      expect(passageBlock.at(-1)).toBe(
+        'Citation: https://example.com/one two three'
+      );
+    });
+
+    it('normalizes and caps passages with lone carriage-return lines', async () => {
+      const passage = Array.from(
+        { length: 50 },
+        (_, index) => `Line ${index + 1}  `
+      ).join('\r');
+      mockHttpGet.mockResolvedValue(
+        mockDeveloperResponse([
+          { ...sampleResult, passages: [{ text: passage }] },
+        ])
+      );
+
+      await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      const passageBlock = content.split('\n').slice(3);
+      expect(passageBlock).toHaveLength(40);
+      expect(passageBlock[0]).toBe('Line 1');
+      expect(passageBlock.at(-1)).toBe(
+        '… (11 more lines; use --json for the full passage)'
+      );
+    });
+
     it('keeps a long fenced passage balanced within the line cap', async () => {
       const passage = [
         '```rust',
@@ -236,6 +290,160 @@ describe('handleDeveloperSearchCommand', () => {
       const passageBlock = content.split('\n').slice(3);
       expect(passageBlock).toHaveLength(40);
       expect(passageBlock.at(-2)).toBe(close);
+      expect(passageBlock.at(-1)).toContain('use --json');
+    });
+
+    it('expands tab-padded list indentation for a synthetic closer', async () => {
+      const passage = [
+        '-\t```text',
+        ...Array.from({ length: 50 }, (_, index) => `    code ${index}`),
+      ].join('\n');
+      mockHttpGet.mockResolvedValue(
+        mockDeveloperResponse([
+          { ...sampleResult, passages: [{ text: passage }] },
+        ])
+      );
+
+      await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      const passageBlock = content.split('\n').slice(3);
+      expect(passageBlock).toHaveLength(40);
+      expect(passageBlock.at(-2)).toBe('    ```');
+      expect(passageBlock.at(-1)).toContain('use --json');
+    });
+
+    it('matches a tab-padded list opener to a column-indented closer', async () => {
+      const passage = [
+        '-\t```text',
+        ...Array.from({ length: 10 }, (_, index) => `    code ${index}`),
+        '    ```',
+        ...Array.from({ length: 40 }, (_, index) => `prose ${index}`),
+      ].join('\n');
+      mockHttpGet.mockResolvedValue(
+        mockDeveloperResponse([
+          { ...sampleResult, passages: [{ text: passage }] },
+        ])
+      );
+
+      await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      const passageBlock = content.split('\n').slice(3);
+      expect(passageBlock).toHaveLength(40);
+      expect(passageBlock.filter((line) => line === '    ```')).toHaveLength(1);
+      expect(passageBlock).toContain('prose 26');
+    });
+
+    it('accepts valid closing-fence indentation that differs from the opener', async () => {
+      const passage = [
+        ' ```text',
+        ...Array.from({ length: 10 }, (_, index) => `code ${index}`),
+        '  ```',
+        ...Array.from({ length: 40 }, (_, index) => `prose ${index}`),
+      ].join('\n');
+      mockHttpGet.mockResolvedValue(
+        mockDeveloperResponse([
+          { ...sampleResult, passages: [{ text: passage }] },
+        ])
+      );
+
+      await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      const passageBlock = content.split('\n').slice(3);
+      expect(passageBlock.filter((line) => line.trim() === '```')).toHaveLength(
+        1
+      );
+      expect(passageBlock).toContain('prose 26');
+      expect(passageBlock.at(-1)).toContain('use --json');
+    });
+
+    it('preserves matching indentation on a synthetic closing fence', async () => {
+      const passage = [
+        '  ```text',
+        ...Array.from({ length: 50 }, (_, index) => `  code ${index}`),
+        '  ```',
+      ].join('\n');
+      mockHttpGet.mockResolvedValue(
+        mockDeveloperResponse([
+          { ...sampleResult, passages: [{ text: passage }] },
+        ])
+      );
+
+      await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      const passageBlock = content.split('\n').slice(3);
+      expect(passageBlock[0]).toBe('  ```text');
+      expect(passageBlock.at(-2)).toBe('  ```');
+    });
+
+    it('accepts a blockquote closer with different optional spacing', async () => {
+      const passage = [
+        '> ```text',
+        ...Array.from({ length: 10 }, (_, index) => `> code ${index}`),
+        '>```',
+        ...Array.from({ length: 40 }, (_, index) => `prose ${index}`),
+      ].join('\n');
+      mockHttpGet.mockResolvedValue(
+        mockDeveloperResponse([
+          { ...sampleResult, passages: [{ text: passage }] },
+        ])
+      );
+
+      await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      const passageBlock = content.split('\n').slice(3);
+      expect(
+        passageBlock.filter((line) => line.trim() === '>```')
+      ).toHaveLength(1);
+      expect(passageBlock).toContain('prose 26');
+    });
+
+    it('does not parse a ten-digit ordered marker as a list container', async () => {
+      const passage = [
+        '1234567890. ```text',
+        ...Array.from({ length: 50 }, (_, index) => `prose ${index}`),
+      ].join('\n');
+      mockHttpGet.mockResolvedValue(
+        mockDeveloperResponse([
+          { ...sampleResult, passages: [{ text: passage }] },
+        ])
+      );
+
+      await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      const passageBlock = content.split('\n').slice(3);
+      expect(passageBlock).toHaveLength(40);
+      expect(passageBlock.filter((line) => line.trim() === '```')).toHaveLength(
+        0
+      );
+      expect(passageBlock.at(-1)).toContain('use --json');
+    });
+
+    it('does not treat non-Markdown whitespace as a fence closer', async () => {
+      const passage = [
+        '```text',
+        'code before invalid closer',
+        '```\v',
+        ...Array.from({ length: 50 }, (_, index) => `code ${index}`),
+        '```',
+      ].join('\n');
+      mockHttpGet.mockResolvedValue(
+        mockDeveloperResponse([
+          { ...sampleResult, passages: [{ text: passage }] },
+        ])
+      );
+
+      await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      const passageBlock = content.split('\n').slice(3);
+      expect(passageBlock).toHaveLength(40);
+      expect(passageBlock.at(-2)).toBe('```');
       expect(passageBlock.at(-1)).toContain('use --json');
     });
 

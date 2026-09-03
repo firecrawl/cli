@@ -47,8 +47,8 @@ const MAX_RENDERED_PASSAGE_LINES = 40;
 function normalizedPassageLines(text: string | undefined): string[] {
   const lines: string[] = [];
   let blank = false;
-  for (const rawLine of (text ?? '').split(/\r?\n/)) {
-    const line = rawLine.trimEnd();
+  for (const rawLine of (text ?? '').split(/\r\n|\r|\n/)) {
+    const line = rawLine.replace(/[ \t]+$/, '');
     if (line.length === 0) {
       if (lines.length > 0 && !blank) lines.push('');
       blank = true;
@@ -61,30 +61,66 @@ function normalizedPassageLines(text: string | undefined): string[] {
   return lines;
 }
 
+type FenceContainerPart =
+  | { kind: 'quote' }
+  | { kind: 'indent'; column: number };
+
+function advanceMarkdownColumn(column: number, text: string): number {
+  for (const character of text) {
+    column = character === '\t' ? column + (4 - (column % 4)) : column + 1;
+  }
+  return column;
+}
+
+function consumeIndentToColumn(
+  text: string,
+  column: number,
+  target: number
+): { rest: string; column: number } | null {
+  let index = 0;
+  while (column < target) {
+    const character = text[index];
+    if (character !== ' ' && character !== '\t') return null;
+    column = advanceMarkdownColumn(column, character);
+    if (column > target) return null;
+    index += 1;
+  }
+  return column === target ? { rest: text.slice(index), column } : null;
+}
+
 interface OpenFence {
   marker: '`' | '~';
   length: number;
+  container: FenceContainerPart[];
   closingPrefix: string;
 }
 
-function fenceCandidate(line: string): {
+function openingFenceCandidate(line: string): {
   run: string;
   tail: string;
+  container: FenceContainerPart[];
   closingPrefix: string;
 } | null {
   let rest = line;
+  const container: FenceContainerPart[] = [];
   let closingPrefix = '';
+  let column = 0;
   while (true) {
-    const quote = rest.match(/^( {0,3}>[ \t]?)/);
+    const quote = rest.match(/^( {0,3}>)[ \t]?/);
     if (quote) {
-      rest = rest.slice(quote[1].length);
-      closingPrefix += quote[1];
+      rest = rest.slice(quote[0].length);
+      container.push({ kind: 'quote' });
+      closingPrefix += quote[0];
+      column = advanceMarkdownColumn(column, quote[0]);
       continue;
     }
-    const list = rest.match(/^( {0,3}(?:[-+*]|\d+[.)])[ \t]+)/);
+    const list = rest.match(/^( {0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+)/);
     if (list) {
       rest = rest.slice(list[1].length);
-      closingPrefix += ' '.repeat(list[1].length);
+      const target = advanceMarkdownColumn(column, list[1]);
+      container.push({ kind: 'indent', column: target });
+      closingPrefix += ' '.repeat(target - column);
+      column = target;
       continue;
     }
     break;
@@ -94,30 +130,60 @@ function fenceCandidate(line: string): {
     ? {
         run: match[2],
         tail: match[3],
+        container,
         closingPrefix: closingPrefix + match[1],
       }
     : null;
+}
+
+function closingFenceCandidate(
+  line: string,
+  container: FenceContainerPart[]
+): { run: string; tail: string } | null {
+  let rest = line;
+  let column = 0;
+  for (const part of container) {
+    if (part.kind === 'quote') {
+      const quote = rest.match(/^( {0,3}>)[ \t]?/);
+      if (!quote) return null;
+      rest = rest.slice(quote[0].length);
+      column = advanceMarkdownColumn(column, quote[0]);
+    } else {
+      const indent = consumeIndentToColumn(rest, column, part.column);
+      if (!indent) return null;
+      rest = indent.rest;
+      column = indent.column;
+    }
+  }
+  const match = rest.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+  return match ? { run: match[1], tail: match[2] } : null;
 }
 
 function observeFence(
   line: string,
   open: OpenFence | undefined
 ): OpenFence | undefined {
-  const candidate = fenceCandidate(line);
-  if (!candidate) return open;
-  const { run, tail: rawTail, closingPrefix } = candidate;
-  const marker = run[0] as OpenFence['marker'];
-  const tail = rawTail.trim();
   if (open) {
+    const candidate = closingFenceCandidate(line, open.container);
+    if (!candidate) return open;
+    const marker = candidate.run[0] as OpenFence['marker'];
     return marker === open.marker &&
-      run.length >= open.length &&
-      tail === '' &&
-      closingPrefix === open.closingPrefix
+      candidate.run.length >= open.length &&
+      /^[ \t]*$/.test(candidate.tail)
       ? undefined
       : open;
   }
+  const candidate = openingFenceCandidate(line);
+  if (!candidate) return undefined;
+  const marker = candidate.run[0] as OpenFence['marker'];
+  const tail = candidate.tail.trim();
   if (marker === '`' && tail.includes('`')) return undefined;
-  return { marker, length: run.length, closingPrefix };
+  return {
+    marker,
+    length: candidate.run.length,
+    container: candidate.container,
+    closingPrefix: candidate.closingPrefix,
+  };
 }
 
 function cappedPassageLines(lines: string[], capacity: number): string[] {
@@ -160,9 +226,10 @@ function cappedPassageLines(lines: string[], capacity: number): string[] {
 function fmtPassage(
   passage: Partial<DeveloperItem['passages'][number]>
 ): string {
-  const citation = passage.citation_url
-    ? `Citation: ${passage.citation_url}`
-    : undefined;
+  const citationUrl = passage.citation_url
+    ?.replace(/\r\n|\r|\n/g, ' ')
+    .replace(/[ \t]+$/, '');
+  const citation = citationUrl ? `Citation: ${citationUrl}` : undefined;
   const metadataLines = citation ? 1 : 0;
   const lines = cappedPassageLines(
     normalizedPassageLines(passage.text),
@@ -186,7 +253,7 @@ function fmtResult(item: DeveloperItem): string {
     .map(fmtPassage)
     .filter((passage) => passage.length > 0)
     .join('\n---\n')
-    .trim();
+    .trimEnd();
   lines.push(body || '(no content)');
   return lines.join('\n');
 }
