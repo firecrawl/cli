@@ -1521,6 +1521,10 @@ function createAgentCommand(): Command {
       '[prompt-or-job-id]',
       'Natural language prompt describing data to extract, or job ID to check status'
     )
+    // Keep the positive option ahead of its negation, here and for --schema
+    // below. Commander defaults a negated flag to `true` unless the positive
+    // one is already declared, and a `true` here would reach the URL split on
+    // every run that does not pass --urls. `cli-argv.test.ts` pins the order.
     .option('--urls <urls>', 'Comma-separated URLs to focus extraction on')
     .option(
       '--no-urls',

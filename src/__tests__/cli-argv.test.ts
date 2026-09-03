@@ -169,6 +169,32 @@ describe('CLI argv parsing', () => {
     expect(flattened).toContain('--no-schema');
   });
 
+  /**
+   * Commander gives a negated flag a `true` default only when no positive
+   * option already shares its name, so `--urls <urls>` and `--schema <json>`
+   * being declared *before* `--no-urls` and `--no-schema` is the only reason
+   * an ordinary run leaves them unset. Swap either pair and every agent run
+   * without that flag calls `.split()` on `true` and dies before it asks for
+   * anything. Nothing at the call site shows that, so it is pinned here.
+   */
+  testWithBuiltCli(
+    'leaves URLs and schema unset when neither flag is passed',
+    () => {
+      const result = runAuthedCli([
+        'agent',
+        'a prompt',
+        '--api-url',
+        'http://127.0.0.1:9',
+      ]);
+      const output = `${result.stdout}${result.stderr}`;
+
+      // Reaching a refused connection is the assertion: option parsing is behind
+      // it, and a `true` in either value would have thrown on the way.
+      expect(output).toContain('ECONNREFUSED');
+      expect(output).not.toMatch(/is not a function/);
+    }
+  );
+
   testWithBuiltCli('requires a thread to clear URLs or schema', () => {
     for (const flag of ['--no-urls', '--no-schema']) {
       const result = runAuthedCli(['agent', flag, 'a prompt']);
