@@ -2,14 +2,19 @@
 name: firecrawl-search
 description: |
   Web search with full page content. Use when no URL is known: finding sources, articles, or news. For papers use firecrawl-research-index; for library, API, error, or bug questions use firecrawl-developer-index.
-allowed-tools:
-  - Bash(firecrawl *)
-  - Bash(npx firecrawl-cli *)
 ---
 
 # firecrawl search
 
 Web search with optional content scraping. Returns search results as JSON, optionally with full page content.
+
+## Tool Choice & Quick Start
+
+- MCP: **`firecrawl_search(query, scrapeOptions?, categories?, limit?, sources?, ...)`**
+  Call directly when Firecrawl MCP tools are exposed.
+  Feedback: **`firecrawl_search_feedback(searchId, rating, ...)`**
+- CLI: **`firecrawl search <query> [--scrape] [--json] [-o <path>]`**
+  Fallback when running in a CLI environment.
 
 ## Quick start
 
