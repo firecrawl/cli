@@ -73,7 +73,7 @@ export function getApiKey(providedKey?: string): string | undefined {
   return storedCredentials?.apiKey;
 }
 
-const DEFAULT_API_URL = 'https://api.firecrawl.dev';
+export const DEFAULT_API_URL = 'https://api.firecrawl.dev';
 
 /**
  * Check if using a custom (non-cloud) API URL

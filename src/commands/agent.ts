@@ -85,11 +85,16 @@ function resolveApiBase(options: { apiKey?: string; apiUrl?: string }): {
 } {
   const config = getConfig();
   const apiKey = options.apiKey || config.apiKey;
-  validateConfig(apiKey);
   const baseUrl = (options.apiUrl || config.apiUrl || DEFAULT_API_URL).replace(
     /\/$/,
     ''
   );
+  // Whether a key is required is decided by the server this request resolved
+  // to, not by what `firecrawl config` happens to hold: `--api-url` alone
+  // points at a self-hosted server, and those need no key.
+  if (baseUrl === DEFAULT_API_URL) {
+    validateConfig(apiKey);
+  }
   return { baseUrl, apiKey };
 }
 
@@ -513,7 +518,12 @@ async function startAgentRun(
     }
   };
 
-  const remembered = getRememberedThread(options.apiKey)?.lastThreadId ?? null;
+  // The server and the key this run will actually use, which is rarely what
+  // `--api-key` carried: it usually comes from the environment or from stored
+  // credentials, and keying memory off the flag alone would put every one of
+  // those runs in the same bucket.
+  const identity = resolveApiBase(options);
+  const remembered = getRememberedThread(identity)?.lastThreadId ?? null;
   const intent = resolveThreadIntent(options, remembered);
 
   // An approval only exists inside a thread, so there is nothing to resolve
@@ -538,7 +548,7 @@ async function startAgentRun(
     if (!isThreadGoneError(error)) throw error;
 
     if (intent.threadId && intent.threadId === remembered) {
-      forgetThread(options.apiKey);
+      forgetThread(identity);
     }
 
     // A lost thread is a hard error while resolving an approval: there is
@@ -550,7 +560,7 @@ async function startAgentRun(
   }
 
   if (response?.threadId) {
-    rememberThread(options.apiKey, {
+    rememberThread(identity, {
       threadId: response.threadId,
       runId: response.id,
     });
@@ -835,13 +845,28 @@ export function formatPendingApproval(
   return lines.join('\n');
 }
 
-/** Render follow-ups as the commands that run them */
+/**
+ * A shell word that is only ever a word. Single quotes suspend every
+ * expansion a shell performs, and the one character they cannot carry is
+ * closed, escaped and reopened.
+ */
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * Render follow-ups as the commands that run them.
+ *
+ * These come back from the server and are printed for someone to copy, so
+ * they are quoted to be inert. Double quotes would leave `$(...)`, backticks
+ * and `${...}` live, and a suggestion is not worth a shell substitution.
+ */
 export function formatSuggestions(suggestions: AgentSuggestion[]): string {
   const lines: string[] = ['Try next:'];
   for (const suggestion of suggestions) {
     const prompt = suggestion.prompt || suggestion.label;
     if (!prompt) continue;
-    lines.push(`  firecrawl agent --continue "${prompt.replace(/"/g, '\\"')}"`);
+    lines.push(`  firecrawl agent --continue ${shellQuote(prompt)}`);
   }
   return lines.join('\n');
 }

@@ -12,6 +12,7 @@ import {
   executeAgent,
   executeAgentThread,
   formatPendingApproval,
+  formatSuggestions,
   formatThread,
   handleAgentCommand,
   resolveThreadIntent,
@@ -71,12 +72,19 @@ describe('agent threads', () => {
     vi.unstubAllGlobals();
     fs.rmSync(configDir.path, { recursive: true, force: true });
     teardownTest();
-    vi.clearAllMocks();
+    // Restores, not just clears: several cases spy on process.stdout.write and
+    // undo it on their last line, which an earlier failed assertion skips.
+    // Clearing alone leaves the spy installed and swallows the output of every
+    // test after it, turning one failure into a confusing handful.
+    vi.restoreAllMocks();
   });
 
   describe('continuing a thread', () => {
     it('sends the remembered thread and records the new run', async () => {
-      rememberThread(API_KEY, { threadId: 'thread-1', runId: 'run-1' });
+      rememberThread(
+        { apiKey: API_KEY },
+        { threadId: 'thread-1', runId: 'run-1' }
+      );
       mockFetch.mockResolvedValue(
         jsonResponse(200, {
           success: true,
@@ -106,13 +114,13 @@ describe('agent threads', () => {
         threadId: 'thread-1',
       });
 
-      const remembered = getRememberedThread(API_KEY);
+      const remembered = getRememberedThread({ apiKey: API_KEY });
       expect(remembered?.lastThreadId).toBe('thread-1');
       expect(remembered?.lastRunId).toBe('run-2');
     });
 
     it('does not reuse a thread remembered for another API key', async () => {
-      rememberThread('fc-other-key', { threadId: 'other-thread' });
+      rememberThread({ apiKey: 'fc-other-key' }, { threadId: 'other-thread' });
       mockFetch.mockResolvedValue(
         jsonResponse(200, { success: true, id: 'run-2', threadId: 'thread-9' })
       );
@@ -125,9 +133,9 @@ describe('agent threads', () => {
       });
 
       expect(lastRequestBody(mockFetch).threadId).toBeUndefined();
-      expect(getRememberedThread('fc-other-key')?.lastThreadId).toBe(
-        'other-thread'
-      );
+      expect(
+        getRememberedThread({ apiKey: 'fc-other-key' })?.lastThreadId
+      ).toBe('other-thread');
     });
 
     it('says so when there is no remembered thread to continue', async () => {
@@ -151,7 +159,7 @@ describe('agent threads', () => {
     });
 
     it('lets --thread override the remembered thread', async () => {
-      rememberThread(API_KEY, { threadId: 'thread-1' });
+      rememberThread({ apiKey: API_KEY }, { threadId: 'thread-1' });
       mockFetch.mockResolvedValue(
         jsonResponse(200, { success: true, id: 'run-5', threadId: 'thread-9' })
       );
@@ -164,11 +172,13 @@ describe('agent threads', () => {
       });
 
       expect(lastRequestBody(mockFetch).threadId).toBe('thread-9');
-      expect(getRememberedThread(API_KEY)?.lastThreadId).toBe('thread-9');
+      expect(getRememberedThread({ apiKey: API_KEY })?.lastThreadId).toBe(
+        'thread-9'
+      );
     });
 
     it('clears the entry and starts fresh when the thread is gone', async () => {
-      rememberThread(API_KEY, { threadId: 'thread-gone' });
+      rememberThread({ apiKey: API_KEY }, { threadId: 'thread-gone' });
       const stderr = vi
         .spyOn(process.stderr, 'write')
         .mockImplementation(() => true);
@@ -199,7 +209,9 @@ describe('agent threads', () => {
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(lastRequestBody(mockFetch, 0).threadId).toBe('thread-gone');
       expect(lastRequestBody(mockFetch, 1).threadId).toBeUndefined();
-      expect(getRememberedThread(API_KEY)?.lastThreadId).toBe('thread-new');
+      expect(getRememberedThread({ apiKey: API_KEY })?.lastThreadId).toBe(
+        'thread-new'
+      );
 
       const written = stderr.mock.calls.map((call) => call[0]).join('');
       expect(written).toContain('That thread is gone; starting a new one.');
@@ -207,7 +219,7 @@ describe('agent threads', () => {
     });
 
     it('clears the entry when an expired thread is gone for good', async () => {
-      rememberThread(API_KEY, { threadId: 'thread-expired' });
+      rememberThread({ apiKey: API_KEY }, { threadId: 'thread-expired' });
       mockFetch
         .mockResolvedValueOnce(
           jsonResponse(410, {
@@ -227,7 +239,7 @@ describe('agent threads', () => {
         apiKey: API_KEY,
       });
 
-      expect(getRememberedThread(API_KEY)).toBeNull();
+      expect(getRememberedThread({ apiKey: API_KEY })).toBeNull();
     });
 
     it('reports an API without thread support', async () => {
@@ -253,7 +265,7 @@ describe('agent threads', () => {
 
   describe('approvals', () => {
     it('--approve sends the control prompt and the approve payload', async () => {
-      rememberThread(API_KEY, { threadId: 'thread-1' });
+      rememberThread({ apiKey: API_KEY }, { threadId: 'thread-1' });
       mockFetch.mockResolvedValue(
         jsonResponse(200, { success: true, id: 'run-9', threadId: 'thread-1' })
       );
@@ -273,7 +285,7 @@ describe('agent threads', () => {
     });
 
     it('--decline sends its own control prompt', async () => {
-      rememberThread(API_KEY, { threadId: 'thread-1' });
+      rememberThread({ apiKey: API_KEY }, { threadId: 'thread-1' });
       mockFetch.mockResolvedValue(
         jsonResponse(200, { success: true, id: 'run-10', threadId: 'thread-1' })
       );
@@ -372,7 +384,7 @@ describe('agent threads', () => {
       ).toBeLessThan(written.indexOf('"tiers"'));
       expect(written).toContain('Try next:');
       expect(written).toContain(
-        'firecrawl agent --continue "Does the Team tier cap seats?"'
+        "firecrawl agent --continue 'Does the Team tier cap seats?'"
       );
 
       const errors = stderr.mock.calls.map((call) => call[0]).join('');
@@ -435,17 +447,56 @@ describe('agent threads', () => {
       expect(rendered).toContain('Turn 2 · chat · succeeded · 31 credits');
       expect(rendered).toContain('Agent: Only the Enterprise tier lists SSO.');
       expect(rendered).toContain(
-        'firecrawl agent --continue "Does the Team tier cap seats?"'
+        "firecrawl agent --continue 'Does the Team tier cap seats?'"
       );
       expect(rendered.indexOf('Turn 1')).toBeLessThan(
         rendered.indexOf('Turn 2')
+      );
+    });
+
+    it('reads a keyless self-hosted thread through --api-url', async () => {
+      // The key requirement follows the server the request resolved to. A
+      // custom --api-url is a self-hosted one, and those need no key.
+      initializeConfig({ apiUrl: 'https://api.firecrawl.dev' });
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, {
+          success: true,
+          thread: { id: 'thread-1', status: 'idle', runs: [] },
+        })
+      );
+
+      const result = await executeAgentThread('thread-1', {
+        apiUrl: 'http://localhost:3002',
+      });
+
+      expect(result.success).toBe(true);
+      const [url] = mockFetch.mock.calls[0] as [string];
+      expect(url).toBe(
+        'http://localhost:3002/v2/agent/threads/thread-1?includeData=true'
+      );
+    });
+  });
+
+  describe('rendering follow-ups', () => {
+    it('quotes a suggestion so copying it cannot run anything', () => {
+      const rendered = formatSuggestions([
+        { label: 'x', prompt: 'price of $(whoami) and `id`' },
+        { label: 'y', prompt: "the vendor's own page" },
+      ]);
+
+      expect(rendered).toContain(
+        "firecrawl agent --continue 'price of $(whoami) and `id`'"
+      );
+      // The one character single quotes cannot carry, carried anyway.
+      expect(rendered).toContain(
+        "firecrawl agent --continue 'the vendor'\\''s own page'"
       );
     });
   });
 
   describe('clearing inherited URLs and schema', () => {
     it('sends an empty URL list for --no-urls', async () => {
-      rememberThread(API_KEY, { threadId: 'thread-1' });
+      rememberThread({ apiKey: API_KEY }, { threadId: 'thread-1' });
       mockFetch.mockResolvedValue(
         jsonResponse(200, { success: true, id: 'run-11', threadId: 'thread-1' })
       );
@@ -466,7 +517,7 @@ describe('agent threads', () => {
     });
 
     it('sends a null schema for --no-schema', async () => {
-      rememberThread(API_KEY, { threadId: 'thread-1' });
+      rememberThread({ apiKey: API_KEY }, { threadId: 'thread-1' });
       mockFetch.mockResolvedValue(
         jsonResponse(200, { success: true, id: 'run-12', threadId: 'thread-1' })
       );
@@ -484,7 +535,7 @@ describe('agent threads', () => {
     });
 
     it('clears both at once', async () => {
-      rememberThread(API_KEY, { threadId: 'thread-1' });
+      rememberThread({ apiKey: API_KEY }, { threadId: 'thread-1' });
       mockFetch.mockResolvedValue(
         jsonResponse(200, { success: true, id: 'run-13', threadId: 'thread-1' })
       );

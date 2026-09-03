@@ -7,7 +7,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-  apiKeyFingerprint,
+  threadFingerprint,
   forgetThread,
   getRememberedThread,
   loadAgentThreadStore,
@@ -40,48 +40,125 @@ describe('agent thread memory', () => {
   });
 
   it('returns nothing when no thread has been started', () => {
-    expect(getRememberedThread('fc-test-key')).toBeNull();
+    expect(getRememberedThread({ apiKey: 'fc-test-key' })).toBeNull();
   });
 
   it('round-trips the last thread and run for an API key', () => {
-    rememberThread('fc-test-key', { threadId: 'thread-1', runId: 'run-1' });
+    rememberThread(
+      { apiKey: 'fc-test-key' },
+      { threadId: 'thread-1', runId: 'run-1' }
+    );
 
-    const remembered = getRememberedThread('fc-test-key');
+    const remembered = getRememberedThread({ apiKey: 'fc-test-key' });
     expect(remembered?.lastThreadId).toBe('thread-1');
     expect(remembered?.lastRunId).toBe('run-1');
     expect(Date.parse(remembered?.updatedAt ?? '')).not.toBeNaN();
   });
 
   it('keys entries by a hash of the API key, never the key itself', () => {
-    rememberThread('fc-test-key', { threadId: 'thread-1' });
+    rememberThread({ apiKey: 'fc-test-key' }, { threadId: 'thread-1' });
 
     const store = loadAgentThreadStore();
-    expect(Object.keys(store)).toEqual([apiKeyFingerprint('fc-test-key')]);
+    expect(Object.keys(store)).toEqual([
+      threadFingerprint({ apiKey: 'fc-test-key' }),
+    ]);
     expect(JSON.stringify(store)).not.toContain('fc-test-key');
   });
 
   it('keeps threads for different API keys apart', () => {
-    rememberThread('fc-key-a', { threadId: 'thread-a' });
-    rememberThread('fc-key-b', { threadId: 'thread-b' });
+    rememberThread({ apiKey: 'fc-key-a' }, { threadId: 'thread-a' });
+    rememberThread({ apiKey: 'fc-key-b' }, { threadId: 'thread-b' });
 
-    expect(getRememberedThread('fc-key-a')?.lastThreadId).toBe('thread-a');
-    expect(getRememberedThread('fc-key-b')?.lastThreadId).toBe('thread-b');
+    expect(getRememberedThread({ apiKey: 'fc-key-a' })?.lastThreadId).toBe(
+      'thread-a'
+    );
+    expect(getRememberedThread({ apiKey: 'fc-key-b' })?.lastThreadId).toBe(
+      'thread-b'
+    );
   });
 
   it('forgets only the entry for the given API key', () => {
-    rememberThread('fc-key-a', { threadId: 'thread-a' });
-    rememberThread('fc-key-b', { threadId: 'thread-b' });
+    rememberThread({ apiKey: 'fc-key-a' }, { threadId: 'thread-a' });
+    rememberThread({ apiKey: 'fc-key-b' }, { threadId: 'thread-b' });
 
-    forgetThread('fc-key-a');
+    forgetThread({ apiKey: 'fc-key-a' });
 
-    expect(getRememberedThread('fc-key-a')).toBeNull();
-    expect(getRememberedThread('fc-key-b')?.lastThreadId).toBe('thread-b');
+    expect(getRememberedThread({ apiKey: 'fc-key-a' })).toBeNull();
+    expect(getRememberedThread({ apiKey: 'fc-key-b' })?.lastThreadId).toBe(
+      'thread-b'
+    );
+  });
+
+  it('keeps two keyless servers apart', () => {
+    // Self-hosted setups have no key to tell them apart, so without the server
+    // in the identity one would be handed the other's thread ID and a 404
+    // would erase the original.
+    const a = { baseUrl: 'http://localhost:3002' };
+    const b = { baseUrl: 'http://localhost:4002' };
+    rememberThread(a, { threadId: 'thread-a' });
+    rememberThread(b, { threadId: 'thread-b' });
+
+    expect(getRememberedThread(a)?.lastThreadId).toBe('thread-a');
+    expect(getRememberedThread(b)?.lastThreadId).toBe('thread-b');
+  });
+
+  it('reads one server through the spellings of its URL', () => {
+    rememberThread(
+      { apiKey: 'fc-test-key', baseUrl: 'https://API.firecrawl.dev/' },
+      { threadId: 'thread-1' }
+    );
+
+    expect(
+      getRememberedThread({
+        apiKey: 'fc-test-key',
+        baseUrl: 'https://api.firecrawl.dev',
+      })?.lastThreadId
+    ).toBe('thread-1');
+    // And the default is that same server, spelled by omission.
+    expect(getRememberedThread({ apiKey: 'fc-test-key' })?.lastThreadId).toBe(
+      'thread-1'
+    );
+  });
+
+  it('keeps an entry a concurrent writer added', () => {
+    rememberThread({ apiKey: 'fc-key-a' }, { threadId: 'thread-a' });
+
+    // What a second process does between this process reading the store and
+    // writing it back. Without the update being one step, this entry is the
+    // one that disappears.
+    const concurrent = loadAgentThreadStore();
+    rememberThread({ apiKey: 'fc-key-b' }, { threadId: 'thread-b' });
+    expect(Object.keys(concurrent)).toHaveLength(1);
+
+    expect(getRememberedThread({ apiKey: 'fc-key-a' })?.lastThreadId).toBe(
+      'thread-a'
+    );
+    expect(getRememberedThread({ apiKey: 'fc-key-b' })?.lastThreadId).toBe(
+      'thread-b'
+    );
+  });
+
+  it('writes through a stale lock rather than hanging the command', () => {
+    fs.writeFileSync(`${getAgentThreadsPath()}.lock`, '', 'utf-8');
+
+    rememberThread({ apiKey: 'fc-test-key' }, { threadId: 'thread-1' });
+
+    expect(getRememberedThread({ apiKey: 'fc-test-key' })?.lastThreadId).toBe(
+      'thread-1'
+    );
+  });
+
+  it('leaves no lock behind', () => {
+    rememberThread({ apiKey: 'fc-test-key' }, { threadId: 'thread-1' });
+    forgetThread({ apiKey: 'fc-test-key' });
+
+    expect(fs.existsSync(`${getAgentThreadsPath()}.lock`)).toBe(false);
   });
 
   it('treats a corrupt file as empty rather than failing the command', () => {
     fs.writeFileSync(getAgentThreadsPath(), 'not json', 'utf-8');
 
     expect(loadAgentThreadStore()).toEqual({});
-    expect(getRememberedThread('fc-test-key')).toBeNull();
+    expect(getRememberedThread({ apiKey: 'fc-test-key' })).toBeNull();
   });
 });
