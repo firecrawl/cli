@@ -239,6 +239,29 @@ describe('handleDeveloperSearchCommand', () => {
       expect(passageBlock.at(-1)).toContain('use --json');
     });
 
+    it('does not close a quoted fence on list-prefixed code content', async () => {
+      const passage = [
+        '> ```text',
+        ...Array.from({ length: 10 }, (_, index) => `> code ${index}`),
+        '> - ```',
+        ...Array.from({ length: 40 }, (_, index) => `> more code ${index}`),
+        '> ```',
+      ].join('\n');
+      mockHttpGet.mockResolvedValue(
+        mockDeveloperResponse([
+          { ...sampleResult, passages: [{ text: passage }] },
+        ])
+      );
+
+      await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      const passageBlock = content.split('\n').slice(3);
+      expect(passageBlock).toContain('> - ```');
+      expect(passageBlock.at(-2)).toBe('> ```');
+      expect(passageBlock.at(-1)).toContain('use --json');
+    });
+
     it('renders every passage without a passage-count cap', async () => {
       const passages = Array.from({ length: 45 }, (_, index) => ({
         text: `unique passage ${index + 1}`,

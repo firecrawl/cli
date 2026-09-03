@@ -109,7 +109,10 @@ function observeFence(
   const marker = run[0] as OpenFence['marker'];
   const tail = rawTail.trim();
   if (open) {
-    return marker === open.marker && run.length >= open.length && tail === ''
+    return marker === open.marker &&
+      run.length >= open.length &&
+      tail === '' &&
+      closingPrefix === open.closingPrefix
       ? undefined
       : open;
   }
