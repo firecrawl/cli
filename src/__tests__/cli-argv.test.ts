@@ -1,11 +1,44 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('CLI argv parsing', () => {
   const cliPath = resolve(process.cwd(), 'dist/index.js');
   const testWithBuiltCli = existsSync(cliPath) ? it : it.skip;
+
+  /**
+   * A run that gets as far as the argument checks.
+   *
+   * Every other case here asks for `--help`, which Commander answers before
+   * any command runs. A case that reaches a command does not: without a key
+   * the CLI stops at its login prompt, and with no stdin to answer it exits 0.
+   * That is the difference between a developer's machine and CI, and it is
+   * what let these two pass locally while failing there.
+   *
+   * The home directory is thrown away too, so a remembered thread or a stored
+   * key on the machine running the tests cannot change the answer. The key is
+   * never spent: every case below is rejected before a request is made.
+   */
+  const runAuthedCli = (args: string[]) => {
+    const home = mkdtempSync(join(tmpdir(), 'firecrawl-cli-argv-'));
+    try {
+      return spawnSync(process.execPath, [cliPath, ...args], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          HOME: home,
+          USERPROFILE: home,
+          FIRECRAWL_API_KEY: 'fc-argv-test',
+          FIRECRAWL_NO_TELEMETRY: '1',
+        },
+      });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  };
 
   testWithBuiltCli('lists the developer command in root help output', () => {
     const result = spawnSync(process.execPath, [cliPath, '--help'], {
@@ -138,11 +171,7 @@ describe('CLI argv parsing', () => {
 
   testWithBuiltCli('requires a thread to clear URLs or schema', () => {
     for (const flag of ['--no-urls', '--no-schema']) {
-      const result = spawnSync(
-        process.execPath,
-        [cliPath, 'agent', flag, 'a prompt'],
-        { cwd: process.cwd(), encoding: 'utf8' }
-      );
+      const result = runAuthedCli(['agent', flag, 'a prompt']);
 
       expect(result.status).toBe(1);
       expect(result.stderr).toContain(
@@ -152,36 +181,26 @@ describe('CLI argv parsing', () => {
   });
 
   testWithBuiltCli('rejects clearing a value that is also being set', () => {
-    const urls = spawnSync(
-      process.execPath,
-      [
-        cliPath,
-        'agent',
-        '--continue',
-        '--urls',
-        'https://example.com',
-        '--no-urls',
-        'a prompt',
-      ],
-      { cwd: process.cwd(), encoding: 'utf8' }
-    );
+    const urls = runAuthedCli([
+      'agent',
+      '--continue',
+      '--urls',
+      'https://example.com',
+      '--no-urls',
+      'a prompt',
+    ]);
 
     expect(urls.status).toBe(1);
     expect(urls.stderr).toContain('use --urls or --no-urls, not both.');
 
-    const schema = spawnSync(
-      process.execPath,
-      [
-        cliPath,
-        'agent',
-        '--continue',
-        '--schema',
-        '{"type":"object"}',
-        '--no-schema',
-        'a prompt',
-      ],
-      { cwd: process.cwd(), encoding: 'utf8' }
-    );
+    const schema = runAuthedCli([
+      'agent',
+      '--continue',
+      '--schema',
+      '{"type":"object"}',
+      '--no-schema',
+      'a prompt',
+    ]);
 
     expect(schema.status).toBe(1);
     expect(schema.stderr).toContain(
