@@ -138,6 +138,38 @@ describe('agent threads', () => {
       ).toBe('other-thread');
     });
 
+    it('keys memory on the key the request uses, not the flag', async () => {
+      // --api-key is the rare case: the key normally comes from stored
+      // credentials or the environment. Keyed off the flag alone, every one of
+      // those runs shared a bucket and switching accounts continued the other
+      // account's thread.
+      initializeConfig({
+        apiKey: 'fc-account-a',
+        apiUrl: 'https://api.firecrawl.dev',
+      });
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, { success: true, id: 'run-1', threadId: 'thread-a' })
+      );
+      await executeAgent({ prompt: 'first', mode: 'chat' });
+
+      initializeConfig({
+        apiKey: 'fc-account-b',
+        apiUrl: 'https://api.firecrawl.dev',
+      });
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, { success: true, id: 'run-2', threadId: 'thread-b' })
+      );
+      await executeAgent({ prompt: 'second', continue: true, mode: 'chat' });
+
+      expect(lastRequestBody(mockFetch).threadId).toBeUndefined();
+      expect(
+        getRememberedThread({ apiKey: 'fc-account-a' })?.lastThreadId
+      ).toBe('thread-a');
+      expect(
+        getRememberedThread({ apiKey: 'fc-account-b' })?.lastThreadId
+      ).toBe('thread-b');
+    });
+
     it('says so when there is no remembered thread to continue', async () => {
       const stderr = vi
         .spyOn(process.stderr, 'write')
@@ -392,6 +424,54 @@ describe('agent threads', () => {
 
       stdout.mockRestore();
       stderr.mockRestore();
+    });
+
+    /**
+     * A turn that stops on a paid call still ends: the approval is written
+     * with the run's result, so it only ever reaches the client alongside a
+     * terminal status. `--wait` therefore returns on the poll that carries it
+     * rather than spinning to its timeout, and prints how to resolve it.
+     */
+    it('stops waiting on the poll that carries an approval', async () => {
+      const stdout = vi
+        .spyOn(process.stdout, 'write')
+        .mockImplementation(() => true);
+      vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, { success: true, id: 'run-1', threadId: 'thread-1' })
+      );
+      mockClient.getAgentStatus
+        .mockResolvedValueOnce({ success: true, status: 'processing' })
+        .mockResolvedValue({
+          success: true,
+          status: 'completed',
+          creditsUsed: 4,
+          threadId: 'thread-1',
+          message: 'That needs a paid call.',
+          pendingApproval: {
+            id: 'approval-1',
+            calls: [
+              { id: 'call-1', provider: 'acme', capability: 'filings/list' },
+            ],
+          },
+        });
+
+      await handleAgentCommand({
+        prompt: 'latest filings',
+        mode: 'chat',
+        wait: true,
+        pollInterval: 0.001,
+        // Short enough that spinning instead of returning would time out.
+        timeout: 1,
+        apiKey: API_KEY,
+      });
+
+      const written = stdout.mock.calls.map((call) => call[0]).join('');
+      expect(written).toContain('Awaiting approval: approval-1');
+      expect(written).toContain('firecrawl agent --approve approval-1');
+      expect(written).toContain('firecrawl agent --decline approval-1');
+      expect(written).not.toContain('Timeout');
     });
   });
 
