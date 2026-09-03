@@ -13,7 +13,7 @@
 
 import * as crypto from 'crypto';
 import * as fs from 'fs';
-import { DEFAULT_API_URL, getAgentThreadsPath } from './config';
+import { getAgentThreadsPath, normalizeApiUrl } from './config';
 import { getConfigDirectoryPath } from './credentials';
 
 export interface RememberedThread {
@@ -42,17 +42,6 @@ export interface ThreadIdentity {
 /** Stands in for the key on self-hosted setups that do not use one. */
 const NO_API_KEY = 'no-api-key';
 
-function normalizeBaseUrl(baseUrl?: string): string {
-  const raw = baseUrl?.trim() || DEFAULT_API_URL;
-  try {
-    const url = new URL(raw);
-    // Host casing and a trailing slash are not a different server.
-    return `${url.protocol}//${url.host.toLowerCase()}${url.pathname.replace(/\/$/, '')}`;
-  } catch {
-    return raw.replace(/\/$/, '').toLowerCase();
-  }
-}
-
 /**
  * Short, stable hash of the identity. Neither the key nor anything else secret
  * is written to disk by this file; credentials.json already owns that.
@@ -61,7 +50,7 @@ export function threadFingerprint(identity: ThreadIdentity): string {
   const key = identity.apiKey?.trim() || NO_API_KEY;
   return crypto
     .createHash('sha256')
-    .update(`${normalizeBaseUrl(identity.baseUrl)}\n${key}`)
+    .update(`${normalizeApiUrl(identity.baseUrl)}\n${key}`)
     .digest('hex')
     .slice(0, 16);
 }
@@ -81,11 +70,15 @@ export function loadAgentThreadStore(): AgentThreadStore {
   }
 }
 
-function writeAgentThreadStore(store: AgentThreadStore): void {
+function ensureConfigDirectory(): void {
   const configDir = getConfigDirectoryPath();
   if (!fs.existsSync(configDir)) {
     fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
   }
+}
+
+function writeAgentThreadStore(store: AgentThreadStore): void {
+  ensureConfigDirectory();
   const storePath = getAgentThreadsPath();
   // Written beside the store and renamed over it, so a reader never sees the
   // half of a file that a crash or a concurrent run left behind.
@@ -124,6 +117,12 @@ function sleepSync(ms: number): void {
  * command over.
  */
 function updateStore(change: (store: AgentThreadStore) => void): void {
+  // Before the lock, not with the store: the lock lives in this directory, so
+  // without it the first run on a machine cannot take one. It would spend
+  // every attempt failing to create it and then write unlocked, which is the
+  // one moment two concurrent runs are most likely to both be first.
+  ensureConfigDirectory();
+
   const lockPath = `${getAgentThreadsPath()}.lock`;
   let held: number | undefined;
 

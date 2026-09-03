@@ -138,7 +138,9 @@ describe('agent thread memory', () => {
     );
   });
 
-  it('writes through a stale lock rather than hanging the command', () => {
+  it('writes through a lock it cannot take rather than hanging', () => {
+    // Held right now, so the attempts run out and the update goes ahead
+    // anyway. Memory is a convenience and is not worth failing a run over.
     fs.writeFileSync(`${getAgentThreadsPath()}.lock`, '', 'utf-8');
 
     rememberThread({ apiKey: 'fc-test-key' }, { threadId: 'thread-1' });
@@ -146,6 +148,40 @@ describe('agent thread memory', () => {
     expect(getRememberedThread({ apiKey: 'fc-test-key' })?.lastThreadId).toBe(
       'thread-1'
     );
+  });
+
+  it('clears a lock whose holder is long gone', () => {
+    const lockPath = `${getAgentThreadsPath()}.lock`;
+    fs.writeFileSync(lockPath, '', 'utf-8');
+    // Older than any run could plausibly hold it, so the holder is assumed
+    // dead and the lock is taken rather than waited out.
+    const ancient = new Date(Date.now() - 60_000);
+    fs.utimesSync(lockPath, ancient, ancient);
+
+    rememberThread({ apiKey: 'fc-test-key' }, { threadId: 'thread-1' });
+
+    expect(getRememberedThread({ apiKey: 'fc-test-key' })?.lastThreadId).toBe(
+      'thread-1'
+    );
+    // Taken and released, not left where it was found.
+    expect(fs.existsSync(lockPath)).toBe(false);
+  });
+
+  it('takes a lock on a machine that has no config directory yet', () => {
+    // The lock lives in that directory, so without creating it first the very
+    // first run on a machine spends every attempt failing to make one and then
+    // writes unlocked, which is exactly when two runs are both likely to be
+    // first.
+    fs.rmSync(configDir.path, { recursive: true, force: true });
+
+    const started = Date.now();
+    rememberThread({ apiKey: 'fc-test-key' }, { threadId: 'thread-1' });
+
+    expect(getRememberedThread({ apiKey: 'fc-test-key' })?.lastThreadId).toBe(
+      'thread-1'
+    );
+    // Exhausting the attempts would take the full acquire budget.
+    expect(Date.now() - started).toBeLessThan(150);
   });
 
   it('leaves no lock behind', () => {

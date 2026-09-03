@@ -19,7 +19,7 @@ import type {
 } from '../types/agent';
 import type { AgentStatusResponse, AgentWebhookConfig } from 'firecrawl';
 import { getClient } from '../utils/client';
-import { getConfig, validateConfig } from '../utils/config';
+import { getConfig, isDefaultApiUrl, validateConfig } from '../utils/config';
 import {
   forgetThread,
   getRememberedThread,
@@ -91,8 +91,10 @@ function resolveApiBase(options: { apiKey?: string; apiUrl?: string }): {
   );
   // Whether a key is required is decided by the server this request resolved
   // to, not by what `firecrawl config` happens to hold: `--api-url` alone
-  // points at a self-hosted server, and those need no key.
-  if (baseUrl === DEFAULT_API_URL) {
+  // points at a self-hosted server, and those need no key. Compared through
+  // the normalizer, so a differently cased cloud URL is still the cloud and
+  // cannot slip through unauthenticated.
+  if (isDefaultApiUrl(baseUrl)) {
     validateConfig(apiKey);
   }
   return { baseUrl, apiKey };

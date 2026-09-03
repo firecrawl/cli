@@ -27,6 +27,11 @@ describe('CLI argv parsing', () => {
       return spawnSync(process.execPath, [cliPath, ...args], {
         cwd: process.cwd(),
         encoding: 'utf8',
+        // None of these cases should reach a network round trip, so anything
+        // that blocks is a broken assumption. Failing on it beats a suite that
+        // hangs until the runner gives up.
+        timeout: 20_000,
+        killSignal: 'SIGKILL',
         env: {
           ...process.env,
           HOME: home,
@@ -186,9 +191,11 @@ describe('CLI argv parsing', () => {
       ]);
       const output = `${result.stdout}${result.stderr}`;
 
-      // Reaching a refused connection is the assertion: option parsing is behind
-      // it, and a `true` in either value would have thrown on the way.
-      expect(output).toContain('ECONNREFUSED');
+      // Getting as far as a failed request is the assertion, because option
+      // parsing is behind it and a non-string in either value would have
+      // thrown on the way. Which failure it is does not matter, so nothing
+      // here depends on that port being refused rather than answered.
+      expect(output).toContain('Failed to start agent');
       expect(output).not.toMatch(/is not a function/);
     }
   );
