@@ -344,7 +344,7 @@ program
 function createScrapeCommand(): Command {
   const scrapeCmd = new Command('scrape')
     .description(
-      'Scrape one or more URLs. Multiple URLs are scraped concurrently and saved to .firecrawl/'
+      'Scrape one or more URLs. A single URL prints to stdout by default. Multiple URLs are scraped concurrently and saved to .firecrawl/'
     )
     .argument('[urls...]', 'URL(s) to scrape')
     .option(
@@ -354,7 +354,7 @@ function createScrapeCommand(): Command {
     .option('-H, --html', 'Output raw HTML (shortcut for --format html)')
     .option(
       '-f, --format <formats>',
-      'Output format(s). Multiple formats can be specified with commas (e.g., "markdown,links,images"). Available: markdown, html, rawHtml, links, images, screenshot, summary, changeTracking, json, attributes, branding. Single format outputs raw content; multiple formats output JSON.'
+      'Output format(s) (default: markdown). Multiple formats can be specified with commas (e.g., "markdown,links,images"). Available: markdown, html, rawHtml, links, images, screenshot, summary, changeTracking, json, attributes, branding. Single format outputs raw content; multiple formats output JSON.'
     )
     .option('--only-main-content', 'Include only main content', false)
     .option(
@@ -372,7 +372,10 @@ function createScrapeCommand(): Command {
       'Firecrawl API key (overrides global --api-key)'
     )
     .option('--api-url <url>', 'API URL (overrides global --api-url)')
-    .option('-o, --output <path>', 'Output file path (default: stdout)')
+    .option(
+      '-o, --output <path>',
+      'Output file path for a single URL (default: stdout)'
+    )
     .option('--json', 'Output as JSON format', false)
     .option('--pretty', 'Pretty print JSON output', false)
     .option(
