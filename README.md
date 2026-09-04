@@ -69,6 +69,7 @@ detected harnesses (all selected by default) so you can pick a subset.
 | OpenClaw     | `openclaw`      |
 | OpenHands    | `openhands`     |
 | Hermes Agent | `hermes-agent`  |
+| AdaL         | `adal`          |
 
 ### Agent skills
 
@@ -993,3 +994,22 @@ firecrawl setup workflows
 ## Documentation
 
 For more details, visit the [Firecrawl Documentation](https://docs.firecrawl.dev).
+
+### AdaL
+
+AdaL users have two paths to get Firecrawl skills:
+
+1. **Native bootstrap** (this CLI):
+   ```bash
+   npx -y firecrawl-cli@latest init --agent adal
+   ```
+   Installs skills to `~/.adal/skills/` as symlinks. No Firecrawl API key is needed for installation.
+
+   **Collision safety:** If a skill name already exists as a user-owned directory or file under `~/.adal/skills/`, it is skipped (never overwritten). Only stale symlinks are replaced.
+
+2. **AdaL marketplace** (inside an AdaL session):
+   ```
+   /plugin marketplace add firecrawl/cli
+   /plugin install firecrawl@firecrawl
+   ```
+   Installs via AdaL's plugin system to `~/.adal/plugin-cache/`. The two paths use different install locations and precedence; choose based on your workflow.
