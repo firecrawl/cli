@@ -74,6 +74,7 @@ import type { ScrapeFormat } from './types/scrape';
 import type { RelatedPapersOptions } from './types/research';
 import type { AgentWebhookConfig } from 'firecrawl';
 import { createCreateCommand } from './commands/create';
+import { createPrometheusCommand } from './commands/prometheus';
 
 // Initialize global configuration from environment variables
 initializeConfig();
@@ -2106,6 +2107,10 @@ program.addCommand(createBrowserCommand(), { hidden: true });
 // Undocumented until `firecrawl-agent-cli` is published to npm; flip to
 // visible by removing `{ hidden: true }`.
 program.addCommand(createCreateCommand(), { hidden: true });
+
+// Prometheus: ask for verified Firecrawl code (`build`) and manage data feeds,
+// against a Prometheus instance's /api/v1 surface (BYOK via X-Firecrawl-Key).
+program.addCommand(createPrometheusCommand());
 
 // Experimental: download command
 const experimental = new Command('experimental')
