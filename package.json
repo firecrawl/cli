@@ -80,6 +80,7 @@
     "vitest": "^4.0.0"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "^0.17.0",
     "@inquirer/prompts": "^8.2.1",
     "commander": "^14.0.2",
     "firecrawl": "4.24.0",

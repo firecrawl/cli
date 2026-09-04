@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@agentclientprotocol/sdk':
+        specifier: ^0.17.0
+        version: 0.17.0(zod@3.25.76)
       '@inquirer/prompts':
         specifier: ^8.2.1
         version: 8.2.1(@types/node@20.19.27)
@@ -44,6 +47,11 @@ importers:
         version: 4.0.16(@types/node@20.19.27)(yaml@2.9.0)
 
 packages:
+
+  '@agentclientprotocol/sdk@0.17.0':
+    resolution: {integrity: sha512-inBMYAEd9t4E+ULZK2os9kmLG5jbPvMLbPvY71XDDem1YteW/uDwkahg6OwsGR3tvvgVhYbRJ9mJCp2VXqG4xQ==}
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
 
   '@esbuild/aix-ppc64@0.27.2':
     resolution: {integrity: sha512-GZMB+a0mOMZs4MpDbj8RJp4cw+w1WV5NYD6xzgvzUJ5Ek2jerwfO2eADyI6ExDSUED+1X8aMbegahsJi+8mgpw==}
@@ -1062,6 +1070,10 @@ packages:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
 snapshots:
+
+  '@agentclientprotocol/sdk@0.17.0(zod@3.25.76)':
+    dependencies:
+      zod: 3.25.76
 
   '@esbuild/aix-ppc64@0.27.2':
     optional: true
