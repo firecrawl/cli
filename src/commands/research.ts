@@ -36,8 +36,15 @@ function appendParam(
 }
 
 function withQuery(path: string, params: URLSearchParams): string {
+  if (!params.has('integration')) {
+    params.set('integration', 'cli');
+  }
   const qs = params.toString();
   return qs ? `${path}?${qs}` : path;
+}
+
+function withIntegration(path: string): string {
+  return withQuery(path, new URLSearchParams());
 }
 
 async function getResearch<T>(
@@ -220,7 +227,7 @@ export async function handleInspectPaperCommand(
 ): Promise<void> {
   try {
     const data = await getResearch<{ paper?: PaperHit }>(
-      `${BASE}/papers/${encodeURIComponent(options.paperId)}`,
+      withIntegration(`${BASE}/papers/${encodeURIComponent(options.paperId)}`),
       options
     );
     writeResearchOutput(data, fmtPaperMetadata(data.paper), options);
