@@ -3,7 +3,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { executeScrape } from '../../commands/scrape';
+import * as fs from 'fs';
+import { executeScrape, handleScrapeCommand } from '../../commands/scrape';
 import { getClient } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { setupTest, teardownTest } from '../utils/mock-client';
@@ -442,6 +443,69 @@ describe('executeScrape', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Unknown error occurred');
+    });
+  });
+
+  describe('Screenshot binary output', () => {
+    it('should download screenshot binary when output is an image file', async () => {
+      const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+      const mockResponse = {
+        screenshot: 'https://cdn.firecrawl.dev/screenshot-abc.png',
+        metadata: { title: 'Test' },
+      };
+      mockClient.scrape.mockResolvedValue(mockResponse);
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(pngBytes.buffer),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      vi.mock('fs', async () => {
+        const actual = await vi.importActual<typeof import('fs')>('fs');
+        return {
+          ...actual,
+          existsSync: vi.fn().mockReturnValue(true),
+          writeFileSync: vi.fn(),
+          mkdirSync: vi.fn(),
+        };
+      });
+
+      await handleScrapeCommand({
+        url: 'https://example.com',
+        formats: ['screenshot'],
+        output: '/tmp/test-screenshot.png',
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://cdn.firecrawl.dev/screenshot-abc.png'
+      );
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        '/tmp/test-screenshot.png',
+        expect.any(Buffer)
+      );
+    });
+
+    it('should not fetch binary when output is not an image extension', async () => {
+      const mockResponse = {
+        screenshot: 'https://cdn.firecrawl.dev/screenshot-abc.png',
+        metadata: { title: 'Test' },
+      };
+      mockClient.scrape.mockResolvedValue(mockResponse);
+
+      const mockFetch = vi.fn();
+      vi.stubGlobal('fetch', mockFetch);
+
+      vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+      await handleScrapeCommand({
+        url: 'https://example.com',
+        formats: ['screenshot'],
+        output: '/tmp/result.txt',
+      });
+
+      // Should NOT call fetch — falls through to handleScrapeOutput
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 

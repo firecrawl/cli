@@ -218,6 +218,39 @@ export async function handleScrapeCommand(
     effectiveFormats.push('screenshot');
   }
 
+  // When outputting a single screenshot to an image file, fetch the actual
+  // binary instead of writing the URL as text. The multi-URL code path
+  // (handleAllScrapeCommand) already does this, but the single-URL path
+  // was missing it — resulting in a text file containing the CDN URL.
+  if (
+    options.output &&
+    result.success &&
+    result.data?.screenshot &&
+    effectiveFormats.length === 1 &&
+    effectiveFormats[0] === 'screenshot' &&
+    /\.(png|jpg|jpeg|webp)$/i.test(options.output)
+  ) {
+    const fs = await import('fs');
+    const path = await import('path');
+
+    const dir = path.dirname(options.output);
+    if (dir && !fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    const response = await fetch(result.data.screenshot);
+    if (response.ok) {
+      const buffer = Buffer.from(await response.arrayBuffer());
+      fs.writeFileSync(options.output, buffer);
+      return;
+    }
+
+    console.error(
+      `Failed to download screenshot: ${response.status} ${response.statusText}`
+    );
+    process.exit(1);
+  }
+
   handleScrapeOutput(
     result,
     effectiveFormats,
