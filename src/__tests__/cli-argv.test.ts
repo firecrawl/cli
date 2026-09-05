@@ -149,12 +149,6 @@ describe('CLI argv parsing', () => {
       '--new',
       '--mode',
       '--effort',
-      '--exchange',
-      '--toolkits',
-      '--max-calls',
-      '--require-approval',
-      '--approve',
-      '--decline',
     ]) {
       expect(flattened).toContain(flag);
     }

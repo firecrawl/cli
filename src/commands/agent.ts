@@ -4,10 +4,8 @@
 
 import type {
   AgentEffort,
-  AgentExchangeOptions,
   AgentMode,
   AgentOptions,
-  AgentPendingApproval,
   AgentResult,
   AgentStatus,
   AgentStatusResult,
@@ -32,19 +30,11 @@ import { readFileSync } from 'fs';
 
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
 
-/**
- * Fixed prompts sent when resolving a pending approval, so the run continues
- * without the user retyping their intent.
- */
-export const APPROVE_PROMPT = 'Approved. Make that call, and nothing else.';
-export const DECLINE_PROMPT =
-  'Do not make that call. Answer from what you already have, or tell me what you would need.';
-
 const THREADS_UNSUPPORTED = 'This Firecrawl API does not support threads yet';
 
 /**
  * firecrawl@4.24.0 predates threads: `prepareAgentPayload` whitelists request
- * keys (so threadId/mode/effort/exchange would be dropped) and the response
+ * keys (so threadId/mode/effort would be dropped) and the response
  * types omit the new fields (which the API does return). Starts that use the
  * new fields therefore go over raw HTTP — the same escape hatch monitor.ts and
  * parse.ts use — and status responses are read through a widened type. Both
@@ -57,7 +47,6 @@ type ThreadAwareAgentStatus = AgentStatusResponse & {
   mode?: AgentMode;
   message?: string;
   suggestions?: AgentSuggestion[];
-  pendingApproval?: AgentPendingApproval;
 };
 
 type ThreadAwareStartResponse = {
@@ -144,7 +133,7 @@ function mapThreadSupportError(error: unknown): string | null {
     /unrecognized|unknown key|unexpected key|not allowed|not recognized/i.test(
       error.message
     );
-  const namesThreadField = /threadId|thread_id|\bmode\b|exchange|effort/i.test(
+  const namesThreadField = /threadId|thread_id|\bmode\b|effort/i.test(
     error.message
   );
   return namesUnknownKey && namesThreadField ? THREADS_UNSUPPORTED : null;
@@ -174,7 +163,6 @@ export interface AgentStartParams {
   threadId?: string;
   mode?: AgentMode;
   effort?: AgentEffort;
-  exchange?: AgentExchangeOptions;
 }
 
 /** Request body for POST /v2/agent. New keys are only sent when set. */
@@ -199,9 +187,6 @@ export function buildAgentStartBody(
   if (params.threadId) body.threadId = params.threadId;
   if (params.mode) body.mode = params.mode;
   if (params.effort) body.effort = params.effort;
-  if (params.exchange && Object.keys(params.exchange).length > 0) {
-    body.exchange = params.exchange;
-  }
 
   return body;
 }
@@ -212,7 +197,6 @@ function needsRawStart(params: AgentStartParams): boolean {
     params.threadId ||
     params.mode ||
     params.effort ||
-    params.exchange ||
     params.clearUrls ||
     params.clearSchema
   );
@@ -220,14 +204,10 @@ function needsRawStart(params: AgentStartParams): boolean {
 
 /**
  * Which thread this run continues, if any. `--thread` wins over `--continue`,
- * `--continue` falls back to the thread remembered for this API key, and
- * `--approve`/`--decline` continue that same thread without asking for a flag.
+ * and `--continue` falls back to the thread remembered for this API key.
  */
 export function resolveThreadIntent(
-  options: Pick<
-    AgentOptions,
-    'thread' | 'continue' | 'new' | 'exchange' | 'apiKey'
-  >,
+  options: Pick<AgentOptions, 'thread' | 'continue' | 'new' | 'apiKey'>,
   remembered: string | null
 ): { threadId?: string; fromMemory: boolean; missingMemory: boolean } {
   if (options.thread) {
@@ -238,12 +218,7 @@ export function resolveThreadIntent(
     };
   }
 
-  const resolvingApproval = Boolean(
-    options.exchange?.approve || options.exchange?.decline
-  );
-  const wantsContinue = Boolean(options.continue) || resolvingApproval;
-
-  if (!wantsContinue || options.new) {
+  if (!options.continue || options.new) {
     return { fromMemory: false, missingMemory: false };
   }
 
@@ -322,7 +297,6 @@ function threadFields(
     ...(s.suggestions && s.suggestions.length > 0
       ? { suggestions: s.suggestions }
       : {}),
-    ...(s.pendingApproval ? { pendingApproval: s.pendingApproval } : {}),
   };
 }
 
@@ -465,19 +439,6 @@ async function checkAgentStatus(
 }
 
 /**
- * Prompt to send for this turn. Resolving an approval carries its own fixed
- * prompt so the user does not have to restate anything.
- */
-export function resolveStartPrompt(
-  options: Pick<AgentOptions, 'prompt' | 'exchange'>
-): string {
-  if (options.prompt && options.prompt.trim()) return options.prompt;
-  if (options.exchange?.approve) return APPROVE_PROMPT;
-  if (options.exchange?.decline) return DECLINE_PROMPT;
-  return options.prompt;
-}
-
-/**
  * Start a run, continuing a thread when one is asked for or remembered, and
  * record the thread the API reports back.
  */
@@ -528,17 +489,6 @@ async function startAgentRun(
   const remembered = getRememberedThread(identity)?.lastThreadId ?? null;
   const intent = resolveThreadIntent(options, remembered);
 
-  // An approval only exists inside a thread, so there is nothing to resolve
-  // without one.
-  const resolvingApproval = Boolean(
-    params.exchange?.approve || params.exchange?.decline
-  );
-  if (resolvingApproval && !intent.threadId) {
-    throw new Error(
-      'No thread to resolve that approval in. Pass --thread <id>.'
-    );
-  }
-
   if (intent.missingMemory) {
     onNotice('No remembered thread; starting a new one.');
   }
@@ -553,9 +503,7 @@ async function startAgentRun(
       forgetThread(identity);
     }
 
-    // A lost thread is a hard error while resolving an approval: there is
-    // nothing to approve in a fresh one.
-    if (!intent.fromMemory || resolvingApproval) throw error;
+    if (!intent.fromMemory) throw error;
 
     onNotice('That thread is gone; starting a new one.');
     response = await attempt({ ...params, threadId: undefined });
@@ -579,8 +527,7 @@ export async function executeAgent(
 ): Promise<AgentResult | AgentStatusResult> {
   try {
     const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
-    const { status, cancel, wait, pollInterval, timeout } = options;
-    const prompt = resolveStartPrompt(options);
+    const { prompt, status, cancel, wait, pollInterval, timeout } = options;
 
     if (cancel) {
       const cancelled = await app.cancelAgent(prompt);
@@ -642,9 +589,6 @@ export async function executeAgent(
     }
     if (options.effort) {
       agentParams.effort = options.effort;
-    }
-    if (options.exchange && Object.keys(options.exchange).length > 0) {
-      agentParams.exchange = options.exchange;
     }
 
     // If wait mode, use polling with spinner
@@ -784,69 +728,6 @@ export async function executeAgent(
   }
 }
 
-function truncate(value: string, max: number): string {
-  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
-}
-
-function renderTable(headers: string[], rows: string[][]): string[] {
-  const widths = headers.map((header, i) =>
-    Math.max(header.length, ...rows.map((row) => (row[i] ?? '').length))
-  );
-  const line = (cells: string[]) =>
-    cells
-      .map((cell, i) =>
-        i === cells.length - 1 ? cell : cell.padEnd(widths[i])
-      )
-      .join('  ')
-      .trimEnd();
-  return [line(headers), ...rows.map(line)];
-}
-
-/**
- * Render an approval the run is waiting on, plus the commands that resolve it.
- * Everything shown comes straight off the API response.
- */
-export function formatPendingApproval(
-  pendingApproval: AgentPendingApproval
-): string {
-  const lines: string[] = [];
-  lines.push(`Awaiting approval: ${pendingApproval.id}`);
-
-  if (typeof pendingApproval.reason === 'string' && pendingApproval.reason) {
-    lines.push(pendingApproval.reason);
-  }
-
-  const calls = Array.isArray(pendingApproval.calls)
-    ? pendingApproval.calls
-    : [];
-  if (calls.length > 0) {
-    const rows = calls.map((call) => {
-      const args =
-        (call.input as unknown) ??
-        (call as Record<string, unknown>).arguments ??
-        (call as Record<string, unknown>).parameters;
-      const credits = call.creditsEstimate;
-      return [
-        String(call.provider ?? ''),
-        String(call.capability ?? ''),
-        args === undefined ? '' : truncate(JSON.stringify(args), 80),
-        credits === undefined || credits === null ? '-' : String(credits),
-      ];
-    });
-    lines.push(
-      ...renderTable(
-        ['Provider', 'Capability', 'Arguments', 'Est. credits'],
-        rows
-      )
-    );
-  }
-
-  lines.push(`  firecrawl agent --approve ${pendingApproval.id}`);
-  lines.push(`  firecrawl agent --decline ${pendingApproval.id}`);
-
-  return lines.join('\n');
-}
-
 /**
  * A shell word that is only ever a word. Single quotes suspend every
  * expansion a shell performs, and the one character they cannot carry is
@@ -911,11 +792,6 @@ function formatAgentStatus(data: AgentStatusResult['data']): string {
     lines.push('');
     lines.push('Result:');
     lines.push(JSON.stringify(data.data, null, 2));
-  }
-
-  if (data.pendingApproval) {
-    lines.push('');
-    lines.push(formatPendingApproval(data.pendingApproval));
   }
 
   if (data.suggestions && data.suggestions.length > 0) {
@@ -1049,9 +925,6 @@ function formatThreadRun(run: AgentThreadRun): string[] {
   if (run.data !== undefined && run.data !== null) {
     lines.push('  Result:');
     lines.push(JSON.stringify(run.data, null, 2));
-  }
-  if (run.pendingApproval) {
-    lines.push(formatPendingApproval(run.pendingApproval));
   }
   if (run.suggestions && run.suggestions.length > 0) {
     lines.push(formatSuggestions(run.suggestions));

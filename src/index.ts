@@ -1518,7 +1518,7 @@ function createAgentCommand(): Command {
   const agentCmd = new Command('agent')
     .description('Run an AI agent to extract data from the web')
     .argument(
-      '[prompt-or-job-id]',
+      '<prompt-or-job-id>',
       'Natural language prompt describing data to extract, or job ID to check status'
     )
     .option('--urls <urls>', 'Comma-separated URLs to focus extraction on')
@@ -1560,30 +1560,6 @@ function createAgentCommand(): Command {
       'Run mode: extract (default, returns JSON) or chat (the agent may reply in prose)'
     )
     .option('--effort <level>', 'Effort level: low, medium, or high')
-    .option('--exchange', 'Enable Firecrawl Exchange data providers', false)
-    .option(
-      '--toolkits <list>',
-      'Comma-separated Exchange toolkits to limit the run to'
-    )
-    .option(
-      '--max-calls <number>',
-      'Maximum Exchange provider calls for this run',
-      parseInt
-    )
-    .option('--require-approval', 'Ask before each paid Exchange call', false)
-    .option(
-      '--approve <approvalId>',
-      'Approve a pending approval and continue the thread'
-    )
-    .option(
-      '--always',
-      'With --approve, stop asking again in this thread',
-      false
-    )
-    .option(
-      '--decline <approvalId>',
-      'Decline a pending approval and continue the thread'
-    )
     .option('--status', 'Check status of existing agent job', false)
     .option('--cancel', 'Cancel active agent job by job ID', false)
     .option(
@@ -1610,8 +1586,6 @@ function createAgentCommand(): Command {
     .option('--json', 'Output as JSON format', false)
     .option('--pretty', 'Pretty print JSON output', false)
     .action(async (promptOrJobId, options, command) => {
-      const resolvingApproval = !!(options.approve || options.decline);
-
       // Commander stores --urls and --no-urls under one key, so passing both
       // looks like whichever came last. Read the flags as typed to catch it.
       const rawArgs: string[] = command.parent?.rawArgs ?? [];
@@ -1630,14 +1604,7 @@ function createAgentCommand(): Command {
       const clearUrls = options.urls === false;
       const clearSchema = options.schema === false;
 
-      if (!promptOrJobId && !resolvingApproval) {
-        console.error(
-          'Error: a prompt or job ID is required (or use --approve/--decline).'
-        );
-        process.exit(1);
-      }
-
-      const prompt = promptOrJobId ?? '';
+      const prompt: string = promptOrJobId;
 
       // Auto-detect if it's a job ID (UUID format)
       const isStatusCheck = options.status || isJobId(prompt);
@@ -1652,11 +1619,6 @@ function createAgentCommand(): Command {
 
       if (options.continue && options.new) {
         console.error('Error: use --continue or --new, not both.');
-        process.exit(1);
-      }
-
-      if (options.approve && options.decline) {
-        console.error('Error: use --approve or --decline, not both.');
         process.exit(1);
       }
 
@@ -1741,26 +1703,6 @@ function createAgentCommand(): Command {
         process.exit(1);
       }
 
-      const exchange: Record<string, unknown> = {};
-      if (options.exchange) exchange.enabled = true;
-      if (options.toolkits) {
-        exchange.toolkits = options.toolkits
-          .split(',')
-          .map((t: string) => t.trim())
-          .filter((t: string) => t.length > 0);
-      }
-      if (options.maxCalls !== undefined) exchange.maxCalls = options.maxCalls;
-      if (options.requireApproval) exchange.requireApproval = true;
-      if (options.approve) {
-        exchange.approve = {
-          approvalId: options.approve,
-          ...(options.always ? { always: true } : {}),
-        };
-      }
-      if (options.decline) {
-        exchange.decline = { approvalId: options.decline };
-      }
-
       const agentOptions = {
         prompt,
         urls,
@@ -1785,7 +1727,6 @@ function createAgentCommand(): Command {
         new: options.new,
         mode: options.mode,
         effort: options.effort,
-        ...(Object.keys(exchange).length > 0 ? { exchange } : {}),
       };
 
       await handleAgentCommand(agentOptions);

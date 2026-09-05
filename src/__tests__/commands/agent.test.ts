@@ -7,11 +7,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  APPROVE_PROMPT,
-  DECLINE_PROMPT,
   executeAgent,
   executeAgentThread,
-  formatPendingApproval,
   formatSuggestions,
   formatThread,
   handleAgentCommand,
@@ -295,85 +292,6 @@ describe('agent threads', () => {
     });
   });
 
-  describe('approvals', () => {
-    it('--approve sends the control prompt and the approve payload', async () => {
-      rememberThread({ apiKey: API_KEY }, { threadId: 'thread-1' });
-      mockFetch.mockResolvedValue(
-        jsonResponse(200, { success: true, id: 'run-9', threadId: 'thread-1' })
-      );
-
-      await executeAgent({
-        prompt: '',
-        exchange: { approve: { approvalId: 'a1', always: true } },
-        apiKey: API_KEY,
-      });
-
-      expect(lastRequestBody(mockFetch)).toEqual({
-        prompt: APPROVE_PROMPT,
-        integration: 'cli',
-        threadId: 'thread-1',
-        exchange: { approve: { approvalId: 'a1', always: true } },
-      });
-    });
-
-    it('--decline sends its own control prompt', async () => {
-      rememberThread({ apiKey: API_KEY }, { threadId: 'thread-1' });
-      mockFetch.mockResolvedValue(
-        jsonResponse(200, { success: true, id: 'run-10', threadId: 'thread-1' })
-      );
-
-      await executeAgent({
-        prompt: '',
-        exchange: { decline: { approvalId: 'a1' } },
-        apiKey: API_KEY,
-      });
-
-      const body = lastRequestBody(mockFetch);
-      expect(body.prompt).toBe(DECLINE_PROMPT);
-      expect(body.exchange).toEqual({ decline: { approvalId: 'a1' } });
-      expect(body.threadId).toBe('thread-1');
-    });
-
-    it('refuses to resolve an approval with no thread to resolve it in', async () => {
-      const result = await executeAgent({
-        prompt: '',
-        exchange: { approve: { approvalId: 'a1' } },
-        apiKey: API_KEY,
-      });
-
-      expect(mockFetch).not.toHaveBeenCalled();
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('No thread to resolve that approval in');
-    });
-
-    it('renders a pending approval and the commands that resolve it', () => {
-      const rendered = formatPendingApproval({
-        id: 'a1',
-        reason: 'One call answers this.',
-        calls: [
-          {
-            id: 'c1',
-            provider: 'provider-slug',
-            capability: 'capability/slug',
-            input: { symbol: 'ACME' },
-            creditsEstimate: 5,
-          },
-        ],
-      });
-
-      expect(rendered).toContain('Awaiting approval: a1');
-      expect(rendered).toContain('One call answers this.');
-      expect(rendered).toContain('Provider');
-      expect(rendered).toContain('Capability');
-      expect(rendered).toContain('Est. credits');
-      expect(rendered).toContain('provider-slug');
-      expect(rendered).toContain('capability/slug');
-      expect(rendered).toContain('{"symbol":"ACME"}');
-      expect(rendered).toContain('firecrawl agent --approve a1');
-      expect(rendered).toContain('firecrawl agent --decline a1');
-    });
-  });
-
   describe('chat output', () => {
     it('prints the message before the data and lists follow-ups', async () => {
       const stdout = vi
@@ -424,54 +342,6 @@ describe('agent threads', () => {
 
       stdout.mockRestore();
       stderr.mockRestore();
-    });
-
-    /**
-     * A turn that stops on a paid call still ends: the approval is written
-     * with the run's result, so it only ever reaches the client alongside a
-     * terminal status. `--wait` therefore returns on the poll that carries it
-     * rather than spinning to its timeout, and prints how to resolve it.
-     */
-    it('stops waiting on the poll that carries an approval', async () => {
-      const stdout = vi
-        .spyOn(process.stdout, 'write')
-        .mockImplementation(() => true);
-      vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-
-      mockFetch.mockResolvedValue(
-        jsonResponse(200, { success: true, id: 'run-1', threadId: 'thread-1' })
-      );
-      mockClient.getAgentStatus
-        .mockResolvedValueOnce({ success: true, status: 'processing' })
-        .mockResolvedValue({
-          success: true,
-          status: 'completed',
-          creditsUsed: 4,
-          threadId: 'thread-1',
-          message: 'That needs a paid call.',
-          pendingApproval: {
-            id: 'approval-1',
-            calls: [
-              { id: 'call-1', provider: 'acme', capability: 'filings/list' },
-            ],
-          },
-        });
-
-      await handleAgentCommand({
-        prompt: 'latest filings',
-        mode: 'chat',
-        wait: true,
-        pollInterval: 0.001,
-        // Short enough that spinning instead of returning would time out.
-        timeout: 1,
-        apiKey: API_KEY,
-      });
-
-      const written = stdout.mock.calls.map((call) => call[0]).join('');
-      expect(written).toContain('Awaiting approval: approval-1');
-      expect(written).toContain('firecrawl agent --approve approval-1');
-      expect(written).toContain('firecrawl agent --decline approval-1');
-      expect(written).not.toContain('Timeout');
     });
   });
 
@@ -670,12 +540,6 @@ describe('agent threads', () => {
       expect(
         resolveThreadIntent({ continue: true, new: true }, 'thread-1').threadId
       ).toBeUndefined();
-      expect(
-        resolveThreadIntent(
-          { exchange: { approve: { approvalId: 'a1' } } },
-          'thread-1'
-        )
-      ).toMatchObject({ threadId: 'thread-1', fromMemory: true });
     });
   });
 

@@ -709,13 +709,6 @@ firecrawl agent --continue --no-schema --mode chat "Summarise what changed" --wa
 | `--new`                     | Ignore any remembered thread and start a new one              |
 | `--mode <mode>`             | `extract` (default, returns JSON) or `chat` (prose replies)   |
 | `--effort <level>`          | Effort level: `low`, `medium`, or `high`                      |
-| `--exchange`                | Enable Firecrawl Exchange data providers                      |
-| `--toolkits <list>`         | Comma-separated Exchange toolkits to limit the run to         |
-| `--max-calls <number>`      | Maximum Exchange provider calls for this run                  |
-| `--require-approval`        | Ask before each paid Exchange call                            |
-| `--approve <approvalId>`    | Approve a pending approval and continue the thread            |
-| `--always`                  | With `--approve`, stop asking again in this thread            |
-| `--decline <approvalId>`    | Decline a pending approval and continue the thread            |
 | `--status`                  | Check status of existing agent job                            |
 | `--cancel`                  | Cancel an active agent job by job ID                          |
 | `--wait`                    | Wait for agent to complete before returning results           |

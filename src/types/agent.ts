@@ -18,34 +18,6 @@ export interface AgentSuggestion {
   prompt: string;
 }
 
-/**
- * Approval the run is waiting on, as returned by the API. Rendered generically:
- * the CLI reads the fields off the object and does not interpret them.
- */
-export interface AgentPendingApproval {
-  id: string;
-  reason?: string;
-  calls?: Array<{
-    id?: string;
-    provider?: string;
-    capability?: string;
-    input?: Record<string, unknown>;
-    creditsEstimate?: number | null;
-    [key: string]: unknown;
-  }>;
-  [key: string]: unknown;
-}
-
-/** Firecrawl Exchange options, passed through to the API untouched */
-export interface AgentExchangeOptions {
-  enabled?: boolean;
-  toolkits?: string[];
-  maxCalls?: number;
-  requireApproval?: boolean;
-  approve?: { approvalId: string; always?: boolean };
-  decline?: { approvalId: string };
-}
-
 export interface AgentOptions {
   /** Natural language prompt describing the data to extract */
   prompt: string;
@@ -95,8 +67,6 @@ export interface AgentOptions {
   mode?: AgentMode;
   /** How much work the agent should put into the run */
   effort?: AgentEffort;
-  /** Firecrawl Exchange options */
-  exchange?: AgentExchangeOptions;
 }
 
 export interface AgentResult {
@@ -122,7 +92,6 @@ export interface AgentStatusResult {
     mode?: AgentMode;
     message?: string;
     suggestions?: AgentSuggestion[];
-    pendingApproval?: AgentPendingApproval;
   };
   error?: string;
 }
@@ -141,7 +110,6 @@ export interface AgentThreadRun {
   message?: string | null;
   data?: unknown;
   suggestions?: AgentSuggestion[] | null;
-  pendingApproval?: AgentPendingApproval | null;
 }
 
 export interface AgentThread {
