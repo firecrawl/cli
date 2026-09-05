@@ -33,7 +33,7 @@ There is **no fixed recipe**. Read the question, decide what kind it is, and cho
 
 Only the HTTP surface takes these. On `GET`, pass `types=issue,pull_request` or repeat the parameter; on `POST`, pass arrays. All are optional.
 
-- `types` — which of `doc`, `issue`, `pull_request`, `readme` to search. Defaults to all four. Narrowing here is the cheapest way to sharpen a query.
+- `types` — which of `doc`, `issue`, `pull_request`, `readme` to search. When unset the request also returns `web:` results alongside the four curated kinds; passing an explicit list is the only way to exclude them. Narrowing here is also the cheapest way to sharpen a query.
 - `repos` (`owner/name`) scopes the repository half, meaning `issue`, `pull_request`, and `readme`; `sources` (documentation source ids, at most 20) scopes the documentation half, meaning `doc`. Passing both **unions** the halves rather than intersecting them. Both echo back in the response with `indexed: true|false` — that is how you tell "not in the index" from "found nothing".
 - A filter that cannot match any requested `type` is a `400`, not an empty list: `repos` with no repository type in `types`, or `sources` without `doc`.
 - `passages` (1–5, default 1) is the _maximum_ passages per result, not a guarantee. Raise it when one page is clearly the right page but the first passage is the wrong part of it.
