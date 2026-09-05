@@ -1,0 +1,591 @@
+/**
+ * Tests for agent command threads
+ */
+
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
+  executeAgent,
+  executeAgentThread,
+  formatSuggestions,
+  formatThread,
+  handleAgentCommand,
+  resolveThreadIntent,
+} from '../../commands/agent';
+import { getClient } from '../../utils/client';
+import { getRememberedThread, rememberThread } from '../../utils/agent-threads';
+import { initializeConfig } from '../../utils/config';
+import { setupTest, teardownTest } from '../utils/mock-client';
+
+const { configDir } = vi.hoisted(() => ({ configDir: { path: '' } }));
+
+vi.mock('../../utils/credentials', () => ({
+  loadCredentials: () => null,
+  getConfigDirectoryPath: () => configDir.path,
+}));
+
+vi.mock('../../utils/client', async () => {
+  const actual = await vi.importActual('../../utils/client');
+  return { ...actual, getClient: vi.fn() };
+});
+
+const API_KEY = 'fc-test-key';
+
+function jsonResponse(status: number, payload: unknown) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: 'OK',
+    json: vi.fn().mockResolvedValue(payload),
+  };
+}
+
+function lastRequestBody(mockFetch: ReturnType<typeof vi.fn>, index = 0): any {
+  const [, init] = mockFetch.mock.calls[index] as [string, { body: string }];
+  return JSON.parse(init.body);
+}
+
+describe('agent threads', () => {
+  let mockFetch: ReturnType<typeof vi.fn>;
+  let mockClient: any;
+
+  beforeEach(() => {
+    setupTest();
+    configDir.path = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'firecrawl-agent-test-')
+    );
+    initializeConfig({ apiKey: API_KEY, apiUrl: 'https://api.firecrawl.dev' });
+
+    mockClient = { startAgent: vi.fn(), getAgentStatus: vi.fn() };
+    vi.mocked(getClient).mockReturnValue(mockClient as any);
+
+    mockFetch = vi.fn();
+    vi.stubGlobal('fetch', mockFetch);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    fs.rmSync(configDir.path, { recursive: true, force: true });
+    teardownTest();
+    // Restores, not just clears: several cases spy on process.stdout.write and
+    // undo it on their last line, which an earlier failed assertion skips.
+    // Clearing alone leaves the spy installed and swallows the output of every
+    // test after it, turning one failure into a confusing handful.
+    vi.restoreAllMocks();
+  });
+
+  describe('continuing a thread', () => {
+    it('sends the remembered thread and records the new run', async () => {
+      rememberThread(
+        { apiKey: API_KEY },
+        { threadId: 'thread-1', runId: 'run-1' }
+      );
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, {
+          success: true,
+          id: 'run-2',
+          threadId: 'thread-1',
+          threadTurn: 2,
+        })
+      );
+
+      const result = await executeAgent({
+        prompt: 'Which tier includes SSO?',
+        continue: true,
+        apiKey: API_KEY,
+      });
+
+      expect(result.success).toBe(true);
+      const [url, init] = mockFetch.mock.calls[0] as [
+        string,
+        { method: string; headers: Record<string, string> },
+      ];
+      expect(url).toBe('https://api.firecrawl.dev/v2/agent');
+      expect(init.method).toBe('POST');
+      expect(init.headers.Authorization).toBe(`Bearer ${API_KEY}`);
+      expect(lastRequestBody(mockFetch)).toEqual({
+        prompt: 'Which tier includes SSO?',
+        integration: 'cli',
+        threadId: 'thread-1',
+      });
+
+      const remembered = getRememberedThread({ apiKey: API_KEY });
+      expect(remembered?.lastThreadId).toBe('thread-1');
+      expect(remembered?.lastRunId).toBe('run-2');
+    });
+
+    it('does not reuse a thread remembered for another API key', async () => {
+      rememberThread({ apiKey: 'fc-other-key' }, { threadId: 'other-thread' });
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, { success: true, id: 'run-2', threadId: 'thread-9' })
+      );
+
+      await executeAgent({
+        prompt: 'follow up',
+        continue: true,
+        mode: 'chat',
+        apiKey: API_KEY,
+      });
+
+      expect(lastRequestBody(mockFetch).threadId).toBeUndefined();
+      expect(
+        getRememberedThread({ apiKey: 'fc-other-key' })?.lastThreadId
+      ).toBe('other-thread');
+    });
+
+    it('keys memory on the key the request uses, not the flag', async () => {
+      // --api-key is the rare case: the key normally comes from stored
+      // credentials or the environment. Keyed off the flag alone, every one of
+      // those runs shared a bucket and switching accounts continued the other
+      // account's thread.
+      initializeConfig({
+        apiKey: 'fc-account-a',
+        apiUrl: 'https://api.firecrawl.dev',
+      });
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, { success: true, id: 'run-1', threadId: 'thread-a' })
+      );
+      await executeAgent({ prompt: 'first', mode: 'chat' });
+
+      initializeConfig({
+        apiKey: 'fc-account-b',
+        apiUrl: 'https://api.firecrawl.dev',
+      });
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, { success: true, id: 'run-2', threadId: 'thread-b' })
+      );
+      await executeAgent({ prompt: 'second', continue: true, mode: 'chat' });
+
+      expect(lastRequestBody(mockFetch).threadId).toBeUndefined();
+      expect(
+        getRememberedThread({ apiKey: 'fc-account-a' })?.lastThreadId
+      ).toBe('thread-a');
+      expect(
+        getRememberedThread({ apiKey: 'fc-account-b' })?.lastThreadId
+      ).toBe('thread-b');
+    });
+
+    it('says so when there is no remembered thread to continue', async () => {
+      const stderr = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation(() => true);
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, { success: true, id: 'run-1', threadId: 'thread-1' })
+      );
+
+      await executeAgent({
+        prompt: 'start something',
+        continue: true,
+        mode: 'chat',
+        apiKey: API_KEY,
+      });
+
+      const written = stderr.mock.calls.map((call) => call[0]).join('');
+      expect(written).toContain('No remembered thread; starting a new one.');
+      stderr.mockRestore();
+    });
+
+    it('lets --thread override the remembered thread', async () => {
+      rememberThread({ apiKey: API_KEY }, { threadId: 'thread-1' });
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, { success: true, id: 'run-5', threadId: 'thread-9' })
+      );
+
+      await executeAgent({
+        prompt: 'follow up',
+        thread: 'thread-9',
+        continue: true,
+        apiKey: API_KEY,
+      });
+
+      expect(lastRequestBody(mockFetch).threadId).toBe('thread-9');
+      expect(getRememberedThread({ apiKey: API_KEY })?.lastThreadId).toBe(
+        'thread-9'
+      );
+    });
+
+    it('clears the entry and starts fresh when the thread is gone', async () => {
+      rememberThread({ apiKey: API_KEY }, { threadId: 'thread-gone' });
+      const stderr = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation(() => true);
+      mockFetch
+        .mockResolvedValueOnce(
+          jsonResponse(404, {
+            success: false,
+            error: 'Thread not found',
+            code: 'thread_not_found',
+          })
+        )
+        .mockResolvedValueOnce(
+          jsonResponse(200, {
+            success: true,
+            id: 'run-7',
+            threadId: 'thread-new',
+          })
+        );
+
+      const result = await executeAgent({
+        prompt: 'follow up',
+        continue: true,
+        mode: 'chat',
+        apiKey: API_KEY,
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(lastRequestBody(mockFetch, 0).threadId).toBe('thread-gone');
+      expect(lastRequestBody(mockFetch, 1).threadId).toBeUndefined();
+      expect(getRememberedThread({ apiKey: API_KEY })?.lastThreadId).toBe(
+        'thread-new'
+      );
+
+      const written = stderr.mock.calls.map((call) => call[0]).join('');
+      expect(written).toContain('That thread is gone; starting a new one.');
+      stderr.mockRestore();
+    });
+
+    it('clears the entry when an expired thread is gone for good', async () => {
+      rememberThread({ apiKey: API_KEY }, { threadId: 'thread-expired' });
+      mockFetch
+        .mockResolvedValueOnce(
+          jsonResponse(410, {
+            success: false,
+            error: 'Thread expired',
+            code: 'thread_expired',
+          })
+        )
+        .mockResolvedValueOnce(
+          jsonResponse(200, { success: true, id: 'run-8' })
+        );
+
+      await executeAgent({
+        prompt: 'follow up',
+        continue: true,
+        mode: 'chat',
+        apiKey: API_KEY,
+      });
+
+      expect(getRememberedThread({ apiKey: API_KEY })).toBeNull();
+    });
+
+    it('reports an API without thread support', async () => {
+      mockFetch.mockResolvedValue(
+        jsonResponse(400, {
+          success: false,
+          error: 'Unrecognized key in body: threadId',
+        })
+      );
+
+      const result = await executeAgent({
+        prompt: 'follow up',
+        thread: 'thread-1',
+        apiKey: API_KEY,
+      });
+
+      expect(result).toEqual({
+        success: false,
+        error: 'This Firecrawl API does not support threads yet',
+      });
+    });
+  });
+
+  describe('chat output', () => {
+    it('prints the message before the data and lists follow-ups', async () => {
+      const stdout = vi
+        .spyOn(process.stdout, 'write')
+        .mockImplementation(() => true);
+      const stderr = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation(() => true);
+
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, { success: true, id: 'run-1', threadId: 'thread-1' })
+      );
+      mockClient.getAgentStatus.mockResolvedValue({
+        success: true,
+        status: 'completed',
+        data: { tiers: ['free'] },
+        creditsUsed: 31,
+        expiresAt: '2026-01-01T00:00:00.000Z',
+        threadId: 'thread-1',
+        threadTurn: 2,
+        mode: 'chat',
+        message: 'Only the Enterprise tier lists SSO.',
+        suggestions: [
+          { label: 'Seats?', prompt: 'Does the Team tier cap seats?' },
+        ],
+      });
+
+      await handleAgentCommand({
+        prompt: 'Which tier includes SSO?',
+        mode: 'chat',
+        wait: true,
+        pollInterval: 0.001,
+        apiKey: API_KEY,
+      });
+
+      const written = stdout.mock.calls.map((call) => call[0]).join('');
+      expect(written.indexOf('Only the Enterprise tier lists SSO.')).toBe(0);
+      expect(
+        written.indexOf('Only the Enterprise tier lists SSO.')
+      ).toBeLessThan(written.indexOf('"tiers"'));
+      expect(written).toContain('Try next:');
+      expect(written).toContain(
+        "firecrawl agent --continue 'Does the Team tier cap seats?'"
+      );
+
+      const errors = stderr.mock.calls.map((call) => call[0]).join('');
+      expect(errors).toContain('Thread: thread-1  (continue with --continue)');
+
+      stdout.mockRestore();
+      stderr.mockRestore();
+    });
+  });
+
+  describe('agent thread <id>', () => {
+    it('reads the conversation and renders its turns', async () => {
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, {
+          success: true,
+          thread: {
+            id: 'thread-1',
+            status: 'idle',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            runs: [
+              {
+                id: 'run-1',
+                turn: 1,
+                mode: 'chat',
+                prompt: 'List the pricing tiers',
+                status: 'succeeded',
+                creditsUsed: 212,
+                data: { tiers: ['free'] },
+              },
+              {
+                id: 'run-2',
+                turn: 2,
+                mode: 'chat',
+                prompt: 'Which tier includes SSO?',
+                status: 'succeeded',
+                creditsUsed: 31,
+                message: 'Only the Enterprise tier lists SSO.',
+                suggestions: [
+                  { label: 'Seats?', prompt: 'Does the Team tier cap seats?' },
+                ],
+              },
+            ],
+          },
+        })
+      );
+
+      const result = await executeAgentThread('thread-1', { apiKey: API_KEY });
+
+      const [url] = mockFetch.mock.calls[0] as [string];
+      expect(url).toBe(
+        'https://api.firecrawl.dev/v2/agent/threads/thread-1?includeData=true'
+      );
+      expect(result.success).toBe(true);
+
+      const rendered = formatThread(result.thread!);
+      expect(rendered).toContain('Thread: thread-1');
+      expect(rendered).toContain('Turn 1 · chat · succeeded · 212 credits');
+      expect(rendered).toContain('You: List the pricing tiers');
+      expect(rendered).toContain('"tiers"');
+      expect(rendered).toContain('Turn 2 · chat · succeeded · 31 credits');
+      expect(rendered).toContain('Agent: Only the Enterprise tier lists SSO.');
+      expect(rendered).toContain(
+        "firecrawl agent --continue 'Does the Team tier cap seats?'"
+      );
+      expect(rendered.indexOf('Turn 1')).toBeLessThan(
+        rendered.indexOf('Turn 2')
+      );
+    });
+
+    it('reads a keyless self-hosted thread through --api-url', async () => {
+      // The key requirement follows the server the request resolved to. A
+      // custom --api-url is a self-hosted one, and those need no key.
+      initializeConfig({ apiUrl: 'https://api.firecrawl.dev' });
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, {
+          success: true,
+          thread: { id: 'thread-1', status: 'idle', runs: [] },
+        })
+      );
+
+      const result = await executeAgentThread('thread-1', {
+        apiUrl: 'http://localhost:3002',
+      });
+
+      expect(result.success).toBe(true);
+      const [url] = mockFetch.mock.calls[0] as [string];
+      expect(url).toBe(
+        'http://localhost:3002/v2/agent/threads/thread-1?includeData=true'
+      );
+    });
+  });
+
+  describe('rendering follow-ups', () => {
+    it('quotes a suggestion so copying it cannot run anything', () => {
+      const rendered = formatSuggestions([
+        { label: 'x', prompt: 'price of $(whoami) and `id`' },
+        { label: 'y', prompt: "the vendor's own page" },
+      ]);
+
+      expect(rendered).toContain(
+        "firecrawl agent --continue 'price of $(whoami) and `id`'"
+      );
+      // The one character single quotes cannot carry, carried anyway.
+      expect(rendered).toContain(
+        "firecrawl agent --continue 'the vendor'\\''s own page'"
+      );
+    });
+  });
+
+  describe('clearing inherited URLs and schema', () => {
+    it('sends an empty URL list for --no-urls', async () => {
+      rememberThread({ apiKey: API_KEY }, { threadId: 'thread-1' });
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, { success: true, id: 'run-11', threadId: 'thread-1' })
+      );
+
+      await executeAgent({
+        prompt: 'Look anywhere on the site now',
+        continue: true,
+        clearUrls: true,
+        apiKey: API_KEY,
+      });
+
+      expect(lastRequestBody(mockFetch)).toEqual({
+        prompt: 'Look anywhere on the site now',
+        integration: 'cli',
+        threadId: 'thread-1',
+        urls: [],
+      });
+    });
+
+    it('sends a null schema for --no-schema', async () => {
+      rememberThread({ apiKey: API_KEY }, { threadId: 'thread-1' });
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, { success: true, id: 'run-12', threadId: 'thread-1' })
+      );
+
+      await executeAgent({
+        prompt: 'Just answer in prose',
+        continue: true,
+        clearSchema: true,
+        apiKey: API_KEY,
+      });
+
+      const body = lastRequestBody(mockFetch);
+      expect(body.schema).toBeNull();
+      expect('urls' in body).toBe(false);
+    });
+
+    it('clears both at once', async () => {
+      rememberThread({ apiKey: API_KEY }, { threadId: 'thread-1' });
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, { success: true, id: 'run-13', threadId: 'thread-1' })
+      );
+
+      await executeAgent({
+        prompt: 'Start clean',
+        thread: 'thread-1',
+        clearUrls: true,
+        clearSchema: true,
+        apiKey: API_KEY,
+      });
+
+      expect(lastRequestBody(mockFetch)).toEqual({
+        prompt: 'Start clean',
+        integration: 'cli',
+        threadId: 'thread-1',
+        urls: [],
+        schema: null,
+      });
+    });
+
+    it('prefers explicit URLs and schema over clearing them', async () => {
+      mockFetch.mockResolvedValue(
+        jsonResponse(200, { success: true, id: 'run-14', threadId: 'thread-1' })
+      );
+
+      await executeAgent({
+        prompt: 'follow up',
+        thread: 'thread-1',
+        urls: ['https://example.com/pricing'],
+        schema: { type: 'object' },
+        clearUrls: true,
+        clearSchema: true,
+        apiKey: API_KEY,
+      });
+
+      const body = lastRequestBody(mockFetch);
+      expect(body.urls).toEqual(['https://example.com/pricing']);
+      expect(body.schema).toEqual({ type: 'object' });
+    });
+  });
+
+  describe('thread precedence', () => {
+    it('prefers --thread, then --continue, then a new thread', () => {
+      expect(
+        resolveThreadIntent({ thread: 'thread-9', continue: true }, 'thread-1')
+      ).toMatchObject({ threadId: 'thread-9', fromMemory: false });
+      expect(resolveThreadIntent({ continue: true }, 'thread-1')).toMatchObject(
+        { threadId: 'thread-1', fromMemory: true }
+      );
+      expect(resolveThreadIntent({}, 'thread-1').threadId).toBeUndefined();
+      expect(
+        resolveThreadIntent({ continue: true, new: true }, 'thread-1').threadId
+      ).toBeUndefined();
+    });
+  });
+
+  describe('runs without thread flags', () => {
+    it('still starts through the SDK with the same arguments', async () => {
+      mockClient.startAgent.mockResolvedValue({ success: true, id: 'run-1' });
+
+      const result = await executeAgent({
+        prompt: 'Find the pricing plans',
+        apiKey: API_KEY,
+      });
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockClient.startAgent).toHaveBeenCalledWith({
+        prompt: 'Find the pricing plans',
+        integration: 'cli',
+      });
+      expect(result).toEqual({
+        success: true,
+        data: { jobId: 'run-1', status: 'processing' },
+      });
+    });
+
+    it('sends URLs, schema and credits exactly as it did before threads', async () => {
+      mockClient.startAgent.mockResolvedValue({ success: true, id: 'run-1' });
+
+      await executeAgent({
+        prompt: 'Get the main features listed',
+        urls: ['https://example.com/features'],
+        schema: { type: 'object', properties: { name: { type: 'string' } } },
+        model: 'spark-1-pro',
+        maxCredits: 100,
+        webhook: 'https://example.com/hook',
+        apiKey: API_KEY,
+      });
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockClient.startAgent).toHaveBeenCalledWith({
+        prompt: 'Get the main features listed',
+        urls: ['https://example.com/features'],
+        schema: { type: 'object', properties: { name: { type: 'string' } } },
+        model: 'spark-1-pro',
+        maxCredits: 100,
+        webhook: 'https://example.com/hook',
+        integration: 'cli',
+      });
+    });
+  });
+});

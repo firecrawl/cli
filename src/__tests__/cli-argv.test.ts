@@ -1,11 +1,49 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('CLI argv parsing', () => {
   const cliPath = resolve(process.cwd(), 'dist/index.js');
   const testWithBuiltCli = existsSync(cliPath) ? it : it.skip;
+
+  /**
+   * A run that gets as far as the argument checks.
+   *
+   * Every other case here asks for `--help`, which Commander answers before
+   * any command runs. A case that reaches a command does not: without a key
+   * the CLI stops at its login prompt, and with no stdin to answer it exits 0.
+   * That is the difference between a developer's machine and CI, and it is
+   * what let these two pass locally while failing there.
+   *
+   * The home directory is thrown away too, so a remembered thread or a stored
+   * key on the machine running the tests cannot change the answer. The key is
+   * never spent: every case below is rejected before a request is made.
+   */
+  const runAuthedCli = (args: string[]) => {
+    const home = mkdtempSync(join(tmpdir(), 'firecrawl-cli-argv-'));
+    try {
+      return spawnSync(process.execPath, [cliPath, ...args], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        // None of these cases should reach a network round trip, so anything
+        // that blocks is a broken assumption. Failing on it beats a suite that
+        // hangs until the runner gives up.
+        timeout: 20_000,
+        killSignal: 'SIGKILL',
+        env: {
+          ...process.env,
+          HOME: home,
+          USERPROFILE: home,
+          FIRECRAWL_API_KEY: 'fc-argv-test',
+          FIRECRAWL_NO_TELEMETRY: '1',
+        },
+      });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  };
 
   testWithBuiltCli('lists the developer command in root help output', () => {
     const result = spawnSync(process.execPath, [cliPath, '--help'], {
@@ -96,6 +134,119 @@ describe('CLI argv parsing', () => {
       expect(flattened).toContain('biomedical');
     }
   );
+
+  testWithBuiltCli('exposes the agent thread flags and subcommand', () => {
+    const result = spawnSync(process.execPath, [cliPath, 'agent', '--help'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(0);
+    const flattened = result.stdout.replace(/\s+/g, ' ');
+    for (const flag of [
+      '--thread',
+      '--continue',
+      '--new',
+      '--mode',
+      '--effort',
+    ]) {
+      expect(flattened).toContain(flag);
+    }
+    expect(flattened).toContain('thread [options] <threadId>');
+    expect(result.stderr).not.toContain('unknown command');
+  });
+
+  testWithBuiltCli('offers flags that clear inherited URLs and schema', () => {
+    const result = spawnSync(process.execPath, [cliPath, 'agent', '--help'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(0);
+    const flattened = result.stdout.replace(/\s+/g, ' ');
+    expect(flattened).toContain('--no-urls');
+    expect(flattened).toContain('--no-schema');
+  });
+
+  /**
+   * `--urls` and `--no-urls` share one attribute, and so do the schema pair.
+   * A run that passes neither must reach the request with both unset: leaking
+   * anything else into them puts a non-string through the URL split or the
+   * schema parse and kills the command before it asks for anything.
+   */
+  testWithBuiltCli(
+    'leaves URLs and schema unset when neither flag is passed',
+    () => {
+      const result = runAuthedCli([
+        'agent',
+        'a prompt',
+        '--api-url',
+        'http://127.0.0.1:9',
+      ]);
+      const output = `${result.stdout}${result.stderr}`;
+
+      // Getting as far as a failed request is the assertion, because option
+      // parsing is behind it and a non-string in either value would have
+      // thrown on the way. Which failure it is does not matter, so nothing
+      // here depends on that port being refused rather than answered.
+      expect(output).toContain('Failed to start agent');
+      expect(output).not.toMatch(/is not a function/);
+    }
+  );
+
+  testWithBuiltCli('requires a thread to clear URLs or schema', () => {
+    for (const flag of ['--no-urls', '--no-schema']) {
+      const result = runAuthedCli(['agent', flag, 'a prompt']);
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        'only apply to a follow-up. Pass --thread <id> or --continue.'
+      );
+    }
+  });
+
+  testWithBuiltCli('rejects clearing a value that is also being set', () => {
+    const urls = runAuthedCli([
+      'agent',
+      '--continue',
+      '--urls',
+      'https://example.com',
+      '--no-urls',
+      'a prompt',
+    ]);
+
+    expect(urls.status).toBe(1);
+    expect(urls.stderr).toContain('use --urls or --no-urls, not both.');
+
+    const schema = runAuthedCli([
+      'agent',
+      '--continue',
+      '--schema',
+      '{"type":"object"}',
+      '--no-schema',
+      'a prompt',
+    ]);
+
+    expect(schema.status).toBe(1);
+    expect(schema.stderr).toContain(
+      'use --schema/--schema-file or --no-schema, not both.'
+    );
+  });
+
+  testWithBuiltCli('parses the agent thread subcommand', () => {
+    const result = spawnSync(
+      process.execPath,
+      [cliPath, 'agent', 'thread', '--help'],
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      }
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Usage: firecrawl agent thread');
+    expect(result.stderr).not.toContain('unknown command');
+  });
 
   testWithBuiltCli(
     'exposes explicit keyless MCP setup and launch flags',

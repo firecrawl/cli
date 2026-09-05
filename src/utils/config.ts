@@ -2,7 +2,8 @@
  * Global configuration system
  */
 
-import { loadCredentials } from './credentials';
+import * as path from 'path';
+import { getConfigDirectoryPath, loadCredentials } from './credentials';
 
 export interface GlobalConfig {
   apiKey?: string;
@@ -72,14 +73,37 @@ export function getApiKey(providedKey?: string): string | undefined {
   return storedCredentials?.apiKey;
 }
 
-const DEFAULT_API_URL = 'https://api.firecrawl.dev';
+export const DEFAULT_API_URL = 'https://api.firecrawl.dev';
+
+/**
+ * One server, however its URL was spelled. Host casing and a trailing slash
+ * are not a different server, and both whether a key is required and which
+ * thread memory bucket a run belongs to turn on the answer.
+ */
+export function normalizeApiUrl(apiUrl?: string): string {
+  const raw = apiUrl?.trim() || DEFAULT_API_URL;
+  try {
+    const url = new URL(raw);
+    return `${url.protocol}//${url.host.toLowerCase()}${url.pathname.replace(/\/$/, '')}`;
+  } catch {
+    return raw.replace(/\/$/, '').toLowerCase();
+  }
+}
+
+/** Whether a URL reaches Firecrawl's cloud API rather than a self-hosted one. */
+export function isDefaultApiUrl(apiUrl?: string): boolean {
+  return normalizeApiUrl(apiUrl) === normalizeApiUrl(DEFAULT_API_URL);
+}
 
 /**
  * Check if using a custom (non-cloud) API URL
  */
 export function isCustomApiUrl(apiUrl?: string): boolean {
   const url = apiUrl || globalConfig.apiUrl;
-  return !!url && url !== DEFAULT_API_URL;
+  // Compared through the normalizer: a differently cased or trailing-slashed
+  // cloud URL is still the cloud, and reading it as self-hosted waives the
+  // key requirement and sends the request with no Authorization header.
+  return !!url && !isDefaultApiUrl(url);
 }
 
 /**
@@ -98,6 +122,14 @@ export function validateConfig(apiKey?: string): void {
       'API key is required. Set FIRECRAWL_API_KEY environment variable, use --api-key flag, or run "firecrawl config" to set the API key.'
     );
   }
+}
+
+/**
+ * Path of the remembered agent threads file, next to credentials.json,
+ * browser-session.json and interact-session.json
+ */
+export function getAgentThreadsPath(): string {
+  return path.join(getConfigDirectoryPath(), 'agent-threads.json');
 }
 
 /**

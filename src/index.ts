@@ -39,7 +39,7 @@ import {
   parseEndpointFeedbackCliOptions,
   parseEndpointFeedbackEndpoint,
 } from './commands/feedback';
-import { handleAgentCommand } from './commands/agent';
+import { handleAgentCommand, handleAgentThreadCommand } from './commands/agent';
 import {
   handleBrowserLaunch,
   handleBrowserExecute,
@@ -1523,6 +1523,10 @@ function createAgentCommand(): Command {
     )
     .option('--urls <urls>', 'Comma-separated URLs to focus extraction on')
     .option(
+      '--no-urls',
+      'Drop the URLs inherited from the thread (follow-ups only)'
+    )
+    .option(
       '--model <model>',
       'Model to use: spark-1-mini (default, cheaper) or spark-1-pro (higher accuracy)'
     )
@@ -1535,11 +1539,27 @@ function createAgentCommand(): Command {
       'Path to JSON schema file for structured output'
     )
     .option(
+      '--no-schema',
+      'Drop the schema inherited from the thread (follow-ups only)'
+    )
+    .option(
       '--max-credits <number>',
       'Maximum credits to spend (job fails if exceeded)',
       parseInt
     )
     .option('--webhook <url-or-json>', 'Webhook URL or webhook configuration')
+    .option('--thread <id>', 'Continue the thread with this ID')
+    .option(
+      '--continue',
+      'Continue the last thread started with this API key',
+      false
+    )
+    .option('--new', 'Ignore any remembered thread and start a new one', false)
+    .option(
+      '--mode <mode>',
+      'Run mode: extract (default, returns JSON) or chat (the agent may reply in prose)'
+    )
+    .option('--effort <level>', 'Effort level: low, medium, or high')
     .option('--status', 'Check status of existing agent job', false)
     .option('--cancel', 'Cancel active agent job by job ID', false)
     .option(
@@ -1565,22 +1585,82 @@ function createAgentCommand(): Command {
     .option('-o, --output <path>', 'Output file path (default: stdout)')
     .option('--json', 'Output as JSON format', false)
     .option('--pretty', 'Pretty print JSON output', false)
-    .action(async (promptOrJobId, options) => {
+    .action(async (promptOrJobId, options, command) => {
+      // Commander stores --urls and --no-urls under one key, so passing both
+      // looks like whichever came last. Read the flags as typed to catch it.
+      const rawArgs: string[] = command.parent?.rawArgs ?? [];
+      const passed = (flag: string) =>
+        rawArgs.some((arg) => arg === flag || arg.startsWith(`${flag}=`));
+
+      // That one key carries three different answers: a string when a value
+      // was given, false when the flag cleared it, and nothing when neither
+      // appeared. Splitting them here means the parsing below never has to
+      // ask which, and never inherits whatever Commander chose to default the
+      // attribute to.
+      const urlsValue =
+        typeof options.urls === 'string' ? options.urls : undefined;
+      const schemaValue =
+        typeof options.schema === 'string' ? options.schema : undefined;
+      const clearUrls = options.urls === false;
+      const clearSchema = options.schema === false;
+
+      const prompt: string = promptOrJobId;
+
       // Auto-detect if it's a job ID (UUID format)
-      const isStatusCheck = options.status || isJobId(promptOrJobId);
+      const isStatusCheck = options.status || isJobId(prompt);
       const isCancel = options.cancel;
 
-      if ((isStatusCheck || isCancel) && !isJobId(promptOrJobId)) {
+      if ((isStatusCheck || isCancel) && !isJobId(prompt)) {
         console.error(
           'Error: --status and --cancel require a job ID, not a prompt.'
         );
         process.exit(1);
       }
 
+      if (options.continue && options.new) {
+        console.error('Error: use --continue or --new, not both.');
+        process.exit(1);
+      }
+
+      if (clearUrls && passed('--urls')) {
+        console.error('Error: use --urls or --no-urls, not both.');
+        process.exit(1);
+      }
+
+      if (clearSchema && (passed('--schema') || options.schemaFile)) {
+        console.error(
+          'Error: use --schema/--schema-file or --no-schema, not both.'
+        );
+        process.exit(1);
+      }
+
+      if ((clearUrls || clearSchema) && !options.thread && !options.continue) {
+        console.error(
+          'Error: --no-urls and --no-schema only apply to a follow-up. Pass --thread <id> or --continue.'
+        );
+        process.exit(1);
+      }
+
+      const validModes = ['extract', 'chat'];
+      if (options.mode && !validModes.includes(options.mode)) {
+        console.error(
+          `Error: Invalid mode "${options.mode}". Valid modes: ${validModes.join(', ')}`
+        );
+        process.exit(1);
+      }
+
+      const validEfforts = ['low', 'medium', 'high'];
+      if (options.effort && !validEfforts.includes(options.effort)) {
+        console.error(
+          `Error: Invalid effort "${options.effort}". Valid levels: ${validEfforts.join(', ')}`
+        );
+        process.exit(1);
+      }
+
       // Parse URLs
       let urls: string[] | undefined;
-      if (options.urls) {
-        urls = options.urls
+      if (urlsValue) {
+        urls = urlsValue
           .split(',')
           .map((u: string) => u.trim())
           .filter((u: string) => u.length > 0);
@@ -1588,9 +1668,9 @@ function createAgentCommand(): Command {
 
       // Parse inline schema
       let schema: Record<string, unknown> | undefined;
-      if (options.schema) {
+      if (schemaValue) {
         try {
-          schema = JSON.parse(options.schema) as Record<string, unknown>;
+          schema = JSON.parse(schemaValue) as Record<string, unknown>;
         } catch {
           console.error('Error: Invalid JSON in --schema option');
           process.exit(1);
@@ -1624,9 +1704,11 @@ function createAgentCommand(): Command {
       }
 
       const agentOptions = {
-        prompt: promptOrJobId,
+        prompt,
         urls,
         schema,
+        clearUrls,
+        clearSchema,
         model: options.model,
         maxCredits: options.maxCredits,
         status: isStatusCheck,
@@ -1640,10 +1722,47 @@ function createAgentCommand(): Command {
         json: options.json,
         pretty: options.pretty,
         webhook,
+        thread: options.thread,
+        continue: options.continue,
+        new: options.new,
+        mode: options.mode,
+        effort: options.effort,
       };
 
       await handleAgentCommand(agentOptions);
     });
+
+  agentCmd
+    .command('thread')
+    .description('Print an agent thread conversation')
+    .argument('<threadId>', 'Thread ID')
+    .option(
+      '-k, --api-key <key>',
+      'Firecrawl API key (overrides global --api-key)'
+    )
+    .option('--api-url <url>', 'API URL (overrides global --api-url)')
+    .option('-o, --output <path>', 'Output file path (default: stdout)')
+    .option('--json', 'Output as JSON format', false)
+    .option('--pretty', 'Pretty print JSON output', false)
+    .action(async (threadId, options) => {
+      await handleAgentThreadCommand(threadId, {
+        apiKey: options.apiKey,
+        apiUrl: options.apiUrl,
+        output: options.output,
+        json: options.json,
+        pretty: options.pretty,
+      });
+    });
+
+  agentCmd.addHelpText(
+    'after',
+    `
+Threads:
+  $ firecrawl agent --mode chat "List the pricing tiers on example.com" --wait
+  $ firecrawl agent --continue "Which tier includes SSO?" --wait
+  $ firecrawl agent thread <thread-id>
+`
+  );
 
   return agentCmd;
 }

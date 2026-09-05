@@ -254,6 +254,14 @@ describe('Config Fallback Priority', () => {
       initializeConfig({ apiUrl: 'https://api.firecrawl.dev' });
       expect(isCustomApiUrl('http://localhost:3002')).toBe(true);
     });
+
+    it('reads the cloud URL as the cloud however it is spelled', () => {
+      // Read as custom, the key requirement is waived and the request goes to
+      // Firecrawl with no Authorization header at all.
+      expect(isCustomApiUrl('https://API.firecrawl.dev')).toBe(false);
+      expect(isCustomApiUrl('https://api.firecrawl.dev/')).toBe(false);
+      expect(isCustomApiUrl('HTTPS://Api.Firecrawl.Dev/')).toBe(false);
+    });
   });
 
   describe('validateConfig with custom API URLs', () => {

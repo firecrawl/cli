@@ -660,6 +660,38 @@ firecrawl agent <job-id>
 firecrawl agent <job-id> --wait
 ```
 
+#### Threads
+
+An agent run belongs to a thread. Follow-ups continue that thread with the full
+context of the earlier turns, so you only send the new question. Every start
+prints its thread ID, and the last thread you started is remembered per API key.
+
+```bash
+# Start a conversation; chat mode lets the agent answer in prose
+firecrawl agent --mode chat "List the pricing tiers on example.com" --wait
+
+# Follow up on the last thread started with this API key
+firecrawl agent --continue "Which tier includes SSO?" --wait
+
+# Continue a specific thread, or force a new one
+firecrawl agent --thread <thread-id> "And the annual price?" --wait
+firecrawl agent --new "Start over on example.org" --wait
+
+# Print a whole conversation
+firecrawl agent thread <thread-id>
+```
+
+A follow-up inherits the URLs and schema of the previous turn unless you say
+otherwise, so there are two flags to drop them:
+
+```bash
+# Stop focusing on the URLs from earlier turns
+firecrawl agent --continue --no-urls "Look anywhere on the site now" --wait
+
+# Drop the schema and let the agent answer in prose
+firecrawl agent --continue --no-schema --mode chat "Summarise what changed" --wait
+```
+
 #### Agent Options
 
 | Option                      | Description                                                   |
@@ -670,6 +702,13 @@ firecrawl agent <job-id> --wait
 | `--schema-file <path>`      | Path to JSON schema file for structured output                |
 | `--max-credits <number>`    | Maximum credits to spend (job fails if exceeded)              |
 | `--webhook <url-or-json>`   | Webhook URL or configuration                                  |
+| `--no-urls`                 | Drop the URLs inherited from the thread (follow-ups only)     |
+| `--no-schema`               | Drop the schema inherited from the thread (follow-ups only)   |
+| `--thread <id>`             | Continue the thread with this ID                              |
+| `--continue`                | Continue the last thread started with this API key            |
+| `--new`                     | Ignore any remembered thread and start a new one              |
+| `--mode <mode>`             | `extract` (default, returns JSON) or `chat` (prose replies)   |
+| `--effort <level>`          | Effort level: `low`, `medium`, or `high`                      |
 | `--status`                  | Check status of existing agent job                            |
 | `--cancel`                  | Cancel an active agent job by job ID                          |
 | `--wait`                    | Wait for agent to complete before returning results           |
