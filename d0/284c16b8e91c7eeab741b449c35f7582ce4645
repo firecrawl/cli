@@ -1,0 +1,9 @@
+skills/firecrawl/rules/alexandria.md
+  ai_agent 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "d0284c16b8e91c7eeab741b449c35f7582ce4645",
+  "prompts": {}
+}
