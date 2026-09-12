@@ -1,0 +1,46 @@
+src/commands/exchange.ts
+  s_d5a66f40b1ab9a::t_94f0c390618671 140-179,186-192,194
+  s_d5a66f40b1ab9a::t_9955aa6aad1cb7 269-276
+src/commands/scrape.ts
+  s_d5a66f40b1ab9a::t_1103b2f914298d 23
+  s_d5a66f40b1ab9a::t_1b1ffcc1f652a4 167-170
+  s_d5a66f40b1ab9a::t_607ccd5ba2e02a 234-246
+src/commands/search.ts
+  s_d5a66f40b1ab9a::t_df25927f7dfd68 53,55
+src/__tests__/commands/exchange.test.ts
+  s_d5a66f40b1ab9a::t_662080c5abc18a 188-190
+src/utils/alexandria.ts
+  s_d5a66f40b1ab9a::t_997c2d7fc0d3b4 6,17,28-30,34-44
+  s_d5a66f40b1ab9a::t_b44ac50542bc84 1
+src/types/scrape.ts
+  s_d5a66f40b1ab9a::t_a73a8c389e7594 75-76
+src/__tests__/commands/search.test.ts
+  s_d5a66f40b1ab9a::t_b1c8251ac7d691 105-107,109,111,113
+src/types/search.ts
+  s_d5a66f40b1ab9a::t_f24c4c07d46358 22-23
+src/utils/options.ts
+  s_d5a66f40b1ab9a::t_388397e5712470 126
+src/index.ts
+  s_d5a66f40b1ab9a::t_b03043840fdfb9 1077
+  s_d5a66f40b1ab9a::t_c03a23e89eb4c0 430-433
+src/types/exchange.ts
+  s_d5a66f40b1ab9a::t_9550cdf0fe35d3 101-104
+src/__tests__/commands/scrape.test.ts
+  s_d5a66f40b1ab9a::t_0b82c07386aabd 372-388
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1ff57f232eb655686b90d349c2c69b8fc1e510b4",
+  "prompts": {},
+  "sessions": {
+    "s_d5a66f40b1ab9a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9d98ef7f-6653-4344-b150-58a978da5f54",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Developers Digest <124798203+developersdigest@users.noreply.github.com>"
+    }
+  }
+}
