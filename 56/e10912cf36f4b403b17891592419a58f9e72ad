@@ -1,0 +1,11 @@
+src/commands/exchange.ts
+  ai_agent 284
+src/index.ts
+  ai_agent 463,1144,1189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "56e10912cf36f4b403b17891592419a58f9e72ad",
+  "prompts": {}
+}
