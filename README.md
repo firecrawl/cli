@@ -93,11 +93,45 @@ firecrawl setup build
 firecrawl setup workflows
 ```
 
-To install the Firecrawl MCP server into your editors (Cursor, Claude Code, VS Code, etc.):
+To install the Firecrawl MCP server into your coding agents:
 
 ```bash
 firecrawl setup mcp
 ```
+
+This detects which agents you have installed, lists those in a picker
+(already selected), and writes the server into each one you choose. Supported
+agents are Claude Code, Cursor, VS Code, Codex, OpenCode, Hermes Agent, and
+OpenClaw.
+
+Setup writes to your global agent settings, so one command puts Firecrawl on
+every agent you already use. Pass agent flags to skip the picker, or `-y` to
+configure every detected agent:
+
+```bash
+firecrawl setup mcp --claude --cursor    # skip the picker
+firecrawl setup mcp -y                   # every detected agent
+firecrawl setup mcp -y --defaults        # ...and hand over native web tools
+```
+
+Connecting the server does not stop an agent reaching for its own web tools
+first. Claude Code and Codex each document a way to turn those off, so setup
+offers that as a second step: it prints the exact line it would add to each
+config and asks before writing anything. A value you already set is reported
+and left alone rather than replaced, and `--no-defaults` skips the step. `-y`
+skips it too unless you pass `--defaults`.
+
+Rerun the command any time to update an existing setup or add another agent; it
+edits only the Firecrawl entry and leaves the rest of each config alone.
+
+Your API key is never written into an agent config. When `FIRECRAWL_API_KEY` is
+exported in the environment your agents run under, each agent gets a reference
+to that variable in the syntax it understands. Otherwise setup stays keyless,
+which still serves search, scrape, and parse under an anonymous rate limit. Use
+`--keyless` to force the anonymous path even when a key is available, or
+`--oauth` to sign in from the agent instead. Sign-in writes a different
+endpoint, so each agent runs the browser flow itself on first use and setup
+prints the step it needs. Pass either `--oauth` or `--keyless`, not both.
 
 To make Firecrawl the default web provider for supported AI agents:
 

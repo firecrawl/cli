@@ -1,7 +1,8 @@
-import { promises as fs } from 'fs';
+import { existsSync, promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { parseTOML } from 'toml-eslint-parser';
 import { configureWebDefaults } from '../../utils/web-defaults';
 
 const originalHome = process.env.HOME;
@@ -56,7 +57,7 @@ describe('configureWebDefaults', () => {
       'model = "gpt-5"\nweb_search = "cached"\n'
     );
 
-    await configureWebDefaults();
+    const results = await configureWebDefaults();
 
     expect(JSON.parse(await read('.claude/settings.json'))).toEqual({
       permissions: {
@@ -64,9 +65,13 @@ describe('configureWebDefaults', () => {
         deny: ['Bash(rm *)', 'WebSearch', 'WebFetch'],
       },
     });
+    // The user chose this value. Report it, never overwrite it.
     expect(await read('.codex/config.toml')).toBe(
-      'model = "gpt-5"\nweb_search = "disabled"\n'
+      'model = "gpt-5"\nweb_search = "cached"\n'
     );
+    const codex = results.find((result) => result.agent === 'Codex');
+    expect(codex?.changed).toBe(false);
+    expect(codex?.preserved).toBe(true);
   });
 
   it('undoes only the native web defaults', async () => {
@@ -103,7 +108,7 @@ describe('configureWebDefaults', () => {
     await configureWebDefaults();
 
     expect(await read('.codex/config.toml')).toBe(
-      'model = "gpt-5"\n\nweb_search = "disabled"\n[mcp_servers.firecrawl]\ncommand = "npx"\n'
+      'model = "gpt-5"\nweb_search = "disabled"\n\n[mcp_servers.firecrawl]\ncommand = "npx"\n'
     );
   });
 
@@ -118,5 +123,165 @@ describe('configureWebDefaults', () => {
     expect(await read('.codex/config.toml')).toBe(
       'model = "gpt-5"\n\n[profiles.research]\nweb_search = "disabled"\n'
     );
+  });
+
+  it('never overwrites a web_search the user turned on, comment and all', async () => {
+    const original =
+      '# my codex config\nweb_search = "enabled"   # I deliberately want this ON\nmodel = "gpt-5"\n';
+    await write('.codex/config.toml', original);
+
+    const results = await configureWebDefaults();
+
+    expect(await read('.codex/config.toml')).toBe(original);
+    const codex = results.find((result) => result.agent === 'Codex');
+    expect(codex?.preserved).toBe(true);
+    expect(codex?.message).toContain('enabled');
+  });
+
+  it('treats an unspaced web_search="disabled" as already done', async () => {
+    await write('.codex/config.toml', 'web_search="disabled"\n');
+
+    const results = await configureWebDefaults();
+
+    expect(await read('.codex/config.toml')).toBe('web_search="disabled"\n');
+    expect(results.find((result) => result.agent === 'Codex')?.changed).toBe(
+      false
+    );
+  });
+
+  it('preserves a byte order mark and CRLF while disabling Codex web search', async () => {
+    await write('.codex/config.toml', '\uFEFFmodel = "gpt-5"\r\n');
+
+    await configureWebDefaults({ agents: ['Codex'] });
+
+    expect(await read('.codex/config.toml')).toBe(
+      '\uFEFFmodel = "gpt-5"\r\nweb_search = "disabled"\r\n'
+    );
+  });
+
+  it('preserves a byte order mark and CRLF while restoring Codex web search', async () => {
+    await write(
+      '.codex/config.toml',
+      '\uFEFFmodel = "gpt-5"\r\nweb_search = "disabled"\r\n'
+    );
+
+    await configureWebDefaults({ agents: ['Codex'], undo: true });
+
+    expect(await read('.codex/config.toml')).toBe('\uFEFFmodel = "gpt-5"\r\n');
+  });
+
+  it('keeps comments in Claude settings.json', async () => {
+    await write(
+      '.claude/settings.json',
+      '{\n  // keep me\n  "model": "opus",\n  "permissions": { "deny": ["Bash(rm *)"] }\n}\n'
+    );
+
+    await configureWebDefaults();
+
+    const written = await read('.claude/settings.json');
+    expect(written).toContain('// keep me');
+    expect(written).toContain('WebSearch');
+    expect(written).toContain('Bash(rm *)');
+  });
+
+  it('reports the exact edit without writing when dryRun is set', async () => {
+    await write('.codex/config.toml', 'model = "gpt-5"\n');
+
+    const results = await configureWebDefaults({ dryRun: true });
+
+    expect(await read('.codex/config.toml')).toBe('model = "gpt-5"\n');
+    const codex = results.find((result) => result.agent === 'Codex');
+    expect(codex?.changed).toBe(true);
+    expect(codex?.preview).toBe('+ web_search = "disabled"');
+    const claude = results.find((result) => result.agent === 'Claude Code');
+    expect(claude?.preview).toBe(
+      'permissions.deny += ["WebSearch","WebFetch"]'
+    );
+  });
+
+  it('skips a Codex config it cannot parse instead of rewriting it', async () => {
+    const broken = 'model = "gpt-5"\nthis is not = = valid toml\n';
+    await write('.codex/config.toml', broken);
+
+    const results = await configureWebDefaults();
+
+    expect(await read('.codex/config.toml')).toBe(broken);
+    expect(results.find((result) => result.agent === 'Codex')?.skipped).toBe(
+      true
+    );
+  });
+
+  it('leaves a user-chosen web_search alone on undo', async () => {
+    const original = 'web_search = "cached"\n';
+    await write('.codex/config.toml', original);
+
+    const results = await configureWebDefaults({ undo: true });
+
+    expect(await read('.codex/config.toml')).toBe(original);
+    expect(results.find((result) => result.agent === 'Codex')?.changed).toBe(
+      false
+    );
+  });
+
+  it('does not splice into a multi-line root value', async () => {
+    await write(
+      '.codex/config.toml',
+      'model = "gpt-5"\nnotify = [\n  "notify-send",\n  "Codex",\n]\n'
+    );
+
+    await configureWebDefaults({ agents: ['Codex'] });
+
+    const written = await read('.codex/config.toml');
+    expect(() => parseTOML(written)).not.toThrow();
+    expect(written).toContain('  "notify-send",\n  "Codex",\n]');
+    expect(written).toMatch(/^web_search = "disabled"$/m);
+  });
+
+  it('keeps a multi-line string value intact', async () => {
+    await write(
+      '.codex/config.toml',
+      'instructions = """\nline one\nline two\n"""\n'
+    );
+
+    await configureWebDefaults({ agents: ['Codex'] });
+
+    const written = await read('.codex/config.toml');
+    expect(() => parseTOML(written)).not.toThrow();
+    expect(written).toContain('line one\nline two');
+    expect(written).toMatch(/^web_search = "disabled"$/m);
+  });
+
+  it.each(['null', '[]', '"nope"'])(
+    'replaces a permissions value of %s instead of throwing',
+    async (shape) => {
+      await write('.claude/settings.json', `{ "permissions": ${shape} }`);
+
+      await configureWebDefaults({ agents: ['Claude Code'] });
+
+      expect(
+        JSON.parse(await read('.claude/settings.json')).permissions.deny
+      ).toEqual(['WebSearch', 'WebFetch']);
+    }
+  );
+
+  it('follows CODEX_HOME and CLAUDE_CONFIG_DIR like the MCP writer', async () => {
+    process.env.CODEX_HOME = path.join(tempHome, 'work', '.codex');
+    process.env.CLAUDE_CONFIG_DIR = path.join(tempHome, 'work', '.claude');
+    try {
+      await configureWebDefaults();
+
+      expect(await read('work/.codex/config.toml')).toContain(
+        'web_search = "disabled"'
+      );
+      expect(
+        JSON.parse(await read('work/.claude/settings.json')).permissions.deny
+      ).toEqual(['WebSearch', 'WebFetch']);
+      // The un-overridden locations are files the agent never reads.
+      expect(existsSync(path.join(tempHome, '.codex'))).toBe(false);
+      expect(existsSync(path.join(tempHome, '.claude'))).toBe(false);
+    } finally {
+      delete process.env.CODEX_HOME;
+      delete process.env.CLAUDE_CONFIG_DIR;
+    }
   });
 });

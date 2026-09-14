@@ -317,6 +317,25 @@ describe('handleLaunchCommand', () => {
     expect(installSkillsForAgent).not.toHaveBeenCalled();
   });
 
+  it.each(['install', 'setup', 'config'] as const)(
+    'rejects %s mode when both MCP and skills are skipped',
+    async (flag) => {
+      await expect(
+        handleLaunchCommand('opencode', {
+          [flag]: true,
+          skipMcp: true,
+          skipSkills: true,
+        })
+      ).rejects.toThrow(
+        'Install mode (--install, --setup, --config) cannot be combined with both --skip-mcp and --skip-skills.'
+      );
+
+      expect(installMcp).not.toHaveBeenCalled();
+      expect(installSkillsForAgent).not.toHaveBeenCalled();
+      expect(spawnSync).not.toHaveBeenCalled();
+    }
+  );
+
   it('configures Hermes MCP and skills, then launches Hermes Agent', async () => {
     await handleLaunchCommand('hermes');
 
