@@ -162,7 +162,12 @@ it('relays terms refusals and keeps the request ID on failure', async () => {
     success: false,
     error: 'Accept provider terms',
     code: 'THIRD_PARTY_DATA_TERMS_REQUIRED',
-    requiresAction: { url: 'https://firecrawl.dev/terms/provider' },
+    requiresAction: {
+      type: 'accept_terms',
+      terms: 'provider',
+      version: '1.0',
+      url: 'https://firecrawl.dev/terms/provider',
+    },
   };
   const result = await cli([
     'scrape',
@@ -194,6 +199,37 @@ it('executes Find Tools through the same API and refuses keyless access', async 
       ],
     },
   });
+});
+
+it('preserves charged SDK failures', async () => {
+  status = 402;
+  response = {
+    success: false,
+    error: 'Provider call failed after billing',
+    code: 'PROVIDER_ERROR',
+    chargeId: 'charge-1',
+  };
+  const result = await cli(['scrape', '--alexandria', 'provider/lookup']);
+  expect(result.code).toBe(1);
+  expect(JSON.parse(result.stdout)).toMatchObject(response);
+  expect(requests).toHaveLength(1);
+});
+
+it('retains successful results and billing when one provider fails', async () => {
+  response.data.alexandria.push({
+    provider: 'other',
+    capability: 'lookup',
+    error: { code: 'PROVIDER_ERROR', message: 'Unavailable', status: 503 },
+  });
+  const result = await cli([
+    'scrape',
+    '--alexandria',
+    'provider/lookup',
+    'other/lookup',
+  ]);
+  expect(result.code).toBe(1);
+  expect(JSON.parse(result.stdout)).toMatchObject(response);
+  expect(requests).toHaveLength(1);
 });
 
 it('keeps URL scrape tool contracts in the output', async () => {

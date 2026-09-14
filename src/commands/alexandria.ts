@@ -1,14 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { Command, Option } from 'commander';
+import { SdkError, type AlexandriaCall } from 'firecrawl';
 import { getClient } from '../utils/client';
 import { getApiKey } from '../utils/config';
 import { writeOutput } from '../utils/output';
 
-type Call = {
-  provider: string;
-  capability: string;
-  options: Record<string, unknown>;
-};
+type Call = AlexandriaCall & { options: Record<string, unknown> };
 type Options = {
   apiKey?: string;
   apiUrl?: string;
@@ -55,7 +52,17 @@ export function buildCalls(addresses: string[], values: string[] = []): Call[] {
 }
 
 export function apiFailure(error: unknown): Record<string, unknown> {
-  const body = (error as any)?.response?.data;
+  const body =
+    (error as any)?.response?.data ??
+    (error instanceof SdkError
+      ? {
+          error: error.message,
+          code: error.code,
+          chargeId: error.chargeId,
+          requiresAction:
+            (error.details as any)?.requiresAction ?? error.requiresAction,
+        }
+      : undefined);
   return {
     success: false,
     error:
@@ -83,18 +90,20 @@ export async function handleAlexandria(
   let envelope: Record<string, any>;
   try {
     const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
-    const response = await (app as any).http.post(
-      '/v2/scrape',
-      {
-        alexandria: calls,
-        integration: 'cli',
-        timeout: options.timeout,
+    const result = await app.scrape({
+      alexandria: calls,
+      integration: 'cli',
+      timeout: options.timeout,
+      requestId,
+    });
+    envelope = {
+      success: true,
+      ...(result.scrapeId && { scrape_id: result.scrapeId }),
+      data: {
+        alexandria: result.alexandria,
+        creditsCost: result.creditsCost,
       },
-      { headers: { 'x-request-id': requestId } }
-    );
-    envelope = response.data;
-    if (!envelope || typeof envelope.success !== 'boolean')
-      throw new Error('Invalid Alexandria response.');
+    };
   } catch (error) {
     envelope = apiFailure(error);
   }

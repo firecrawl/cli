@@ -1,6 +1,6 @@
 {
   "name": "firecrawl-cli",
-  "version": "1.23.4-alexandria-beta.1",
+  "version": "1.23.4-alexandria-beta.2",
   "publishConfig": {
     "tag": "alexandria"
   },
@@ -67,7 +67,7 @@
   },
   "homepage": "https://docs.firecrawl.dev/cli",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
   },
   "files": [
     "dist",
@@ -86,7 +86,7 @@
   "dependencies": {
     "@inquirer/prompts": "^8.2.1",
     "commander": "^14.0.2",
-    "firecrawl": "4.24.0",
+    "firecrawl": "4.40.0",
     "yaml": "^2.9.0",
     "zod-to-json-schema": "3.24.6"
   }
