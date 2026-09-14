@@ -6,6 +6,7 @@ import {
   parseFeedbackListArg,
   parsePageNumbersArg,
 } from '../../commands/feedback';
+import { parseValuableResultsArg } from '../../commands/search-feedback';
 import { getClient } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { setupTest, teardownTest } from '../utils/mock-client';
@@ -206,5 +207,54 @@ describe('feedback parsing', () => {
   it('parses positive page numbers', () => {
     expect(parsePageNumbersArg('1, 2, bad, -1, 3')).toEqual([1, 2, 3]);
     expect(parsePageNumbersArg('[4,5]')).toEqual([4, 5]);
+  });
+
+  it('parses valuable results as source:position pairs', () => {
+    expect(parseValuableResultsArg('web:1, news:2')).toEqual([
+      { source: 'web', position: 1 },
+      { source: 'news', position: 2 },
+    ]);
+    expect(parseValuableResultsArg('images:3')).toEqual([
+      { source: 'images', position: 3 },
+    ]);
+  });
+
+  it('parses valuable results from JSON, keeping reasons', () => {
+    expect(
+      parseValuableResultsArg(
+        '[{"source":"web","position":1,"reason":"Answered it"},{"source":"news","position":2}]'
+      )
+    ).toEqual([
+      { source: 'web', position: 1, reason: 'Answered it' },
+      { source: 'news', position: 2 },
+    ]);
+  });
+
+  // Each group is numbered from 1 independently, so a bare position does not
+  // identify a result.
+  it('rejects valuable results without a source', () => {
+    expect(() => parseValuableResultsArg('1,3')).toThrow(
+      'must be "source:position"'
+    );
+    expect(() => parseValuableResultsArg('[{"position":1}]')).toThrow(
+      'source must be one of'
+    );
+  });
+
+  it('rejects unknown sources and non-positive positions', () => {
+    expect(() => parseValuableResultsArg('video:1')).toThrow(
+      'source must be one of'
+    );
+    expect(() => parseValuableResultsArg('web:0')).toThrow(
+      'positions must be integers of 1 or greater'
+    );
+    expect(() => parseValuableResultsArg('web:abc')).toThrow(
+      'positions must be integers of 1 or greater'
+    );
+  });
+
+  it('returns undefined for empty input', () => {
+    expect(parseValuableResultsArg(undefined)).toBeUndefined();
+    expect(parseValuableResultsArg('   ')).toBeUndefined();
   });
 });
