@@ -42,6 +42,18 @@ npx firecrawl-cli@alexandria find-tools --options '{"providers":["zillow"],"leve
 
 `find-tools` looks up URLs, providers, groups, and tool contracts. Use semantic `search --sources alexandria` for a natural-language query; do not pass a search phrase as a URL to `find-tools`.
 
+### Progressive catalogue discovery
+
+When the provider is unknown or a result exposes more groups/tools, narrow the catalogue progressively instead of loading every contract:
+
+```sh
+npx firecrawl-cli@alexandria find-tools --options '{"level":"providers"}' --json
+```
+
+Inspect the compact results and follow the relevant returned `next` request with `find-tools --request '<returned request JSON>'`. Pass the complete request object unchanged, including its provider, capability, and options. Continue through the relevant provider, group, and tool results; use returned pagination requests when needed. Do not combine `--request` with URL or filter arguments.
+
+Once a capability fits the task, request only its contract with `--options`, including the returned provider/capability IDs, `"level":"tools"`, and `"expand":["options","response"]`. Add `"examples"` only if the schema needs clarification. Progressive discovery is catalogue navigation, not semantic search or provider execution; use `search --sources alexandria` when starting from a natural-language capability.
+
 ### Optional tool discovery alongside a scrape
 
 ```sh
@@ -54,7 +66,7 @@ Read returned `data.tools` contracts and any tool metadata before choosing a pro
 
 ## Search → Inspect → Scrape
 
-Use the two discovery paths above inside this skill. Choose semantic lookup for a capability described in words, or domain lookup when a relevant website is known. Default search combines web results, semantic tools, and domain tools.
+Keep the entire discovery-to-execution workflow in this skill. Choose semantic lookup for a capability described in words, domain lookup when a relevant website is known, or progressive discovery to browse and narrow the catalogue. Default search combines web results, semantic tools, and domain tools.
 
 1. Search once and inspect the returned tool identities and descriptions. A related topic alone does not mean the tool can answer the question.
 2. Fetch only the selected provider's or capability's contract with `find-tools`. Omit `expand` for compact results; request `"expand":["options","response"]` only for the selected capability. Load examples only when needed.
