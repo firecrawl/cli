@@ -2,6 +2,8 @@
  * Types and interfaces for the scrape command
  */
 
+import type { AgentHintMetadata, AgentHintOptions } from '../utils/agent-hints';
+
 export type ScrapeFormat =
   | 'markdown'
   | 'html'
@@ -22,7 +24,7 @@ export interface ScrapeLocation {
   languages?: string[];
 }
 
-export interface ScrapeOptions {
+export interface ScrapeOptions extends AgentHintOptions {
   domainTools?: boolean;
   /** URL to scrape */
   url: string;
@@ -75,7 +77,7 @@ export interface ScrapeOptions {
   redactPII?: boolean;
 }
 
-export interface ScrapeResult {
+export interface ScrapeResult extends AgentHintMetadata {
   success: boolean;
   data?: any;
   error?: string;

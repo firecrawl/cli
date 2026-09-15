@@ -15,6 +15,11 @@ import type {
 import { getClient, isKeylessMode, keylessRequest } from '../utils/client';
 import { writeOutput } from '../utils/output';
 import { apiFailure, requireAlexandriaKey } from './alexandria';
+import {
+  agentHintMetadata,
+  writeAgentHints,
+  withoutAgentHints,
+} from '../utils/agent-hints';
 
 /**
  * Execute search command
@@ -123,6 +128,10 @@ export async function executeSearch(
       );
       envelope = (httpResponse?.data ?? {}) as Record<string, any>;
     }
+    if (envelope.success === false)
+      return apiFailure({
+        response: { data: envelope },
+      });
     const payload = (envelope.data ?? {}) as Record<string, any>;
 
     const data: SearchResultData = {};
@@ -141,17 +150,10 @@ export async function executeSearch(
       warning: envelope.warning,
       id: envelope.id,
       creditsUsed: envelope.creditsUsed,
+      ...agentHintMetadata(envelope),
     };
   } catch (error) {
-    return {
-      success: false,
-      error:
-        options.domainTools || options.sources?.includes('alexandria')
-          ? JSON.stringify(apiFailure(error))
-          : error instanceof Error
-            ? error.message
-            : 'Unknown error occurred',
-    };
+    return apiFailure(error, 'Unknown error occurred');
   }
 }
 
@@ -293,7 +295,21 @@ function formatSearchReadable(
 export async function handleSearchCommand(
   options: SearchOptions
 ): Promise<void> {
-  const result = await executeSearch(options);
+  const response = await executeSearch(options);
+  const result =
+    options.agentHints === false ? withoutAgentHints(response) : response;
+  const json = options.json || options.pretty;
+
+  if (json) {
+    writeOutput(
+      JSON.stringify(result, null, options.pretty ? 2 : undefined),
+      options.output,
+      !!options.output
+    );
+    if (!result.success) process.exitCode = 1;
+    return;
+  }
+  writeAgentHints(result);
 
   if (!result.success) {
     console.error('Error:', result.error);
@@ -312,38 +328,12 @@ export async function handleSearchCommand(
     (result.data.news && result.data.news.length > 0) ||
     (result.data.developer && result.data.developer.length > 0);
 
-  if (!hasResults && !(result.data.tools && (options.json || options.pretty))) {
+  if (!hasResults) {
     console.log('No results found.');
     return;
   }
 
-  let outputContent: string;
-
-  // Use JSON format if --json or --pretty flag is set
-  // --pretty implies JSON output
-  if (options.json || options.pretty) {
-    const jsonOutput: Record<string, any> = {
-      success: true,
-      data: result.data,
-    };
-
-    if (result.warning) {
-      jsonOutput.warning = result.warning;
-    }
-    if (result.id) {
-      jsonOutput.id = result.id;
-    }
-    if (result.creditsUsed !== undefined) {
-      jsonOutput.creditsUsed = result.creditsUsed;
-    }
-
-    outputContent = options.pretty
-      ? JSON.stringify(jsonOutput, null, 2)
-      : JSON.stringify(jsonOutput);
-  } else {
-    // Default to human-readable format
-    outputContent = formatSearchReadable(result.data, options);
-  }
+  const outputContent = formatSearchReadable(result.data, options);
 
   writeOutput(outputContent, options.output, !!options.output);
 }

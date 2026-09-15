@@ -40,9 +40,13 @@ export async function keylessRequest(
     body: JSON.stringify(body),
   });
   const json: any = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(
-      json?.error || `Firecrawl request failed (HTTP ${response.status})`
+  if (!response.ok || json?.success === false) {
+    // Keep the API envelope so command renderers can preserve typed errors and hints.
+    throw Object.assign(
+      new Error(
+        json?.error || `Firecrawl request failed (HTTP ${response.status})`
+      ),
+      { response: { data: json } }
     );
   }
   return json;

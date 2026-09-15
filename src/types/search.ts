@@ -3,11 +3,12 @@
  */
 
 import type { ScrapeFormat } from './scrape';
+import type { AgentHintMetadata, AgentHintOptions } from '../utils/agent-hints';
 
 export type SearchSource = 'web' | 'images' | 'news' | 'alexandria';
 export type SearchCategory = 'github' | 'research' | 'pdf' | 'developer';
 
-export interface SearchOptions {
+export interface SearchOptions extends AgentHintOptions {
   domainTools?: boolean;
   /** Search query (required) */
   query: string;
@@ -121,7 +122,7 @@ export interface SearchResultData {
   developer?: DeveloperSearchResult[];
 }
 
-export interface SearchResult {
+export interface SearchResult extends AgentHintMetadata {
   success: boolean;
   data?: SearchResultData;
   warning?: string;

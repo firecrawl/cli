@@ -4,9 +4,15 @@ import { SdkError, type AlexandriaCall } from 'firecrawl';
 import { getClient } from '../utils/client';
 import { getApiKey } from '../utils/config';
 import { writeOutput } from '../utils/output';
+import {
+  agentHintMetadata,
+  errorAgentHints,
+  type AgentHintMetadata,
+  type AgentHintOptions,
+} from '../utils/agent-hints';
 
 type Call = AlexandriaCall & { options: Record<string, unknown> };
-type Options = {
+type Options = AgentHintOptions & {
   apiKey?: string;
   apiUrl?: string;
   requestId?: string;
@@ -51,7 +57,20 @@ export function buildCalls(addresses: string[], values: string[] = []): Call[] {
   });
 }
 
-export function apiFailure(error: unknown): Record<string, unknown> {
+interface ApiFailure extends AgentHintMetadata {
+  success: false;
+  error: string;
+  code?: string;
+  chargeId?: string;
+  requiresAction?: unknown;
+  id?: string;
+  scrape_id?: string;
+}
+
+export function apiFailure(
+  error: unknown,
+  fallback = 'Request failed'
+): ApiFailure {
   const body =
     (error as any)?.response?.data ??
     (error instanceof SdkError
@@ -70,10 +89,13 @@ export function apiFailure(error: unknown): Record<string, unknown> {
         ? body.error
         : error instanceof Error
           ? error.message
-          : 'Request failed',
+          : fallback,
     ...(typeof body?.code === 'string' && { code: body.code }),
     ...(typeof body?.chargeId === 'string' && { chargeId: body.chargeId }),
     ...(body?.requiresAction && { requiresAction: body.requiresAction }),
+    ...(typeof body?.id === 'string' && { id: body.id }),
+    ...(typeof body?.scrape_id === 'string' && { scrape_id: body.scrape_id }),
+    ...errorAgentHints(error),
   };
 }
 
@@ -98,6 +120,7 @@ export async function handleAlexandria(
     });
     envelope = {
       success: true,
+      ...agentHintMetadata(result),
       ...(result.scrapeId && { scrape_id: result.scrapeId }),
       data: {
         alexandria: result.alexandria,
@@ -111,6 +134,7 @@ export async function handleAlexandria(
     !envelope.success ||
     envelope.data?.alexandria?.some((item: any) => item.error);
   if (failed) process.exitCode = 1;
+  if (options.agentHints === false) delete envelope.agent_hints;
   writeOutput(
     JSON.stringify(
       { ...envelope, requestId },
@@ -136,6 +160,7 @@ export function createFindToolsCommand(): Command {
     .option('-o, --output <path>', 'Output file')
     .option('--json', 'Output JSON')
     .option('--pretty', 'Format JSON')
+    .option('--no-agent-hints', 'Omit server guidance from CLI output')
     .action(async (urls: string[], options) => {
       let call: Call = {
         provider: 'firecrawl',

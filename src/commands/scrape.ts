@@ -10,7 +10,16 @@ import type {
   ScrapeLocation,
 } from '../types/scrape';
 import { getClient, isKeylessMode, keylessRequest } from '../utils/client';
-import { handleScrapeOutput, writeOutput } from '../utils/output';
+import {
+  handleScrapeOutput,
+  writeOutput,
+  shouldOutputJson,
+} from '../utils/output';
+import {
+  agentHintMetadata,
+  withoutAgentHints,
+  writeAgentHints,
+} from '../utils/agent-hints';
 import {
   saveInteractSession,
   clearInteractSession,
@@ -18,7 +27,7 @@ import {
 import { getOrigin } from '../utils/url';
 import { executeMap } from './map';
 import { getStatus } from './status';
-import { requireAlexandriaKey } from './alexandria';
+import { requireAlexandriaKey, apiFailure } from './alexandria';
 
 /**
  * Output timing information if requested
@@ -148,6 +157,7 @@ export async function executeScrape(
       scrapeParams.domainTools = true;
     }
     let result: any;
+    let hints = {};
     if (isKeylessMode(options.apiKey, options.apiUrl)) {
       // Keyless free tier: header-less request. The API identifies the CLI via
       // the `integration: 'cli'` field already in scrapeParams.
@@ -155,13 +165,18 @@ export async function executeScrape(
         url: options.url,
         ...scrapeParams,
       });
+      if (json?.success === false) {
+        return apiFailure({ response: { data: json } });
+      }
       result = json?.data ?? json;
+      hints = agentHintMetadata(json);
     } else {
       const app = getClient({
         apiKey: options.apiKey,
         apiUrl: options.apiUrl,
       });
       result = await app.scrape(options.url, scrapeParams);
+      hints = agentHintMetadata(result);
     }
     const requestEndTime = Date.now();
     outputTiming(options, requestStartTime, requestEndTime);
@@ -185,16 +200,14 @@ export async function executeScrape(
 
     return {
       success: true,
-      data: result,
+      data: withoutAgentHints(result),
+      ...hints,
     };
   } catch (error) {
     const requestEndTime = Date.now();
     outputTiming(options, requestStartTime, requestEndTime, error);
 
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
-    };
+    return apiFailure(error, 'Unknown error occurred');
   }
 }
 
@@ -204,10 +217,18 @@ export async function executeScrape(
 export async function handleScrapeCommand(
   options: ScrapeOptions
 ): Promise<void> {
-  const result = await executeScrape(options);
+  const response = await executeScrape(options);
+  const result =
+    options.agentHints === false ? withoutAgentHints(response) : response;
 
   // Query mode: output answer directly
-  if (options.query && result.success && result.data?.answer) {
+  if (
+    options.query &&
+    result.success &&
+    result.data?.answer &&
+    !shouldOutputJson(options.output, options.json)
+  ) {
+    writeAgentHints(result);
     writeOutput(result.data.answer, options.output, !!options.output);
     return;
   }
@@ -274,6 +295,7 @@ export async function handleMultiScrapeCommand(
   const promises = urls.map(async (url) => {
     const scrapeOptions: ScrapeOptions = { ...options, url };
     const result = await executeScrape(scrapeOptions);
+    writeAgentHints(result, options.agentHints);
 
     const currentCount = ++completedCount;
 
