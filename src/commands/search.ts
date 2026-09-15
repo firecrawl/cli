@@ -1,3 +1,4 @@
+import { reportFeedbackInvitation } from '../utils/feedback-invitation';
 /**
  * Search command implementation
  */
@@ -115,6 +116,7 @@ export async function executeSearch(
         string,
         any
       >;
+      reportFeedbackInvitation(envelope.metadata, 'search');
     } else {
       const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
       const httpResponse = await (app as any).http.post(
@@ -141,6 +143,7 @@ export async function executeSearch(
       warning: envelope.warning,
       id: envelope.id,
       creditsUsed: envelope.creditsUsed,
+      metadata: envelope.metadata,
     };
   } catch (error) {
     return {
@@ -330,6 +333,7 @@ export async function handleSearchCommand(
     if (result.warning) {
       jsonOutput.warning = result.warning;
     }
+    if (result.metadata) jsonOutput.metadata = result.metadata;
     if (result.id) {
       jsonOutput.id = result.id;
     }

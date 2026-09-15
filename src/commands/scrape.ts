@@ -1,3 +1,4 @@
+import { reportFeedbackInvitation } from '../utils/feedback-invitation';
 /**
  * Scrape command implementation
  */
@@ -156,6 +157,7 @@ export async function executeScrape(
         ...scrapeParams,
       });
       result = json?.data ?? json;
+      reportFeedbackInvitation(result?.metadata, 'scrape');
     } else {
       const app = getClient({
         apiKey: options.apiKey,

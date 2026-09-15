@@ -93,7 +93,6 @@ const AUTH_REQUIRED_COMMANDS = [
   'download',
   'crawl',
   'map',
-  'feedback',
   'search-feedback',
   'agent',
   'browser',
@@ -426,6 +425,10 @@ function createScrapeCommand(): Command {
     .option('--actions-file <path>', 'Path to JSON actions file')
     .option('--proxy <proxy>', 'Proxy mode for scraping (e.g., auto, basic)')
 
+    .addHelpText(
+      'after',
+      '\nOptional keyless feedback: firecrawl feedback <search|scrape|parse> <jobId> --rating <rating> --task <task> --assessment <assessment> --observations-file <path>. Use only evidence already available. Invitations and job references appear in metadata or stderr. Feedback does not consume operation quota.'
+    )
     .action(async (positionalArgs, options) => {
       // Collect URLs from positional args and --url option
       let urls: string[] = [];
@@ -890,6 +893,10 @@ Supported file types: .html, .htm, .pdf, .docx, .doc, .odt, .rtf, .xlsx, .xls
 Max upload size: 50 MB
 `
     )
+    .addHelpText(
+      'after',
+      '\nOptional keyless feedback: firecrawl feedback <search|scrape|parse> <jobId> --rating <rating> --task <task> --assessment <assessment> --observations-file <path>. Use only evidence already available. Invitations and job references appear in metadata or stderr. Feedback does not consume operation quota.'
+    )
     .action(async (file: string, options) => {
       let format: string | undefined;
       if (options.html) {
@@ -998,6 +1005,10 @@ function createSearchCommand(): Command {
     //   false
     // )
     .option('--json', 'Output as compact JSON', false)
+    .addHelpText(
+      'after',
+      '\nOptional keyless feedback: firecrawl feedback <search|scrape|parse> <jobId> --rating <rating> --task <task> --assessment <assessment> --observations-file <path>. Use only evidence already available. Invitations and job references appear in metadata or stderr. Feedback does not consume operation quota.'
+    )
     .action(async (query, options) => {
       // Parse sources
       let sources: SearchSource[] = ['web', 'alexandria'];
@@ -1448,7 +1459,9 @@ function createSearchFeedbackCommand(): Command {
  */
 function createFeedbackCommand(): Command {
   const cmd = new Command('feedback')
-    .description('Send feedback on a Firecrawl endpoint job.')
+    .description(
+      'Send optional evidence about a job. Keyless Search, Scrape, and Parse accept one submission per identity per UTC day across all three categories without consuming operation quota.'
+    )
     .argument('<endpoint>', 'Endpoint: search | scrape | parse | map')
     .argument('<jobId>', 'The job id returned by the endpoint')
     .requiredOption('--rating <rating>', 'Overall rating: good | bad | partial')
@@ -1461,6 +1474,26 @@ function createFeedbackCommand(): Command {
       'Comma-separated tags OR JSON array of tags'
     )
     .option('--note <text>', 'Short note describing the feedback')
+    .option(
+      '--task <text>',
+      'Task the output needed to support, required for keyless feedback'
+    )
+    .option(
+      '--assessment <text>',
+      'Meaningful assessment, required for keyless feedback'
+    )
+    .option(
+      '--doc-class <class>',
+      'Document class, required once for keyless Parse: born_digital | scanned | mixed | unknown'
+    )
+    .option(
+      '--observations <json>',
+      'JSON array of category-specific observations with kind, detail, and basis (output, source_comparison, or expectation)'
+    )
+    .option(
+      '--observations-file <path>',
+      'Read observations JSON from a file; use only evidence already available'
+    )
     .option(
       '--valuable-sources <urlsOrJson>',
       'Comma-separated URLs OR JSON array of {url, reason} entries'
@@ -1495,6 +1528,15 @@ function createFeedbackCommand(): Command {
       'Suppress output; useful when called in the background by another agent',
       false
     )
+    .addHelpText(
+      'after',
+      '\nKeyless evidence: task, assessment, and each observation detail must contain 10-2000 characters. Submit 1-20 observations.\n' +
+        'Search: useful and irrelevant require a one-based position within the delivered group. source names the response group the position refers to: web, images, or news. It is required only when the job requested multiple sources; otherwise it defaults to web. The position must exist in that requested group. irrelevant requires reason: aggregator_over_official, off_topic, stale, wrong_content_type, snippet_misleading, or blocked_or_paywalled. vertical is required on missing and optional on useful/irrelevant: web_general, social, business, research, developer, news, government, finance, or other. missing may include topic (up to 200 characters). missing and irrelevant may include knownSources (up to 20 HTTP(S) URLs): where absent content lives or the source that should have ranked instead. Unmentioned results are unassessed; a full ranking is not required. Do not submit engine attribution; it comes from the stored category tag at that position.\n' +
+        'Scrape: kind correct, wrong_success, incomplete, or incorrect. wrong_success requires reason: blocked_shell, login_required, paywall, empty, wrong_page, stale, or wrong_locale. incomplete requires reason: partial_content, dynamic_content, pagination, main_content_stripped, or format_lost. incorrect requires reason: wrong, hallucinated, or missing_fields. correct has no reason. Optional location is up to 200 characters. No retryOutcome. Hard-failed Scrape jobs receive no feedback invitation. hallucinated applies only to json, deterministicJson, summary, question, highlights, and changeTracking in json mode; missing_fields applies only to json and deterministicJson. For incomplete and incorrect, prefer source_comparison when the source is already available.\n' +
+        'Parse: --doc-class is required once per submission: born_digital, scanned, mixed, or unknown. Observation kind: correct, text_ocr, table, formula, chart_figure, reading_order, headers_footers, headings_formatting, completeness, images_dropped, or incorrect. text_ocr requires reason: misread_chars, garbled, or missing_text. table requires reason: structure, cells_glued, or digits. completeness requires reason: pages_missing, truncated_at_max_pages, or sections_dropped. incorrect requires reason: wrong, hallucinated, or missing_fields. Other kinds have no reason subtype. Optional page is a one-based positive integer. incorrect applies to json and summary outputs. For text_ocr and table, include the correct text or cell values in comparison.detail when already known. Parse feedback does not automatically retain the document, extracted output, page images, or layout blocks; submitted observations and corrections are retained.\n' +
+        'Scrape and Parse: format must be a format type the job requested. It is required for output and source_comparison observations when multiple formats were requested; optional for expectation observations and single-format jobs. All observations retain detail and basis; source_comparison requires comparison: {reference, detail}. comparison.detail contains the correct content from the inspected source.\n' +
+        'Use only evidence already available. One accepted submission per keyless identity per UTC day, shared across Search, Scrape, Parse, and all clients.'
+    )
     .action(async (endpointArg: string, jobId: string, options: any) => {
       let endpoint;
       try {
@@ -1519,6 +1561,10 @@ function createFeedbackCommand(): Command {
         issues: parsed.issues,
         tags: parsed.tags,
         note: options.note,
+        task: options.task,
+        assessment: options.assessment,
+        docClass: parsed.docClass,
+        observations: parsed.observations,
         valuableSources: parsed.valuableSources,
         missingContent: parsed.missingContent,
         querySuggestions: options.querySuggestions,

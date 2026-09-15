@@ -7,6 +7,31 @@ describe('CLI argv parsing', () => {
   const cliPath = resolve(process.cwd(), 'dist/index.js');
   const testWithBuiltCli = existsSync(cliPath) ? it : it.skip;
 
+  testWithBuiltCli(
+    'describes substantive keyless evidence in feedback help',
+    () => {
+      const result = spawnSync(
+        process.execPath,
+        [cliPath, 'feedback', '--help'],
+        {
+          cwd: process.cwd(),
+          encoding: 'utf8',
+        }
+      );
+      expect(result.status).toBe(0);
+      for (const field of [
+        '--task',
+        '--assessment',
+        '--observations-file',
+        'one-based position',
+        'source_comparison',
+        'UTC day',
+      ]) {
+        expect(result.stdout).toContain(field);
+      }
+    }
+  );
+
   testWithBuiltCli('lists the developer command in root help output', () => {
     const result = spawnSync(process.execPath, [cliPath, '--help'], {
       cwd: process.cwd(),
