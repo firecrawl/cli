@@ -2,9 +2,6 @@
 name: firecrawl-download
 description: |
   Save a site or section as local files (markdown, screenshots). Use for "download the site", offline docs, or a local copy for reference.
-allowed-tools:
-  - Bash(firecrawl *)
-  - Bash(npx firecrawl-cli *)
 ---
 
 # firecrawl download (invoked as `firecrawl x download`)
@@ -12,6 +9,12 @@ allowed-tools:
 > **Experimental.** `download` is available under the `firecrawl x` command group.
 
 **Prerequisite:** `download` requires authentication (no keyless free tier); without credentials the CLI prompts an interactive login.
+
+## Tool Choice & Quick Start
+
+- MCP: Use **`firecrawl_map(url, ...)`** to discover pages and **`firecrawl_scrape(url, ...)`** to extract and save page contents.
+- CLI: **`firecrawl x download <url> [--include-paths <paths>] [--limit <n>] -y`**
+  Command line batch download directly to `.firecrawl/`.
 
 Maps the site origin first to discover pages, then scrapes each one into nested directories under `.firecrawl/`. Use `--include-paths` to scope a non-root URL to one section. Automated runs always pass `-y` — without it the command opens an interactive wizard that blocks on a prompt.
 

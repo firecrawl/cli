@@ -2,12 +2,19 @@
 name: firecrawl
 description: |
   Any live-web task via the Firecrawl CLI — including ordinary web research: searching the web, reading or extracting pages, gathering sources, discovering site URLs, bulk extraction, downloading a site, change alerts, or pages needing clicks/login — web only; local files route to firecrawl-parse. For papers use firecrawl-research-index; for library, API, error, or bug questions use firecrawl-developer-index.
-allowed-tools:
-  - Bash(firecrawl *)
-  - Bash(npx firecrawl-cli *)
 ---
 
 # Firecrawl CLI
+
+## Tool Selection Hierarchy
+
+Follow this precedence order based on your current execution environment:
+
+1. **MCP First (Recommended)**: If Firecrawl MCP tools (`firecrawl_search`, `firecrawl_scrape`, `firecrawl_map`, `firecrawl_crawl`, `firecrawl_agent`, `firecrawl_interact`, `firecrawl_parse`, `firecrawl_monitor_*`, `firecrawl_developer_search`, `firecrawl_research_*`) are available in the tool catalog, **call the MCP tools directly**.
+2. **CLI Fallback**: If MCP tools are not exposed, check if the `firecrawl` CLI is installed on `PATH` and run CLI commands.
+3. **Missing Local CLI != Unavailable**: If `firecrawl` command is not found on `PATH`, do **not** declare Firecrawl unavailable without checking for exposed MCP tools first. **Do not run unauthorized `npx` commands or install packages silently**.
+
+---
 
 Search, scrape, and interact with the web. Returns clean markdown optimized for LLM context windows.
 
@@ -30,19 +37,19 @@ Follow this escalation pattern:
 5. **Monitor** - Need recurring checks or ongoing alerts. Prefer setting a monitor with `--page` plus `--goal` instead of doing repeated one-off scrapes.
 6. **Interact** - Scrape first, then interact with the page (pagination, modals, form submissions, multi-step navigation).
 
-| Need                        | Command               | When                                                            |
-| --------------------------- | --------------------- | --------------------------------------------------------------- |
-| Find pages on a topic       | `search`              | No specific URL yet                                             |
-| Find research papers        | `research`            | Biomedical/clinical/scientific literature — use the paper index |
-| Answer a coding question    | `developer`           | Issues, merged PRs, READMEs, and docs — not a general web page  |
-| Get a page's content        | `scrape`              | Have a URL, page is static or JS-rendered                       |
-| Find URLs within a site     | `map`                 | Need to locate a specific subpage                               |
-| Bulk extract a site section | `crawl`               | Need many pages (e.g., all /docs/)                              |
-| AI-powered data extraction  | `agent`               | Need structured data from complex sites                         |
-| Interact with a page        | `scrape` + `interact` | Content requires clicks, form fills, pagination, or login       |
-| Download a site to files    | `x download`          | Save an entire site as local files                              |
-| Parse a local file          | `parse`               | File on disk (PDF, DOCX, XLSX, etc.) — not a URL                |
-| Watch pages for changes     | `monitor`             | Schedule recurring scrapes/crawls, diff against snapshots       |
+| Need                        | MCP Tool                             | CLI Command           | When                                                            |
+| --------------------------- | ------------------------------------ | --------------------- | --------------------------------------------------------------- |
+| Find pages on a topic       | `firecrawl_search`                   | `search`              | No specific URL yet                                             |
+| Find research papers        | `firecrawl_research_search_papers`   | `research`            | Biomedical/clinical/scientific literature — use the paper index |
+| Answer a coding question    | `firecrawl_developer_search`         | `developer`           | Issues, merged PRs, READMEs, and docs — not a general web page  |
+| Get a page's content        | `firecrawl_scrape`                   | `scrape`              | Have a URL, page is static or JS-rendered                       |
+| Find URLs within a site     | `firecrawl_map`                      | `map`                 | Need to locate a specific subpage                               |
+| Bulk extract a site section | `firecrawl_crawl`                    | `crawl`               | Need many pages (e.g., all /docs/)                              |
+| AI-powered data extraction  | `firecrawl_agent`                    | `agent`               | Need structured data from complex sites                         |
+| Interact with a page        | `firecrawl_interact`                 | `scrape` + `interact` | Content requires clicks, form fills, pagination, or login       |
+| Download a site to files    | `firecrawl_map` + `firecrawl_scrape` | `x download`          | Save an entire site as local files                              |
+| Parse a local file          | `firecrawl_parse`                    | `parse`               | File on disk (PDF, DOCX, XLSX, etc.) — not a URL                |
+| Watch pages for changes     | `firecrawl_monitor_create`           | `monitor`             | Schedule recurring scrapes/crawls, diff against snapshots       |
 
 For detailed command reference, run `firecrawl <command> --help`.
 

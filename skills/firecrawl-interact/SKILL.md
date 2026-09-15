@@ -2,14 +2,19 @@
 name: firecrawl-interact
 description: |
   Drive a live browser on a scraped page: click, fill forms, log in, paginate, infinite-scroll. Use when content requires interaction or a scrape failed or returned incomplete content.
-allowed-tools:
-  - Bash(firecrawl *)
-  - Bash(npx firecrawl-cli *)
 ---
 
 # firecrawl interact
 
 Interact with scraped pages in a live browser session. Scrape a page first, then use natural language prompts or code to click, fill forms, navigate, and extract data. For web searches, use `search` — interact is for acting on a specific page.
+
+## Tool Choice & Quick Start
+
+- MCP: **`firecrawl_interact(url?, scrapeId?, prompt?, code?, ...)`**
+  Stop session: **`firecrawl_interact_stop(scrapeId)`**
+  Call directly when Firecrawl MCP tools are exposed.
+- CLI: **`firecrawl interact [scrapeId] <prompt> [--code <code>]`**
+  Fallback when running in a CLI environment.
 
 ## Quick start
 
