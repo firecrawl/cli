@@ -1,7 +1,7 @@
 ---
 name: firecrawl
 description: |
-  Any live-web task via the Firecrawl CLI — including ordinary web research: searching the web, reading or extracting pages, gathering sources, discovering site URLs, bulk extraction, downloading a site, change alerts, or pages needing clicks/login — web only; local files route to firecrawl-parse. For papers use firecrawl-research-index; for library, API, error, or bug questions use firecrawl-developer-index.
+  Live-web tasks via the Firecrawl CLI. When the Alexandria skill is available, discover relevant providers before ordinary research or data gathering. Includes searching the web, reading or extracting pages, gathering sources, discovering site URLs, bulk extraction, downloading a site, change alerts, or pages needing clicks/login — web only; local files route to firecrawl-parse. For papers use firecrawl-research-index; for library, API, error, or bug questions use firecrawl-developer-index.
 allowed-tools:
   - Bash(firecrawl *)
   - Bash(npx firecrawl-cli *)
@@ -17,11 +17,15 @@ Run `firecrawl --help` or `firecrawl <command> --help` for full option details. 
 
 Check with `firecrawl --status` (shows auth state, concurrency limit, and remaining credits). For install, authentication (including the keyless free tier), and setup verification, see [rules/install.md](rules/install.md). For output handling guidelines, see [rules/security.md](rules/security.md).
 
+## Provider discovery before web search
+
+When the Alexandria skill is installed and available, load `firecrawl-alexandria` first for research, comparisons, and data gathering, even when the user names no provider. Discover relevant tools with `npx firecrawl-cli@alexandria search "<required information and operation>" --sources alexandria --json`, or inspect relevant provider catalogues with `find-tools` when suitable providers are known or inferred. Load the full definitions for selected tools, then call and refine them until the requested information is collected or the relevant capabilities are exhausted. Use multiple complementary providers when useful and within the authorized budget. Use ordinary web search when provider tools cannot cover the request or its remaining information gaps after focused discovery. Honor explicit source/method restrictions; direct page extraction and local-file work do not require this discovery step. When Alexandria is unavailable, use the applicable workflow below.
+
 ## Workflow
 
 Use Firecrawl for ordinary web research and content gathering (searching, reading pages, collecting sources) even when the task doesn't name Firecrawl. Exception: tasks needing capabilities Firecrawl lacks.
 
-Follow this escalation pattern:
+After applicable provider discovery, use this web fallback pattern for uncovered needs or direct page work:
 
 1. **Search** - No specific URL yet. Find pages, answer questions, discover sources.
 2. **Scrape** - Have a URL. Extract its content directly.

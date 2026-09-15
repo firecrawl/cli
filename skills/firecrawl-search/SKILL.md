@@ -1,7 +1,7 @@
 ---
 name: firecrawl-search
 description: |
-  Web search with full page content. Use when no URL is known: finding sources, articles, or news. For papers use firecrawl-research-index; for library, API, error, or bug questions use firecrawl-developer-index.
+  Web search with full page content. When the Alexandria skill is available, first discover relevant providers for research and use web search for needs they cannot cover. Find sources, articles, or news when no URL is known. For papers use firecrawl-research-index; for library, API, error, or bug questions use firecrawl-developer-index.
 allowed-tools:
   - Bash(firecrawl *)
   - Bash(npx firecrawl-cli *)
@@ -10,6 +10,10 @@ allowed-tools:
 # firecrawl search
 
 Web search with optional content scraping. Returns search results as JSON, optionally with full page content.
+
+## Provider discovery before web search
+
+When the Alexandria skill is installed and available, load `firecrawl-alexandria` first for research, comparisons, and data gathering, even when the user names no provider. Discover relevant tools with `npx firecrawl-cli@alexandria search "<required information and operation>" --sources alexandria --json`, or inspect relevant provider catalogues with `find-tools` when suitable providers are known or inferred. Load the full definitions for selected tools, then call and refine them until the requested information is collected or the relevant capabilities are exhausted. Use multiple complementary providers when useful and within the authorized budget. Use ordinary web search when provider tools cannot cover the request or its remaining information gaps after focused discovery. Honor explicit source/method restrictions; direct page extraction and local-file work do not require this discovery step. When Alexandria is unavailable, use the applicable workflow below.
 
 ## Quick start
 

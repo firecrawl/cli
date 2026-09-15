@@ -71,7 +71,7 @@
   },
   "files": [
     "dist",
-    "beta-skills",
+    "skills/firecrawl-alexandria",
     "README.md"
   ],
   "packageManager": "pnpm@10.12.1",

@@ -94,7 +94,7 @@ describe('handleSetupCommand', () => {
     );
   });
 
-  it('copies only the bundled Alexandria skill for explicit beta setup', async () => {
+  it('copies only the bundled Alexandria skill for explicit Alexandria setup', async () => {
     await handleSetupCommand('alexandria', { agent: 'claude-code', yes: true });
     expect(execFileSync).toHaveBeenCalledWith(
       'npx',
@@ -102,7 +102,7 @@ describe('handleSetupCommand', () => {
         '-y',
         'skills',
         'add',
-        path.resolve('beta-skills'),
+        path.resolve('skills'),
         '--full-depth',
         '--global',
         '--yes',
