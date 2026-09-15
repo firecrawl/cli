@@ -71,13 +71,16 @@ async function cli(args: string[], key = 'fc-test') {
   }
 }
 
-it('keeps beta options out of normal help and respects explicit web-only search', async () => {
-  for (const args of [['--help'], ['search', '--help'], ['scrape', '--help']]) {
-    const result = await cli(args);
+it('shows Alexandria beta help and respects explicit web-only search', async () => {
+  for (const [args, expected] of [
+    [['--help'], 'find-tools'],
+    [['search', '--help'], '--domain-tools'],
+    [['scrape', '--help'], '--alexandria'],
+  ] as const) {
+    const result = await cli([...args]);
     expect(result.code).toBe(0);
-    expect(result.stdout).not.toMatch(
-      /alexandria|find-tools|domain-tools|--enable/i
-    );
+    expect(result.stdout).toContain(expected);
+    expect(result.stdout).not.toContain('--enable');
   }
   response = { success: true, data: { web: [] } };
   const result = await cli([

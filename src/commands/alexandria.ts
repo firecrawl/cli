@@ -124,6 +124,9 @@ export async function handleAlexandria(
 
 export function createFindToolsCommand(): Command {
   return new Command('find-tools')
+    .description(
+      'Explore Alexandria providers and tool contracts without executing them'
+    )
     .argument('[urls...]')
     .option('--options <json>', 'Find Tools catalogue filters')
     .option(
@@ -162,24 +165,43 @@ export function createFindToolsCommand(): Command {
     });
 }
 
-export function addAlexandriaScrapeOptions(command: Command): void {
+export function addAlexandriaScrapeOptions(
+  command: Command,
+  visible = false
+): void {
   command
     .addOption(
-      new Option('--alexandria <provider/capability>')
+      new Option(
+        '--alexandria <provider/capability>',
+        'Execute an Alexandria tool; repeat for a batch'
+      )
         .argParser((value: string, previous: string[] = []) => [
           ...previous,
           value,
         ])
-        .hideHelp()
+        .hideHelp(!visible)
     )
     .addOption(
-      new Option('--options <json>')
+      new Option(
+        '--options <json>',
+        'JSON inputs paired with each Alexandria tool'
+      )
         .argParser((value: string, previous: string[] = []) => [
           ...previous,
           value,
         ])
-        .hideHelp()
+        .hideHelp(!visible)
     )
-    .addOption(new Option('--request-id <id>').hideHelp())
-    .addOption(new Option('--domain-tools').hideHelp());
+    .addOption(
+      new Option(
+        '--request-id <id>',
+        'Optional ID for an identical retry'
+      ).hideHelp(!visible)
+    )
+    .addOption(
+      new Option(
+        '--domain-tools',
+        'Include matching tool contracts with a URL scrape'
+      ).hideHelp(!visible)
+    );
 }

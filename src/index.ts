@@ -75,6 +75,8 @@ import { isJobId } from './utils/job';
 import { ensureAuthenticated, printBanner } from './utils/auth';
 import { maybeShowUpdateNotice } from './utils/update-notice';
 import packageJson from '../package.json';
+
+const showAlexandriaHelp = packageJson.version.includes('alexandria');
 import type { SearchSource, SearchCategory } from './types/search';
 import type { ScrapeFormat } from './types/scrape';
 import type { RelatedPapersOptions } from './types/research';
@@ -530,7 +532,7 @@ function createScrapeCommand(): Command {
       }
     });
 
-  addAlexandriaScrapeOptions(scrapeCmd);
+  addAlexandriaScrapeOptions(scrapeCmd, showAlexandriaHelp);
   return scrapeCmd;
 }
 
@@ -940,7 +942,9 @@ function createSearchCommand(): Command {
     )
     .option(
       '--sources <sources>',
-      'Comma-separated sources to search: web, images, news (default: web)'
+      showAlexandriaHelp
+        ? 'Comma-separated sources: web, images, news, alexandria (default: web,alexandria; domain tools enabled)'
+        : 'Comma-separated sources to search: web, images, news (default: web)'
     )
     .option(
       '--categories <categories>',
@@ -1070,7 +1074,11 @@ function createSearchCommand(): Command {
       await handleSearchCommand(searchOptions);
     });
 
-  searchCmd.addOption(new Option('--domain-tools').hideHelp());
+  searchCmd.addOption(
+    new Option('--domain-tools', 'Discover tools for result domains').hideHelp(
+      !showAlexandriaHelp
+    )
+  );
   return searchCmd;
 }
 
@@ -2118,7 +2126,7 @@ program.addCommand(createMapCommand());
 program.addCommand(createParseCommand());
 program.addCommand(createMonitorCommand());
 program.addCommand(createSearchCommand());
-program.addCommand(createFindToolsCommand(), { hidden: true });
+program.addCommand(createFindToolsCommand(), { hidden: !showAlexandriaHelp });
 program.addCommand(createDeveloperCommand());
 program.addCommand(createResearchCommand());
 program.addCommand(createFeedbackCommand());
