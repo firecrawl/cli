@@ -13,34 +13,32 @@ Use `FIRECRAWL_API_KEY` or existing Firecrawl login credentials. Never print cre
 
 Default to search with domain-tool discovery enabled. In this beta, plain `search` sends both `web` and `alexandria` sources with `domainTools: true`. Use `--domain-tools` explicitly in agent examples so this remains clear, including when selecting only web results.
 
-### Search and discover tools for result domains
+### Semantic search with domain discovery
+
+Start with a capability query and keep domain-tool discovery enabled. Default search combines semantic Alexandria tool matches with web results and tools for those result domains:
 
 ```sh
-npx firecrawl-cli@alexandria search "Zillow homes for sale in Austin" --domain-tools --json
+npx firecrawl-cli@alexandria search "Search homes for sale and retrieve property price history" --domain-tools --json
 ```
 
-Inspect the web results and returned tool contracts. Domain-tool discovery finds tools for the domains in those results. It does not execute the tools. If using `--sources web`, keep `--domain-tools` to retain domain lookup; `--sources web` alone opts out of Alexandria discovery.
+If the user names a website, include that context in the same discovery workflow and look up its URL directly when you need its tool contracts:
 
-### Semantic tool lookup
+```sh
+npx firecrawl-cli@alexandria search "Zillow homes for sale and property price history" --domain-tools --json
+npx firecrawl-cli@alexandria find-tools https://www.zillow.com --pretty
+```
 
-When the task describes a capability rather than a known URL, search the Alexandria source:
+The domain in the query provides context; it is not a strict provider filter. `--domain-tools` discovers tools for domains in the web results. Use `find-tools` with the known URL to inspect that domain even if it does not appear in those results. Inspect the returned matches before making another discovery call; skip the URL lookup when search already returned the needed contract.
+
+Describe the data capability in the discovery query; keep exact street addresses, record IDs, and other execution arguments for the selected tool. For example, discover "residential property prices near an address", then resolve the user's address using the returned lookup contract. Do not claim rental support if the contract only supports for-sale listings.
+
+When only semantic tool matches are needed, narrow the same search to the Alexandria source:
 
 ```sh
 npx firecrawl-cli@alexandria search "Search homes for sale and retrieve property price history" --sources alexandria --json
 ```
 
-Describe the data capability in the discovery query; keep exact street addresses, record IDs, and other execution arguments for the selected tool. For example, discover "residential property prices near an address", then resolve the user's address using the returned lookup contract. Do not claim rental support if the contract only supports for-sale listings.
-
-This is semantic tool discovery, not a provider execution. Read the returned providers and capabilities rather than guessing a provider from a keyword.
-
-### Lookup tools for a known domain
-
-```sh
-npx firecrawl-cli@alexandria find-tools https://www.zillow.com --pretty
-npx firecrawl-cli@alexandria find-tools --options '{"providers":["zillow"],"level":"tools"}' --pretty
-```
-
-`find-tools` looks up URLs, providers, groups, and tool contracts. Use semantic `search --sources alexandria` for a natural-language query; do not pass a search phrase as a URL to `find-tools`.
+If selecting only web results, use `--sources web --domain-tools` to retain domain discovery; `--sources web` alone opts out. `find-tools` accepts URLs and catalogue selectors, not a natural-language search phrase. Both semantic and domain discovery return tool information without executing provider tools. Read the returned providers and capabilities rather than guessing a provider from a keyword.
 
 ### Progressive catalogue discovery
 
@@ -66,7 +64,7 @@ Read returned `data.tools` contracts and any tool metadata before choosing a pro
 
 ## Search → Inspect → Scrape
 
-Keep the entire discovery-to-execution workflow in this skill. Choose semantic lookup for a capability described in words, domain lookup when a relevant website is known, or progressive discovery to browse and narrow the catalogue. Default search combines web results, semantic tools, and domain tools.
+Use semantic search with domain discovery as the shared entry point, incorporating any known website as described above. Continue with progressive discovery when the returned catalogue needs narrowing, then inspect and execute the selected tool.
 
 1. Search once and inspect the returned tool identities and descriptions. A related topic alone does not mean the tool can answer the question.
 2. Fetch only the selected provider's or capability's contract with `find-tools`. Omit `expand` for compact results; request `"expand":["options","response"]` only for the selected capability. Load examples only when needed.
