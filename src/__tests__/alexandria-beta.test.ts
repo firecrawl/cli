@@ -71,14 +71,16 @@ async function cli(args: string[], key = 'fc-test') {
   }
 }
 
-it('keeps beta options out of normal help and respects explicit web-only search', async () => {
-  for (const args of [['--help'], ['search', '--help'], ['scrape', '--help']]) {
-    const result = await cli(args);
-    expect(result.code).toBe(0);
-    expect(result.stdout).not.toMatch(
-      /alexandria|find-tools|domain-tools|--enable/i
-    );
-  }
+it('documents the default discovery flow and respects explicit web-only search', async () => {
+  const help = await cli(['--help']);
+  expect(help.stdout).toContain('find-tools');
+  const searchHelp = await cli(['search', '--help']);
+  expect(searchHelp.stdout).toContain('web,alexandria');
+  expect(searchHelp.stdout).toContain('--no-domain-tools');
+  const scrapeHelp = await cli(['scrape', '--help']);
+  expect(scrapeHelp.stdout).toContain('--alexandria');
+  const findHelp = await cli(['find-tools', '--help']);
+  expect(findHelp.stdout).toContain('meta tool');
   response = { success: true, data: { web: [] } };
   const result = await cli([
     'search',
@@ -116,7 +118,7 @@ it('preserves mixed search results, tools and billing metadata', async () => {
     },
   });
   const readable = await cli(['search', 'pizza hut']);
-  expect(readable.stdout).toContain('=== Tools ===');
+  expect(readable.stdout).toContain('=== Alexandria Tools ===');
   expect(readable.stdout).toContain('series/observations');
 });
 
@@ -244,4 +246,189 @@ it('keeps URL scrape tool contracts in the output', async () => {
     url: '/v2/scrape',
     body: { url: 'https://example.com', domainTools: true },
   });
+});
+
+it('keeps natural query text and disables only domain matching when requested', async () => {
+  response = { success: true, data: { web: [], tools: [] } };
+  const query = 'homes for sale in Lower Haight under $1 million';
+  const result = await cli(['search', query, '--no-domain-tools', '--json']);
+  expect(result.code).toBe(0);
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).toMatchObject({
+    url: '/v2/search',
+    body: {
+      query,
+      domainTools: false,
+      sources: [{ type: 'web' }, { type: 'alexandria' }],
+    },
+  });
+});
+
+it('presents tools compactly after web results while JSON preserves full contracts', async () => {
+  const tool = {
+    provider: 'fred',
+    capability: 'series/observations',
+    name: 'Economic observations',
+    description: 'Read an economic series',
+    creditsCost: 5,
+    perRecord: true,
+    options: [{ name: 'series_id', required: true }],
+    example: { large: 'EXAMPLE_PAYLOAD' },
+  };
+  response = {
+    success: true,
+    data: {
+      web: [{ url: 'https://example.com', title: 'GDP report' }],
+      tools: [tool],
+    },
+  };
+  const readable = await cli(['search', 'GDP growth']);
+  expect(readable.stdout.indexOf('GDP report')).toBeLessThan(
+    readable.stdout.indexOf('=== Alexandria Tools ===')
+  );
+  expect(readable.stdout).toContain('5 credits per record');
+  expect(readable.stdout).toContain('scrape --alexandria');
+  expect(readable.stdout).not.toContain('EXAMPLE_PAYLOAD');
+  const json = await cli(['search', 'GDP growth', '--json']);
+  expect(JSON.parse(json.stdout).data.tools).toEqual([tool]);
+  expect(requests.every((request) => request.url === '/v2/search')).toBe(true);
+});
+
+it('find-tools and explicit meta-tool execution use the same Scrape request', async () => {
+  const options = '{"providers":["fred"],"level":"tools","limit":100}';
+  expect(
+    (await cli(['find-tools', '--options', options, '--request-id', 'meta-1']))
+      .code
+  ).toBe(0);
+  expect(
+    (
+      await cli([
+        'scrape',
+        '--alexandria',
+        'firecrawl/find-tools',
+        '--options',
+        options,
+        '--request-id',
+        'meta-1',
+      ])
+    ).code
+  ).toBe(0);
+  expect(requests).toHaveLength(2);
+  expect(requests[0]).toEqual(requests[1]);
+  expect(requests[0].url).toBe('/v2/scrape');
+});
+
+it('discovers a known URL and follows its returned meta-tool request without executing providers', async () => {
+  const next = {
+    provider: 'firecrawl',
+    capability: 'find-tools',
+    options: { providers: ['fred'], level: 'tools', limit: 100 },
+  };
+  response.data.alexandria = [
+    {
+      provider: 'firecrawl',
+      capability: 'find-tools',
+      creditsCost: 0,
+      data: { items: [{ provider: 'fred', next }], next: null },
+    },
+  ];
+  const first = await cli([
+    'find-tools',
+    'https://fred.stlouisfed.org',
+    '--json',
+  ]);
+  expect(first.code).toBe(0);
+  const returned = JSON.parse(first.stdout).data.alexandria[0].data.items[0]
+    .next;
+  expect(
+    (await cli(['find-tools', '--request', JSON.stringify(returned), '--json']))
+      .code
+  ).toBe(0);
+  expect(requests[0].body.alexandria[0].options).toEqual({
+    urls: ['https://fred.stlouisfed.org'],
+  });
+  expect(requests[1].body.alexandria).toEqual([next]);
+  expect(requests.every((request) => request.url === '/v2/scrape')).toBe(true);
+});
+
+it('rejects provider execution and mixed arguments through the find-tools shortcut', async () => {
+  for (const args of [
+    [
+      '--request',
+      '{"provider":"fred","capability":"series/observations","options":{}}',
+    ],
+    [
+      'https://example.com',
+      '--request',
+      '{"provider":"firecrawl","capability":"find-tools","options":{}}',
+    ],
+    [
+      '--options',
+      '{}',
+      '--request',
+      '{"provider":"firecrawl","capability":"find-tools","options":{}}',
+    ],
+  ]) {
+    expect((await cli(['find-tools', ...args])).code).toBe(1);
+  }
+  expect(requests).toHaveLength(0);
+});
+
+it('retains empty discovery results and reports nested meta-tool errors as failures', async () => {
+  response.data = {
+    alexandria: [
+      {
+        provider: 'firecrawl',
+        capability: 'find-tools',
+        creditsCost: 0,
+        data: { items: [], total: 0, next: null },
+      },
+    ],
+    creditsCost: 0,
+  };
+  const empty = await cli(['find-tools', 'https://example.com', '--json']);
+  expect(empty.code).toBe(0);
+  expect(JSON.parse(empty.stdout).data.alexandria[0].data).toEqual({
+    items: [],
+    total: 0,
+    next: null,
+  });
+  response.data.alexandria = [
+    {
+      provider: 'firecrawl',
+      capability: 'find-tools',
+      error: {
+        code: 'invalid_option',
+        message: 'Unknown discovery level.',
+        status: 400,
+      },
+    },
+  ];
+  const invalid = await cli([
+    'find-tools',
+    '--options',
+    '{"level":"capabilities"}',
+    '--json',
+  ]);
+  expect(invalid.code).toBe(1);
+  expect(JSON.parse(invalid.stdout).data.alexandria[0].error.code).toBe(
+    'invalid_option'
+  );
+});
+
+it('requests web content with search --scrape without executing returned tools', async () => {
+  response = {
+    success: true,
+    data: {
+      web: [{ url: 'https://example.com', markdown: 'content' }],
+      tools: [{ provider: 'fred', capability: 'series/observations' }],
+    },
+  };
+  expect((await cli(['search', 'GDP', '--scrape', '--json'])).code).toBe(0);
+  expect(requests).toHaveLength(1);
+  expect(requests[0].url).toBe('/v2/search');
+  expect(requests[0].body.scrapeOptions.formats).toEqual([
+    { type: 'markdown' },
+  ]);
+  expect(requests[0].body.alexandria).toBeUndefined();
 });

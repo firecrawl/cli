@@ -931,7 +931,7 @@ Max upload size: 50 MB
  */
 function createSearchCommand(): Command {
   const searchCmd = new Command('search')
-    .description('Search the web using Firecrawl')
+    .description('Search the web and discover relevant Alexandria tools')
     .argument('<query>', 'Search query')
     .option(
       '--limit <number>',
@@ -940,7 +940,7 @@ function createSearchCommand(): Command {
     )
     .option(
       '--sources <sources>',
-      'Comma-separated sources to search: web, images, news (default: web)'
+      'Comma-separated sources: web, images, news, alexandria (default: web,alexandria; --sources web opts out of tools)'
     )
     .option(
       '--categories <categories>',
@@ -1070,7 +1070,14 @@ function createSearchCommand(): Command {
       await handleSearchCommand(searchOptions);
     });
 
-  searchCmd.addOption(new Option('--domain-tools').hideHelp());
+  searchCmd.option(
+    '--domain-tools',
+    'Include tools for domains in web results (on by default with Alexandria)'
+  );
+  searchCmd.option(
+    '--no-domain-tools',
+    'Disable domain matching; source selection still controls semantic tools'
+  );
   return searchCmd;
 }
 
@@ -2118,7 +2125,7 @@ program.addCommand(createMapCommand());
 program.addCommand(createParseCommand());
 program.addCommand(createMonitorCommand());
 program.addCommand(createSearchCommand());
-program.addCommand(createFindToolsCommand(), { hidden: true });
+program.addCommand(createFindToolsCommand());
 program.addCommand(createDeveloperCommand());
 program.addCommand(createResearchCommand());
 program.addCommand(createFeedbackCommand());

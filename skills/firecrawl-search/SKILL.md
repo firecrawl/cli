@@ -9,7 +9,7 @@ allowed-tools:
 
 # firecrawl search
 
-Web search with optional content scraping. Returns search results as JSON, optionally with full page content.
+Search naturally using the user’s actual question. In the Alexandria beta, default search returns web results plus relevant Alexandria tools, with optional web content scraping.
 
 ## Quick start
 
@@ -29,6 +29,16 @@ Run `firecrawl search --help` for the full option list.
 `--categories developer` weighs the developer index beside ordinary web results in this same call (no passage control, no index filters). `--categories research` is a website filter, not the paper index. Dedicated skills: [firecrawl-developer-index](../firecrawl-developer-index/SKILL.md) and [firecrawl-research-index](../firecrawl-research-index/SKILL.md).
 
 **Done when:** results are saved under `.firecrawl/`, verified non-empty, processed for the request, and one feedback event is sent within the time window (unless opted out).
+
+## Alexandria in normal search
+
+The beta defaults to `web,alexandria` with domain-tool matching on. Preserve the user's location, marketplace, and constraints in the query; do not turn normal research into an artificial tool-discovery query. Inspect `data.web` and `data.tools` from the same response.
+
+A tool match is not executed data. If it fits the task, read its inputs, coverage, `creditsCost`/`perRecord`, and access requirements in the JSON. Execute it with `firecrawl scrape --alexandria <provider/capability> --options '<input JSON>'`. All provider execution goes through Scrape; `search --scrape` only fetches web result content, not provider tools.
+
+Use `find-tools` only for an explicitly requested tool set or a missing contract. It runs the `firecrawl/find-tools` meta tool through Scrape and never executes the tools it discovers. It accepts URLs or catalogue selectors; for “tools that can do X,” first use `search "X" --sources alexandria`, then narrow the returned providers with `find-tools --options '{"providers":["<returned-provider>"],"level":"tools","limit":100}'`.
+
+If no returned tool covers the country/market/segment or required inputs, continue with ordinary web results. Do not exhaust the catalogue or pay for adjacent tools just to probe coverage. `--sources web` explicitly opts out of Alexandria; `--sources web --domain-tools` retains domain matches only.
 
 ## Tips
 

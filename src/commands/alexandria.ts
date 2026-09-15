@@ -124,8 +124,14 @@ export async function handleAlexandria(
 
 export function createFindToolsCommand(): Command {
   return new Command('find-tools')
-    .argument('[urls...]')
-    .option('--options <json>', 'Find Tools catalogue filters')
+    .description(
+      'Discover tool sets and contracts through the firecrawl/find-tools meta tool on Scrape; never executes discovered tools'
+    )
+    .argument('[urls...]', 'Known HTTP(S) URLs to find tools for')
+    .option(
+      '--options <json>',
+      'Catalogue selectors: providers, categories, groups, capabilities; level: providers|groups|tools; limit: 1-100; expand: options,response,examples'
+    )
     .option(
       '--request <json>',
       'A complete next request returned by Find Tools'
@@ -165,21 +171,33 @@ export function createFindToolsCommand(): Command {
 export function addAlexandriaScrapeOptions(command: Command): void {
   command
     .addOption(
-      new Option('--alexandria <provider/capability>')
-        .argParser((value: string, previous: string[] = []) => [
-          ...previous,
-          value,
-        ])
-        .hideHelp()
+      new Option(
+        '--alexandria <provider/capability>',
+        'Execute a discovered tool through Scrape (repeat for batches)'
+      ).argParser((value: string, previous: string[] = []) => [
+        ...previous,
+        value,
+      ])
     )
     .addOption(
-      new Option('--options <json>')
-        .argParser((value: string, previous: string[] = []) => [
-          ...previous,
-          value,
-        ])
-        .hideHelp()
+      new Option(
+        '--options <json>',
+        'Input object for each --alexandria call, in matching order'
+      ).argParser((value: string, previous: string[] = []) => [
+        ...previous,
+        value,
+      ])
     )
-    .addOption(new Option('--request-id <id>').hideHelp())
-    .addOption(new Option('--domain-tools').hideHelp());
+    .addOption(
+      new Option(
+        '--request-id <id>',
+        'Reuse the same ID only for an identical tool retry'
+      )
+    )
+    .addOption(
+      new Option(
+        '--domain-tools',
+        'Discover related tools alongside URL content; does not execute them'
+      )
+    );
 }
