@@ -60,7 +60,7 @@ npx firecrawl-cli@alexandria scrape https://www.zillow.com --domain-tools --json
 
 Enable `--domain-tools` when a URL scrape should also return related tool contracts and the team has access. If the API refuses the feature, report the access requirement; do not repeatedly retry. A normal URL scrape does not enable this automatically. Inspect the complete JSON for both scraped content and tool metadata; discovering a tool does not execute it. Search and URL scraping can consume credits.
 
-Read returned `data.tools` contracts and any tool metadata before choosing a provider/capability. Use their exact input schema, pricing and access requirements; never invent options or assume a provider is free. Follow returned Find Tools requests with `find-tools --request '<returned request JSON>'`. This accepts only the `firecrawl/find-tools` discovery call, not arbitrary provider execution.
+Read returned tool contracts and any tool metadata before choosing a provider/capability; search and URL-scrape responses expose these as `data.tools`, while `find-tools` responses are under `data.alexandria`. Use their exact input schema, pricing and access requirements; never invent options or assume a provider is free. Follow returned Find Tools requests with `find-tools --request '<returned request JSON>'`. This accepts only the `firecrawl/find-tools` discovery call, not arbitrary provider execution.
 
 ## Search → Inspect → Scrape
 
