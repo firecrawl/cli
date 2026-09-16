@@ -1,0 +1,27 @@
+beta-skills/firecrawl-alexandria/SKILL.md
+  s_eebc0c951286e7::t_cb0a30f81f937d 37
+src/commands/list.ts
+  s_eebc0c951286e7::t_cb0a30f81f937d 200,208,297,299,368,381-382,386-392,439,467
+src/__tests__/alexandria-beta.test.ts
+  s_eebc0c951286e7::t_cb0a30f81f937d 220,245-247,250-251,255,308-315
+README.md
+  s_eebc0c951286e7::t_cb0a30f81f937d 38
+package.json
+  s_eebc0c951286e7::t_cb0a30f81f937d 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "bb9a307a88de7356c85368ff956bc2aca5ce5184",
+  "prompts": {},
+  "sessions": {
+    "s_eebc0c951286e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0a59a-2096-7160-b0b5-554179a97463",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Developers Digest <124798203+developersdigest@users.noreply.github.com>"
+    }
+  }
+}
