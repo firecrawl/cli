@@ -1557,7 +1557,7 @@ function createAgentCommand(): Command {
     .option('--urls <urls>', 'Comma-separated URLs to focus extraction on')
     .option(
       '--model <model>',
-      'Model to use: spark-1-mini (default, cheaper) or spark-1-pro (higher accuracy)'
+      'Model to use: spark-2 (default), spark-1-mini, or spark-1-pro'
     )
     .option(
       '--schema <json>',
