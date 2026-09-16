@@ -171,9 +171,6 @@ it('browses live provider IDs directly or through a category without expanding c
   ]) {
     expect((await cli(['list', ...args])).code).toBe(0);
   }
-  expect((await cli(['alexandria', 'list', 'benzinga', '--groups'])).code).toBe(
-    0
-  );
   expect((await cli(['list-tools', 'benzinga'])).code).toBe(0);
   expect((await cli(['alexandria', 'list-tools', 'benzinga'])).code).toBe(0);
   expect((await cli(['list', 'Retail', '--category'])).code).toBe(0);
@@ -192,7 +189,6 @@ it('browses live provider IDs directly or through a category without expanding c
         level: 'tools',
         limit: 20,
       },
-      { providers: ['benzinga'], level: 'groups', limit: 20 },
       { providers: ['benzinga'], level: 'tools', limit: 20 },
       { providers: ['benzinga'], level: 'tools', limit: 20 },
       { categories: ['Retail'], level: 'providers', limit: 20 },
@@ -221,7 +217,7 @@ it('browses live provider IDs directly or through a category without expanding c
   ]);
 });
 
-it('expands only a selected tool and falls back to a compact group listing', async () => {
+it('expands only a selected tool without falling back to a group', async () => {
   responseFor = (body) => {
     const options = body.alexandria[0].options;
     if (options.capabilities?.[0] === 'calendar') return catalogue('tools', []);
@@ -246,15 +242,17 @@ it('expands only a selected tool and falls back to a compact group listing', asy
     capabilities: ['calendar/earnings'],
     expand: ['options', 'response', 'examples'],
   });
-  const group = await cli(['list', 'benzinga', 'calendar']);
-  expect(group.code).toBe(0);
-  expect(group.stdout).not.toContain('Inputs:');
+  const missing = await cli(['list', 'benzinga', 'calendar']);
+  expect(missing.code).toBe(0);
+  expect(missing.stdout).toContain('No matching tools');
   expect(requests.at(-1)?.body.alexandria[0].options).toEqual({
     providers: ['benzinga'],
-    groups: ['calendar'],
+    capabilities: ['calendar'],
+    expand: ['options', 'response', 'examples'],
     level: 'tools',
     limit: 20,
   });
+  expect(requests).toHaveLength(4);
 });
 
 it('preserves scoped next requests, pagination and discovery receipts', async () => {
@@ -307,6 +305,14 @@ it('preserves scoped next requests, pagination and discovery receipts', async ()
 });
 
 it('refuses execution through list and propagates discovery access errors', async () => {
+  for (const args of [
+    ['alexandria', 'list', 'benzinga', '--groups'],
+    ['list', 'benzinga', 'calendar', '--group'],
+  ]) {
+    const removed = await cli(args);
+    expect(removed.code).toBe(1);
+    expect(removed.stderr).toContain('unknown option');
+  }
   expect(
     (
       await cli([

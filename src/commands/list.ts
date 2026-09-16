@@ -13,8 +13,6 @@ import { getApiKey, getConfig } from '../utils/config';
 type Selectors = Record<string, unknown>;
 type ListOptions = AlexandriaOptions & {
   category?: boolean;
-  groups?: boolean;
-  group?: boolean;
   limit?: number;
   request?: string;
   providers?: boolean;
@@ -48,7 +46,6 @@ type Item = {
   name?: string;
   description?: string;
   attribution?: string;
-  group?: string;
   capability?: string;
   toolCount?: number;
   creditsCost?: number;
@@ -200,7 +197,7 @@ function itemCommand(item: Item): string | undefined {
       : Array.isArray(value) && value.length === 1 && value[0] === id;
   // Keep scoped and future selectors intact when a short path cannot express them.
   if (
-    ![item.provider, item.capability, item.group, category].every(
+    ![item.provider, item.capability, category].every(
       (id) =>
         id === undefined ||
         (typeof id === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_./:-]*$/.test(id))
@@ -208,14 +205,13 @@ function itemCommand(item: Item): string | undefined {
     !only(options.providers, item.provider) ||
     !only(options.categories, category) ||
     !only(options.capabilities, item.capability) ||
-    (options.groups !== undefined && !only(options.groups, item.group)) ||
+    options.groups !== undefined ||
     (options.offset !== undefined && options.offset !== 0) ||
     Object.keys(options).some(
       (key) =>
         ![
           'providers',
           'categories',
-          'groups',
           'capabilities',
           'level',
           'limit',
@@ -232,7 +228,6 @@ function itemCommand(item: Item): string | undefined {
       ? ` --limit ${options.limit}`
       : '');
   if (item.capability) return `${base} ${quote(item.capability)}${flags}`;
-  if (item.group) return `${base} ${quote(item.group)} --group${flags}`;
   return `${base}${flags}`;
 }
 
@@ -291,8 +286,6 @@ export async function handleList(
       options.request &&
       (path.length ||
         options.category ||
-        options.groups ||
-        options.group ||
         options.providers ||
         options.limit !== undefined)
     )
@@ -301,16 +294,9 @@ export async function handleList(
       );
     if (path.some((part) => !part.trim() || part.length > 200))
       throw new Error('Use non-empty catalogue IDs of at most 200 characters.');
-    if (options.group && (options.groups || path.length < 2))
-      throw new Error(
-        '--group requires a provider and group path, without --groups.'
-      );
-    if ((options.category || options.groups) && !path.length)
+    if (options.category && !path.length)
       throw new Error('Provide a category or provider ID.');
-    if (
-      options.providers &&
-      (path.length || options.category || options.groups || options.group)
-    )
+    if (options.providers && (path.length || options.category))
       throw new Error(
         '--providers lists all providers; omit the path and other selectors.'
       );
@@ -373,14 +359,13 @@ export async function handleList(
       if (options.request)
         return fetchPage(parseFindToolsRequest(options.request).options);
       if (!path.length) return fetchPage({ level: 'providers', limit });
-      const providerLevel = options.groups ? 'groups' : 'tools';
       let scope: Selectors = { providers: [path[0]] };
       let remaining = path.slice(1);
       let result = options.category
         ? undefined
         : await fetchPage({
             ...scope,
-            level: remaining.length ? 'providers' : providerLevel,
+            level: remaining.length ? 'providers' : 'tools',
             limit,
           });
       if (!result?.page.total) {
@@ -393,29 +378,18 @@ export async function handleList(
         if (!result.page.total || !remaining.length) return result;
         scope.providers = [remaining[0]];
         remaining = remaining.slice(1);
-        if (!remaining.length) {
-          if (options.group)
-            throw new Error('Provide a group ID after the provider ID.');
-          return fetchPage({ ...scope, level: providerLevel, limit });
-        }
+        if (!remaining.length)
+          return fetchPage({ ...scope, level: 'tools', limit });
       }
       if (!remaining.length) return result;
-      if (options.groups)
-        throw new Error(
-          '--groups lists a provider’s groups; omit it when selecting a tool.'
-        );
       const selected = remaining.join('/');
-      if (!options.group) {
-        const contract = await fetchPage({
-          ...scope,
-          capabilities: [selected],
-          level: 'tools',
-          expand: ['options', 'response', 'examples'],
-          limit,
-        });
-        if (contract.page.total) return contract;
-      }
-      return fetchPage({ ...scope, groups: [selected], level: 'tools', limit });
+      return fetchPage({
+        ...scope,
+        capabilities: [selected],
+        level: 'tools',
+        expand: ['options', 'response', 'examples'],
+        limit,
+      });
     }
 
     const { envelope, page } = await resolve();
@@ -462,18 +436,13 @@ export function createListCommand(): Command {
     )
     .argument(
       '[path...]',
-      'Provider or category, optionally followed by a group or capability'
+      'Provider or category, optionally followed by a capability'
     )
     .option(
       '--category',
       'Treat the first ID as a category when a provider has the same ID'
     )
-    .option('--groups', 'List a provider’s tool groups instead of its tools')
     .option('--providers', 'List all providers instead of the category index')
-    .option(
-      '--group',
-      'Treat the final path as a group instead of a capability'
-    )
     .option(
       '--limit <number>',
       'Provider/tool results per page (1-100; default: 20); the root shows all categories',
@@ -495,7 +464,7 @@ export function createListCommand(): Command {
     .option('--pretty', 'Format JSON')
     .addHelpText(
       'after',
-      '\nExamples:\n  firecrawl alexandria list\n  firecrawl list --providers\n  firecrawl list finance\n  firecrawl list benzinga\n  firecrawl list benzinga --groups\n  firecrawl list benzinga calendar --group\n  firecrawl list benzinga <capability> --json\n\nProvider IDs take precedence over categories; exact capabilities take precedence over groups.\nNo listed tool is executed. Search by task with firecrawl search --sources alexandria.\n'
+      '\nExamples:\n  firecrawl alexandria list\n  firecrawl list --providers\n  firecrawl list finance\n  firecrawl list benzinga\n  firecrawl list benzinga <capability> --json\n\nProvider IDs take precedence over categories.\nNo listed tool is executed. Search by task with firecrawl search --sources alexandria.\n'
     )
     .action(handleList);
 }

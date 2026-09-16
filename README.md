@@ -28,8 +28,6 @@ npx firecrawl-cli@alexandria list --providers         # flat provider list
 npx firecrawl-cli@alexandria list finance             # providers in a category
 npx firecrawl-cli@alexandria list benzinga            # provider's tools
 npx firecrawl-cli@alexandria list-tools benzinga      # same browsing interface
-npx firecrawl-cli@alexandria list benzinga --groups   # optional tool groups
-npx firecrawl-cli@alexandria list benzinga calendar --group
 npx firecrawl-cli@alexandria list benzinga <capability> --json
 ```
 
@@ -37,7 +35,7 @@ The category overview is available in `1.23.4-alexandria-beta.9` onward. `list` 
 
 Discovery is free and never executes the listed tools. The root reads `GET /exchange/discover` on the configured Firecrawl API using your existing credentials; provider and tool lookups use the Find Tools meta tool through Scrape. Category membership and descriptions stay on the server. The root shows all returned categories; `--limit` controls provider/tool page size (default 20, maximum 100). Follow `More` to continue a page. Root `--json` exposes categories at `data.items`; provider/tool JSON keeps the Scrape envelope at `data.alexandria[0].data`. Both include request IDs and navigation where available.
 
-Provider IDs take precedence over category IDs; use `--category` to select a category explicitly. Display names such as `retail`, `developer`, and `public-records` also resolve to their catalog category IDs. Exact capability IDs take precedence over group IDs; use `--group` to select a group explicitly. Use `firecrawl search --sources alexandria` to find tools by task, or `firecrawl find-tools` for URL lookup and raw catalog selectors.
+Provider IDs take precedence over category IDs; use `--category` to select a category explicitly. Display names such as `retail`, `developer`, and `public-records` also resolve to their catalog category IDs. Follow a provider with a complete capability ID, such as `calendar/ratings`, to inspect its contract. Use `firecrawl search --sources alexandria` to find tools by task, or `firecrawl find-tools` for URL lookup and raw catalog selectors.
 
 ### Setup Skills, Workflows, and MCP
 
