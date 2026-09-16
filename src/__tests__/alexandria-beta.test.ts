@@ -22,7 +22,7 @@ beforeAll(async () => {
     requests.push({
       url: req.url,
       headers: req.headers,
-      body: JSON.parse(raw),
+      body: raw ? JSON.parse(raw) : undefined,
     });
     res.writeHead(status, { 'content-type': 'application/json' });
     res.end(JSON.stringify(response));
@@ -81,6 +81,11 @@ it('documents the default discovery flow and respects explicit web-only search',
   expect(scrapeHelp.stdout).toContain('--alexandria');
   const findHelp = await cli(['find-tools', '--help']);
   expect(findHelp.stdout).toContain('meta tool');
+  const agentHelp = await cli(['agent', '--help']);
+  expect(agentHelp.stdout).toContain('--thread <threadId>');
+  expect(agentHelp.stdout).toContain('--mode <mode>');
+  const threadHelp = await cli(['agent', 'thread', '--help']);
+  expect(threadHelp.stdout).toContain('--include-data');
   response = { success: true, data: { web: [] } };
   const result = await cli([
     'search',
@@ -431,4 +436,176 @@ it('requests web content with search --scrape without executing returned tools',
     { type: 'markdown' },
   ]);
   expect(requests[0].body.alexandria).toBeUndefined();
+});
+
+const THREAD_ID = '0d0e6f7a-1b2c-4d3e-8f90-a1b2c3d4e5f6';
+const RUN_ID = '7c1e2d3f-4a5b-4c6d-9e8f-0a1b2c3d4e5f';
+
+it('continues a thread and returns the thread the run belongs to', async () => {
+  response = { success: true, id: RUN_ID, threadId: THREAD_ID, threadTurn: 2 };
+  const result = await cli([
+    'agent',
+    'And the heading?',
+    '--thread',
+    THREAD_ID,
+    '--mode',
+    'chat',
+    '--effort',
+    'low',
+    '--model',
+    'spark-2',
+  ]);
+  expect(result.code).toBe(0);
+  expect(JSON.parse(result.stdout)).toEqual({
+    success: true,
+    data: {
+      jobId: RUN_ID,
+      status: 'processing',
+      threadId: THREAD_ID,
+      threadTurn: 2,
+    },
+  });
+  expect(requests[0]).toMatchObject({
+    url: '/v2/agent',
+    headers: { authorization: 'Bearer fc-test' },
+    body: {
+      prompt: 'And the heading?',
+      threadId: THREAD_ID,
+      mode: 'chat',
+      effort: 'low',
+      model: 'spark-2',
+      integration: 'cli',
+    },
+  });
+  expect(requests[0].body).not.toHaveProperty('urls');
+});
+
+it('keeps the plain start request free of thread fields', async () => {
+  response = { success: true, id: RUN_ID, threadId: THREAD_ID, threadTurn: 1 };
+  const result = await cli(['agent', 'Extract the page title.']);
+  expect(result.code).toBe(0);
+  for (const key of ['threadId', 'mode', 'effort']) {
+    expect(requests[0].body).not.toHaveProperty(key);
+  }
+  expect(JSON.parse(result.stdout).data).toMatchObject({
+    threadId: THREAD_ID,
+    threadTurn: 1,
+  });
+});
+
+it('rejects a malformed --thread before calling the API', async () => {
+  const result = await cli(['agent', 'And the heading?', '--thread', 'nope']);
+  expect(result.code).toBe(1);
+  expect(result.stderr).toContain('--thread requires a thread ID');
+  expect(requests).toHaveLength(0);
+});
+
+it('surfaces chat replies and thread position on status', async () => {
+  response = {
+    success: true,
+    status: 'completed',
+    data: null,
+    expiresAt: '2026-09-17T00:00:00.000Z',
+    creditsUsed: 3,
+    threadId: THREAD_ID,
+    threadTurn: 2,
+    mode: 'chat',
+    message: 'The page is about example domains.',
+    suggestions: [{ label: 'Dig deeper', prompt: 'List every link.' }],
+  };
+  const json = await cli(['agent', RUN_ID, '--json']);
+  expect(json.code).toBe(0);
+  expect(requests[0].url).toBe(`/v2/agent/${RUN_ID}`);
+  expect(JSON.parse(json.stdout)).toMatchObject({
+    success: true,
+    id: RUN_ID,
+    status: 'completed',
+    threadId: THREAD_ID,
+    threadTurn: 2,
+    mode: 'chat',
+    message: 'The page is about example domains.',
+    suggestions: [{ label: 'Dig deeper', prompt: 'List every link.' }],
+  });
+  const readable = await cli(['agent', RUN_ID]);
+  expect(readable.stdout).toContain(`Thread: ${THREAD_ID} (turn 2)`);
+  expect(readable.stdout).toContain('Mode: chat');
+  expect(readable.stdout).toContain('The page is about example domains.');
+  expect(readable.stdout).toContain('Dig deeper: List every link.');
+});
+
+it('relays thread_busy conflicts when a turn is still running', async () => {
+  status = 409;
+  response = {
+    success: false,
+    code: 'thread_busy',
+    error: 'This thread already has a run in progress',
+    runId: RUN_ID,
+  };
+  const result = await cli(['agent', 'Again?', '--thread', THREAD_ID]);
+  expect(result.code).toBe(1);
+  expect(result.stderr).toContain('already has a run in progress');
+  expect(requests).toHaveLength(1);
+});
+
+it('lists a thread through the thread endpoint', async () => {
+  response = {
+    success: true,
+    thread: {
+      id: THREAD_ID,
+      createdAt: '2026-09-16T10:00:00.000Z',
+      updatedAt: '2026-09-16T10:05:00.000Z',
+      status: 'idle',
+      runs: [
+        {
+          id: RUN_ID,
+          turn: 1,
+          mode: 'extract',
+          prompt: 'Extract the page title.',
+          status: 'succeeded',
+          createdAt: '2026-09-16T10:00:00.000Z',
+          finishedAt: '2026-09-16T10:01:00.000Z',
+          creditsUsed: 5,
+          message: null,
+          data: { title: 'Example Domain' },
+        },
+      ],
+    },
+  };
+  const json = await cli([
+    'agent',
+    'thread',
+    THREAD_ID,
+    '--include-data',
+    '--json',
+  ]);
+  expect(json.code).toBe(0);
+  expect(requests[0]).toMatchObject({
+    url: `/v2/agent/threads/${THREAD_ID}?includeData=true`,
+    headers: { authorization: 'Bearer fc-test' },
+  });
+  expect(JSON.parse(json.stdout)).toEqual(response);
+
+  const readable = await cli(['agent', 'thread', THREAD_ID]);
+  expect(readable.code).toBe(0);
+  expect(requests[1].url).toBe(`/v2/agent/threads/${THREAD_ID}`);
+  expect(readable.stdout).toContain(`Thread ID: ${THREAD_ID}`);
+  expect(readable.stdout).toContain('Turn 1 (extract) - succeeded');
+  expect(readable.stdout).toContain('Extract the page title.');
+  expect(readable.stdout).toContain('"title":"Example Domain"');
+});
+
+it('fails clearly on an unknown thread', async () => {
+  status = 404;
+  response = {
+    success: false,
+    code: 'thread_not_found',
+    error: 'Agent thread not found',
+  };
+  const result = await cli(['agent', 'thread', THREAD_ID]);
+  expect(result.code).toBe(1);
+  expect(result.stderr).toContain('Agent thread not found');
+  expect(requests).toHaveLength(1);
+  const malformed = await cli(['agent', 'thread', 'nope']);
+  expect(malformed.code).toBe(1);
+  expect(requests).toHaveLength(1);
 });

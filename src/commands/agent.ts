@@ -3,12 +3,20 @@
  */
 
 import type {
+  AgentEffort,
+  AgentModel,
   AgentOptions,
   AgentResult,
   AgentStatus,
   AgentStatusResult,
+  AgentThreadOptions,
 } from '../types/agent';
-import type { AgentWebhookConfig } from 'firecrawl';
+import type {
+  AgentMode,
+  AgentStatusResponse,
+  AgentThread,
+  AgentWebhookConfig,
+} from 'firecrawl';
 import { getClient } from '../utils/client';
 import { isJobId } from '../utils/job';
 import { writeOutput } from '../utils/output';
@@ -70,6 +78,25 @@ function normalizeAgentStatus(status: AgentStatusFromApi): AgentStatus {
   return status as AgentStatus;
 }
 
+function toStatusData(
+  jobId: string,
+  status: AgentStatusResponse,
+  normalizedStatus: AgentStatus
+): NonNullable<AgentStatusResult['data']> {
+  return {
+    id: jobId,
+    status: normalizedStatus,
+    data: status.data,
+    creditsUsed: status.creditsUsed,
+    expiresAt: status.expiresAt,
+    ...(status.threadId !== undefined && { threadId: status.threadId }),
+    ...(status.threadTurn !== undefined && { threadTurn: status.threadTurn }),
+    ...(status.mode !== undefined && { mode: status.mode }),
+    ...(status.message !== undefined && { message: status.message }),
+    ...(status.suggestions?.length && { suggestions: status.suggestions }),
+  };
+}
+
 /**
  * Execute agent status check (with optional wait/polling)
  */
@@ -90,13 +117,7 @@ async function checkAgentStatus(
 
       return {
         success: isCancelled ? true : status.success,
-        data: {
-          id: jobId,
-          status: normalizedStatus,
-          data: status.data,
-          creditsUsed: status.creditsUsed,
-          expiresAt: status.expiresAt,
-        },
+        data: toStatusData(jobId, status, normalizedStatus),
       };
     } catch (error) {
       return {
@@ -138,13 +159,7 @@ async function checkAgentStatus(
         spinner.succeed('Agent completed');
         return {
           success: agentStatus.success,
-          data: {
-            id: jobId,
-            status: currentNormalizedStatus,
-            data: agentStatus.data,
-            creditsUsed: agentStatus.creditsUsed,
-            expiresAt: agentStatus.expiresAt,
-          },
+          data: toStatusData(jobId, agentStatus, currentNormalizedStatus),
         };
       }
 
@@ -152,13 +167,7 @@ async function checkAgentStatus(
         spinner.fail('Agent failed');
         return {
           success: false,
-          data: {
-            id: jobId,
-            status: currentNormalizedStatus,
-            data: agentStatus.data,
-            creditsUsed: agentStatus.creditsUsed,
-            expiresAt: agentStatus.expiresAt,
-          },
+          data: toStatusData(jobId, agentStatus, currentNormalizedStatus),
           error: agentStatus.error,
         };
       }
@@ -167,13 +176,7 @@ async function checkAgentStatus(
         spinner.succeed('Agent cancelled');
         return {
           success: true,
-          data: {
-            id: jobId,
-            status: currentNormalizedStatus,
-            data: agentStatus.data,
-            creditsUsed: agentStatus.creditsUsed,
-            expiresAt: agentStatus.expiresAt,
-          },
+          data: toStatusData(jobId, agentStatus, currentNormalizedStatus),
         };
       }
 
@@ -250,7 +253,10 @@ export async function executeAgent(
       prompt: string;
       urls?: string[];
       schema?: Record<string, unknown>;
-      model?: 'spark-1-pro' | 'spark-1-mini';
+      model?: AgentModel;
+      effort?: AgentEffort;
+      threadId?: string;
+      mode?: AgentMode;
       maxCredits?: number;
       pollInterval?: number;
       timeout?: number;
@@ -268,7 +274,16 @@ export async function executeAgent(
       agentParams.schema = schema;
     }
     if (options.model) {
-      agentParams.model = options.model as 'spark-1-pro' | 'spark-1-mini';
+      agentParams.model = options.model;
+    }
+    if (options.effort) {
+      agentParams.effort = options.effort;
+    }
+    if (options.threadId) {
+      agentParams.threadId = options.threadId;
+    }
+    if (options.mode) {
+      agentParams.mode = options.mode;
     }
     if (options.maxCredits !== undefined) {
       agentParams.maxCredits = options.maxCredits;
@@ -323,13 +338,7 @@ export async function executeAgent(
             spinner.succeed('Agent completed');
             return {
               success: agentStatus.success,
-              data: {
-                id: jobId,
-                status: normalizedStatus,
-                data: agentStatus.data,
-                creditsUsed: agentStatus.creditsUsed,
-                expiresAt: agentStatus.expiresAt,
-              },
+              data: toStatusData(jobId, agentStatus, normalizedStatus),
             };
           }
 
@@ -338,13 +347,7 @@ export async function executeAgent(
             spinner.fail('Agent failed');
             return {
               success: false,
-              data: {
-                id: jobId,
-                status: normalizedStatus,
-                data: agentStatus.data,
-                creditsUsed: agentStatus.creditsUsed,
-                expiresAt: agentStatus.expiresAt,
-              },
+              data: toStatusData(jobId, agentStatus, normalizedStatus),
               error: agentStatus.error,
             };
           }
@@ -386,6 +389,12 @@ export async function executeAgent(
       data: {
         jobId: response.id,
         status: 'processing',
+        ...(response.threadId !== undefined && {
+          threadId: response.threadId,
+        }),
+        ...(response.threadTurn !== undefined && {
+          threadTurn: response.threadTurn,
+        }),
       },
     };
   } catch (error) {
@@ -406,6 +415,16 @@ function formatAgentStatus(data: AgentStatusResult['data']): string {
   lines.push(`Job ID: ${data.id}`);
   lines.push(`Status: ${data.status}`);
 
+  if (data.threadId) {
+    lines.push(
+      `Thread: ${data.threadId}${data.threadTurn !== undefined ? ` (turn ${data.threadTurn})` : ''}`
+    );
+  }
+
+  if (data.mode) {
+    lines.push(`Mode: ${data.mode}`);
+  }
+
   if (data.creditsUsed !== undefined) {
     lines.push(`Credits Used: ${data.creditsUsed}`);
   }
@@ -423,13 +442,82 @@ function formatAgentStatus(data: AgentStatusResult['data']): string {
     );
   }
 
+  if (data.message) {
+    lines.push('');
+    lines.push('Message:');
+    lines.push(data.message);
+  }
+
   if (data.data) {
     lines.push('');
     lines.push('Result:');
     lines.push(JSON.stringify(data.data, null, 2));
   }
 
+  if (data.suggestions?.length) {
+    lines.push('');
+    lines.push('Suggestions:');
+    for (const suggestion of data.suggestions) {
+      lines.push(`  - ${suggestion.label}: ${suggestion.prompt}`);
+    }
+  }
+
   return lines.join('\n') + '\n';
+}
+
+function formatAgentThread(thread: AgentThread): string {
+  const lines: string[] = [];
+  lines.push(`Thread ID: ${thread.id}`);
+  lines.push(`Status: ${thread.status}`);
+  lines.push(`Updated: ${thread.updatedAt}`);
+  lines.push(`Runs: ${thread.runs.length}`);
+
+  for (const run of thread.runs) {
+    lines.push('');
+    lines.push(`Turn ${run.turn} (${run.mode}) - ${run.status}`);
+    lines.push(`  Job ID: ${run.id}`);
+    lines.push(`  Prompt: ${run.prompt}`);
+    if (run.creditsUsed !== null && run.creditsUsed !== undefined) {
+      lines.push(`  Credits Used: ${run.creditsUsed}`);
+    }
+    if (run.message) {
+      lines.push(`  Message: ${run.message}`);
+    }
+    if (run.data !== undefined) {
+      lines.push(`  Result: ${JSON.stringify(run.data)}`);
+    }
+  }
+
+  return lines.join('\n') + '\n';
+}
+
+/**
+ * Fetch a thread and print its runs, oldest turn first.
+ */
+export async function handleAgentThreadCommand(
+  options: AgentThreadOptions
+): Promise<void> {
+  const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
+
+  let thread: AgentThread;
+  try {
+    const response = await app.getAgentThread(options.threadId, {
+      includeData: options.includeData,
+    });
+    if (!response.success || !response.thread) {
+      throw new Error(response.error ?? 'Failed to get agent thread');
+    }
+    thread = response.thread;
+  } catch (error) {
+    console.error('Error:', extractErrorMessage(error));
+    process.exit(1);
+  }
+
+  const outputContent = options.json
+    ? JSON.stringify({ success: true, thread }, null, options.pretty ? 2 : 0)
+    : formatAgentThread(thread);
+
+  writeOutput(outputContent, options.output, !!options.output);
 }
 
 /**
@@ -473,10 +561,7 @@ export async function handleAgentCommand(options: AgentOptions): Promise<void> {
   let outputContent: string;
 
   if ('jobId' in agentResult.data) {
-    const jobData = {
-      jobId: agentResult.data.jobId,
-      status: agentResult.data.status,
-    };
+    const jobData = agentResult.data;
 
     outputContent = options.pretty
       ? JSON.stringify({ success: true, data: jobData }, null, 2)
