@@ -1,0 +1,34 @@
+src/index.ts
+  s_eebc0c951286e7::t_75a0fc2270c05f 83,2203-2208
+src/__tests__/alexandria-beta.test.ts
+  s_eebc0c951286e7::t_d9beb499cd02ad 16,29,43
+  s_eebc0c951286e7::t_7ab01e025782ba 76-87,89-99,101-120,122-147,149,151-180,182-191,193-199,201-214,216-224,226-234,236-244,247,249-258
+README.md
+  s_eebc0c951286e7::t_5f474376c6ebee 21-39
+beta-skills/firecrawl-alexandria/SKILL.md
+  s_eebc0c951286e7::t_5f474376c6ebee 26-42
+src/commands/list.ts
+  s_eebc0c951286e7::t_d71ab29946203b 64-66,73-76,79,87,98-106
+  s_eebc0c951286e7::t_f97cc49f243285 67-72,77-78,80-86,88-96,110-113,118-121,123-130,134-136,140-141,146-156,158-176,180-189,191-192,194-205,207-211,216-217,222-228,235-239,242-245,248-254,261-264,267-271,276-292,298-308,310-327,333-336
+  s_eebc0c951286e7::t_75a0fc2270c05f 1-63,97,107-109,114-117,122,131-133,137-139,142-145,157,177-179,190,193,206,212-215,218-221,229-234,240-241,246-247,255-260,265-266,272-275,293-297,309,328-332,337-338
+src/commands/alexandria.ts
+  s_eebc0c951286e7::t_75a0fc2270c05f 9,80,82-83,110-117,123,129-145,177
+package.json
+  s_eebc0c951286e7::t_5f474376c6ebee 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "d67774cb92494442cef7723cc45acbbe2d7ea587",
+  "prompts": {},
+  "sessions": {
+    "s_eebc0c951286e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0a59a-2096-7160-b0b5-554179a97463",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Developers Digest <124798203+developersdigest@users.noreply.github.com>"
+    }
+  }
+}
