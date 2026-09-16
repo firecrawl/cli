@@ -1,11 +1,14 @@
 import { Command, InvalidArgumentError } from 'commander';
+import { randomUUID } from 'node:crypto';
 import {
   apiFailure,
   parseFindToolsRequest,
   requestAlexandria,
+  requireAlexandriaKey,
   type AlexandriaOptions,
 } from './alexandria';
 import { writeOutput } from '../utils/output';
+import { getApiKey, getConfig } from '../utils/config';
 
 type Selectors = Record<string, unknown>;
 type ListOptions = AlexandriaOptions & {
@@ -14,6 +17,26 @@ type ListOptions = AlexandriaOptions & {
   group?: boolean;
   limit?: number;
   request?: string;
+  providers?: boolean;
+};
+const CATEGORY_NAMES: Record<string, string> = {
+  software: 'Developer',
+  government: 'Public records',
+  shopping: 'Retail',
+  restaurants: 'Restaurant',
+  companies: 'Company',
+  skills: 'Tools',
+};
+const categoryId = (id: string) =>
+  Object.entries(CATEGORY_NAMES).find(
+    ([, name]) => name.toLowerCase().replaceAll(' ', '-') === id
+  )?.[0] ?? id;
+
+type Category = {
+  id: string;
+  name: string;
+  description: string;
+  nextCommand: string;
 };
 type Item = {
   id: string;
@@ -51,6 +74,110 @@ function quote(value: string): string {
   return /^[a-zA-Z0-9_./:-]+$/.test(value)
     ? value
     : `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+async function requestCategories(
+  options: ListOptions
+): Promise<Record<string, any>> {
+  requireAlexandriaKey(options.apiKey);
+  const requestId = randomUUID();
+  console.error(`Request ID: ${requestId}`);
+  const base = (
+    options.apiUrl ||
+    getConfig().apiUrl ||
+    'https://api.firecrawl.dev'
+  ).replace(/\/$/, '');
+  try {
+    const response = await fetch(`${base}/exchange/discover`, {
+      headers: {
+        Authorization: `Bearer ${getApiKey(options.apiKey)}`,
+        'X-Request-ID': requestId,
+      },
+      signal: AbortSignal.timeout(getConfig().timeoutMs ?? 30000),
+      redirect: 'error',
+    });
+    const body: any = await response.json().catch(() => ({}));
+    if (!response.ok || body?.success === false) {
+      return {
+        ...apiFailure({
+          response: {
+            data: {
+              ...body,
+              error:
+                body?.error ||
+                `Category discovery failed (HTTP ${response.status}).`,
+            },
+          },
+        }),
+        requestId,
+      };
+    }
+    if (
+      !Array.isArray(body?.cohorts) ||
+      body.cohorts.some(
+        (row: any) =>
+          !row ||
+          typeof row.cohort !== 'string' ||
+          !row.cohort.trim() ||
+          typeof row.about !== 'string' ||
+          !Number.isInteger(row.providers) ||
+          row.providers < 0
+      )
+    )
+      throw new Error('Discovery returned an invalid category index.');
+    const items: Category[] = body.cohorts
+      .filter((row: any) => row.providers > 0)
+      .map((row: any) => ({
+        id: row.cohort,
+        name: Object.hasOwn(CATEGORY_NAMES, row.cohort)
+          ? CATEGORY_NAMES[row.cohort]
+          : row.cohort
+              .split('-')
+              .map(
+                (word: string) => word.charAt(0).toUpperCase() + word.slice(1)
+              )
+              .join(' '),
+        description: row.about,
+        nextCommand: `firecrawl alexandria list ${quote(row.cohort)} --category${options.limit === undefined ? '' : ` --limit ${options.limit}`}`,
+      }))
+      .sort((a: Category, b: Category) => a.name.localeCompare(b.name));
+    return {
+      success: true,
+      requestId,
+      data: { level: 'categories', items, total: items.length },
+    };
+  } catch (error) {
+    return { ...apiFailure(error), requestId };
+  }
+}
+
+function renderCategories(items: Category[]): string {
+  return [
+    'Firecrawl Alexandria',
+    'A trusted data layer for agents to access high-provenance data.',
+    '',
+    'Finding data',
+    '  firecrawl search "<need>" --sources alexandria',
+    '  Browse a category below, or jump directly to a provider.',
+    '',
+    'Calling it',
+    '  Browse:  firecrawl alexandria list <category> --category',
+    '  Tools:   firecrawl alexandria list <provider>',
+    '  Inspect: firecrawl alexandria list <provider> <capability>',
+    "  Execute: firecrawl scrape --alexandria <provider>/<capability> --options '<input JSON>'",
+    '  Discovery is free. Check the contract and price before executing.',
+    '  Use your existing Firecrawl login or FIRECRAWL_API_KEY.',
+    '',
+    `Categories (${items.length})`,
+    ...items.map((item) => `  ${item.name} (${item.id}): ${item.description}`),
+    ...(!items.length ? ['  No categories are currently visible.'] : []),
+    '',
+    'Developer and Research indexes have native commands:',
+    '  firecrawl developer --help',
+    '  firecrawl research --help',
+    '',
+    'All providers: firecrawl alexandria list --providers',
+  ].join('\n');
 }
 
 function nextCommand(request: unknown): string {
@@ -163,6 +290,7 @@ export async function handleList(
         options.category ||
         options.groups ||
         options.group ||
+        options.providers ||
         options.limit !== undefined)
     )
       throw new Error(
@@ -176,6 +304,30 @@ export async function handleList(
       );
     if ((options.category || options.groups) && !path.length)
       throw new Error('Provide a category or provider ID.');
+    if (
+      options.providers &&
+      (path.length || options.category || options.groups || options.group)
+    )
+      throw new Error(
+        '--providers lists all providers; omit the path and other selectors.'
+      );
+    if (!path.length && !options.request && !options.providers) {
+      const result = await requestCategories(options);
+      receipts.push({ requestId: result.requestId });
+      if (!result.success) throw new DiscoveryFailure(result);
+      writeOutput(
+        asJson
+          ? JSON.stringify(
+              { ...result, discoveryRequests: receipts },
+              null,
+              options.pretty ? 2 : undefined
+            )
+          : renderCategories(result.data.items),
+        options.output,
+        !!options.output
+      );
+      return;
+    }
     const limit = options.limit ?? 20;
 
     async function fetchPage(selectors: Selectors) {
@@ -229,7 +381,7 @@ export async function handleList(
             limit,
           });
       if (!result?.page.total) {
-        scope = { categories: [path[0]] };
+        scope = { categories: [categoryId(path[0])] };
         result = await fetchPage({ ...scope, level: 'providers', limit });
         if (!result.page.total || !remaining.length) return result;
         scope.providers = [remaining[0]];
@@ -299,7 +451,7 @@ export function createListCommand(): Command {
   return new Command('list')
     .alias('list-tools')
     .description(
-      'Browse providers, categories and tool contracts through Find Tools; discovery only'
+      'Start with the Alexandria category index, then browse providers and tool contracts; discovery only'
     )
     .argument(
       '[path...]',
@@ -310,13 +462,14 @@ export function createListCommand(): Command {
       'Treat the first ID as a category when a provider has the same ID'
     )
     .option('--groups', 'List a provider’s tool groups instead of its tools')
+    .option('--providers', 'List all providers instead of the category index')
     .option(
       '--group',
       'Treat the final path as a group instead of a capability'
     )
     .option(
       '--limit <number>',
-      'Results per page (1-100; default: 20)',
+      'Provider/tool results per page (1-100; default: 20); the root shows all categories',
       (raw) => {
         const value = Number(raw);
         if (!Number.isInteger(value) || value < 1 || value > 100)
@@ -335,7 +488,7 @@ export function createListCommand(): Command {
     .option('--pretty', 'Format JSON')
     .addHelpText(
       'after',
-      '\nExamples:\n  firecrawl list\n  firecrawl list finance\n  firecrawl list benzinga\n  firecrawl list benzinga --groups\n  firecrawl list benzinga calendar --group\n  firecrawl list benzinga <capability> --json\n\nProvider IDs take precedence over categories; exact capabilities take precedence over groups.\nNo listed tool is executed. Search by task with firecrawl search --sources alexandria.\n'
+      '\nExamples:\n  firecrawl alexandria list\n  firecrawl list --providers\n  firecrawl list finance\n  firecrawl list benzinga\n  firecrawl list benzinga --groups\n  firecrawl list benzinga calendar --group\n  firecrawl list benzinga <capability> --json\n\nProvider IDs take precedence over categories; exact capabilities take precedence over groups.\nNo listed tool is executed. Search by task with firecrawl search --sources alexandria.\n'
     )
     .action(handleList);
 }

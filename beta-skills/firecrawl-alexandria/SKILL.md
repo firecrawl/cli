@@ -25,10 +25,10 @@ A complete contract returned by search needs no additional discovery call. Check
 
 ## Browse the catalog progressively
 
-With beta `1.23.4-alexandria-beta.8` or newer, use `list` when the user wants to browse providers, categories, or a known provider's tools:
+With beta `1.23.4-alexandria-beta.9` or newer, use `list` when the user wants to browse categories, providers, or a known provider's tools:
 
 ```sh
-npx firecrawl-cli@alexandria list
+npx firecrawl-cli@alexandria alexandria list
 npx firecrawl-cli@alexandria list finance
 npx firecrawl-cli@alexandria list benzinga
 npx firecrawl-cli@alexandria list benzinga --groups
@@ -36,9 +36,9 @@ npx firecrawl-cli@alexandria list benzinga calendar --group
 npx firecrawl-cli@alexandria list benzinga <returned-capability-id> --json
 ```
 
-The root lists visible providers. A category filters providers; a provider lists compact tools directly. Selecting a capability expands only that contract, including price, inputs, response, and examples. Categories are optional: use returned provider and capability IDs directly. `list-tools` is an alias for `list`; both also work under `alexandria`. `--category` and `--group` resolve ambiguous IDs explicitly.
+The root shows an introduction, discovery/execution commands, and live categories with descriptions. A category lists its providers; a provider lists compact tools directly. Selecting a capability expands only that contract, including price, inputs, response, and examples. Categories are optional: use returned provider and capability IDs directly. Use `list --providers` only when a flat provider inventory is needed. `list-tools` is an alias for `list`; both also work under `alexandria`. `--category` and `--group` resolve ambiguous IDs explicitly. Category display names such as `retail`, `developer`, and `public-records` are accepted alongside the returned canonical IDs.
 
-`list` only calls the free Find Tools meta tool through Scrape. `--json` preserves the API envelope and adds `discoveryRequests` receipts and `nextCommand` navigation. Page size defaults to 20 (`--limit 1–100`); follow the returned `More`/`nextCommand` only when needed. Generated commands start with `firecrawl`; replace that prefix with `npx firecrawl-cli@alexandria` to stay on this beta. Raw `--request` next requests preserve selectors and pagination and must not be mixed with a path or filters.
+The root reads the free public `GET /exchange/discover` route on the configured Firecrawl API with existing credentials. Category rows are at `data.items` in JSON. Provider and tool lookups use the free Find Tools meta tool through Scrape, with rows at `data.alexandria[0].data.items`. Both include `discoveryRequests` and `nextCommand` navigation; no listed tool is executed. The root shows all categories. Provider/tool page size defaults to 20 (`--limit 1–100`); follow `More`/`nextCommand` only when needed. Generated commands start with `firecrawl`; replace that prefix with `npx firecrawl-cli@alexandria` to stay on this beta. Raw `--request` next requests preserve selectors and pagination and must not be mixed with a path or filters.
 
 ## Explicit requests for tools: search then the Find Tools meta tool
 

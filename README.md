@@ -23,7 +23,8 @@ npx -y firecrawl-cli@latest init -y --browser
 Use the Alexandria beta with your existing Firecrawl login or API key:
 
 ```bash
-npx firecrawl-cli@alexandria list                     # visible providers
+npx firecrawl-cli@alexandria alexandria list          # introduction and live categories
+npx firecrawl-cli@alexandria list --providers         # flat provider list
 npx firecrawl-cli@alexandria list finance             # providers in a category
 npx firecrawl-cli@alexandria list benzinga            # provider's tools
 npx firecrawl-cli@alexandria list-tools benzinga      # same browsing interface
@@ -32,11 +33,11 @@ npx firecrawl-cli@alexandria list benzinga calendar --group
 npx firecrawl-cli@alexandria list benzinga <capability> --json
 ```
 
-Available in `1.23.4-alexandria-beta.8` onward. `list` and `list-tools` are interchangeable, including under `firecrawl alexandria`. Provider IDs work directly; you do not need their category. Lists stay compact until you select a capability, which reveals its inputs, response, examples, and price. Browsable results include next commands; selecting a capability displays the final contract. Generated commands use `firecrawl`; when using `npx`, replace that prefix with `npx firecrawl-cli@alexandria`.
+The category overview is available in `1.23.4-alexandria-beta.9` onward. `list` and `list-tools` are interchangeable, including under `firecrawl alexandria`. The root explains how to find and call tools and lists live category descriptions. Choose a category to see its providers, or jump directly to a provider. Selecting a capability reveals its inputs, response, examples, and price. Browsable results expose next commands in JSON; the text guide explains how to select each category. Selecting a capability displays the final contract. Generated commands use `firecrawl`; when using `npx`, replace that prefix with `npx firecrawl-cli@alexandria`.
 
-Discovery is free and never executes the listed tools. Results come from the live Find Tools catalog through Scrape and respect your access. `--limit` controls page size (default 20, maximum 100); follow the returned `More` command for the next page. `--json` includes the API envelope, next commands, and receipts for every discovery request.
+Discovery is free and never executes the listed tools. The root reads `GET /exchange/discover` on the configured Firecrawl API using your existing credentials; provider and tool lookups use the Find Tools meta tool through Scrape. Category membership and descriptions stay on the server. The root shows all returned categories; `--limit` controls provider/tool page size (default 20, maximum 100). Follow `More` to continue a page. Root `--json` exposes categories at `data.items`; provider/tool JSON keeps the Scrape envelope at `data.alexandria[0].data`. Both include request IDs and navigation where available.
 
-Provider IDs take precedence over category IDs; use `--category` to select a category explicitly. Exact capability IDs take precedence over group IDs; use `--group` to select a group explicitly. Use `firecrawl search --sources alexandria` to find tools by task, or `firecrawl find-tools` for URL lookup and raw catalog selectors.
+Provider IDs take precedence over category IDs; use `--category` to select a category explicitly. Display names such as `retail`, `developer`, and `public-records` also resolve to their catalog category IDs. Exact capability IDs take precedence over group IDs; use `--group` to select a group explicitly. Use `firecrawl search --sources alexandria` to find tools by task, or `firecrawl find-tools` for URL lookup and raw catalog selectors.
 
 ### Setup Skills, Workflows, and MCP
 
