@@ -102,7 +102,7 @@ it('starts with a live category guide and preserves category-discovery access er
       {
         cohort: 'new-category',
         about: 'A category added by the server.',
-        providers: 1,
+        providers: 0,
       },
     ],
   };
@@ -155,6 +155,10 @@ it('browses live provider IDs directly or through a category without expanding c
     const options = body.alexandria[0].options;
     if (options.providers?.[0] === 'finance')
       return catalogue(options.level, []);
+    if (
+      ['retail', 'Retail', 'Public records'].includes(options.categories?.[0])
+    )
+      return catalogue(options.level, []);
     return catalogue(options.level, [
       { id: 'benzinga', provider: 'benzinga', name: 'Benzinga' },
     ]);
@@ -172,7 +176,8 @@ it('browses live provider IDs directly or through a category without expanding c
   );
   expect((await cli(['list-tools', 'benzinga'])).code).toBe(0);
   expect((await cli(['alexandria', 'list-tools', 'benzinga'])).code).toBe(0);
-  expect((await cli(['list', 'retail', '--category'])).code).toBe(0);
+  expect((await cli(['list', 'Retail', '--category'])).code).toBe(0);
+  expect((await cli(['list', 'Public records', '--category'])).code).toBe(0);
   expect(requests.map((request) => request.body.alexandria[0].options)).toEqual(
     [
       { level: 'providers', limit: 20 },
@@ -190,7 +195,10 @@ it('browses live provider IDs directly or through a category without expanding c
       { providers: ['benzinga'], level: 'groups', limit: 20 },
       { providers: ['benzinga'], level: 'tools', limit: 20 },
       { providers: ['benzinga'], level: 'tools', limit: 20 },
+      { categories: ['Retail'], level: 'providers', limit: 20 },
       { categories: ['shopping'], level: 'providers', limit: 20 },
+      { categories: ['Public records'], level: 'providers', limit: 20 },
+      { categories: ['government'], level: 'providers', limit: 20 },
     ]
   );
   expect(
@@ -201,6 +209,16 @@ it('browses live provider IDs directly or through a category without expanding c
         body.alexandria[0].capability === 'find-tools'
     )
   ).toBe(true);
+  responseFor = () =>
+    catalogue('providers', [
+      { id: 'future-retailer', provider: 'future-retailer' },
+    ]);
+  const canonical = await cli(['list', 'retail', '--category']);
+  expect(canonical.code).toBe(0);
+  expect(canonical.stdout).toContain('future-retailer');
+  expect(requests.at(-1)?.body.alexandria[0].options.categories).toEqual([
+    'retail',
+  ]);
 });
 
 it('expands only a selected tool and falls back to a compact group listing', async () => {

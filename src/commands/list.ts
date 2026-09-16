@@ -27,10 +27,14 @@ const CATEGORY_NAMES: Record<string, string> = {
   companies: 'Company',
   skills: 'Tools',
 };
-const categoryId = (id: string) =>
-  Object.entries(CATEGORY_NAMES).find(
-    ([, name]) => name.toLowerCase().replaceAll(' ', '-') === id
-  )?.[0] ?? id;
+function categoryId(id: string): string {
+  const normalized = id.trim().toLowerCase().replace(/\s+/g, '-');
+  return (
+    Object.entries(CATEGORY_NAMES).find(
+      ([, name]) => name.toLowerCase().replaceAll(' ', '-') === normalized
+    )?.[0] ?? normalized
+  );
+}
 
 type Category = {
   id: string;
@@ -126,7 +130,6 @@ async function requestCategories(
     )
       throw new Error('Discovery returned an invalid category index.');
     const items: Category[] = body.cohorts
-      .filter((row: any) => row.providers > 0)
       .map((row: any) => ({
         id: row.cohort,
         name: Object.hasOwn(CATEGORY_NAMES, row.cohort)
@@ -381,8 +384,12 @@ export async function handleList(
             limit,
           });
       if (!result?.page.total) {
-        scope = { categories: [categoryId(path[0])] };
+        scope = { categories: [path[0]] };
         result = await fetchPage({ ...scope, level: 'providers', limit });
+        if (!result.page.total && categoryId(path[0]) !== path[0]) {
+          scope = { categories: [categoryId(path[0])] };
+          result = await fetchPage({ ...scope, level: 'providers', limit });
+        }
         if (!result.page.total || !remaining.length) return result;
         scope.providers = [remaining[0]];
         remaining = remaining.slice(1);
