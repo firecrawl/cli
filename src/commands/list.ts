@@ -165,7 +165,7 @@ function renderCategories(items: Category[]): string {
     '  Tools:   firecrawl alexandria list <provider>',
     '  Inspect: firecrawl alexandria list <provider> <capability>',
     "  Execute: firecrawl scrape --alexandria <provider>/<capability> --options '<input JSON>'",
-    '  Discovery is free. Check the contract and price before executing.',
+    '  Catalog browsing is free. Check the contract and price before executing.',
     '  Use your existing Firecrawl login or FIRECRAWL_API_KEY.',
     '',
     `Categories (${items.length})`,
