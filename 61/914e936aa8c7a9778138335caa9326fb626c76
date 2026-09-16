@@ -1,0 +1,19 @@
+src/commands/list.ts
+  s_eebc0c951286e7::t_68d4c71c9dee19 168
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "61914e936aa8c7a9778138335caa9326fb626c76",
+  "prompts": {},
+  "sessions": {
+    "s_eebc0c951286e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0a59a-2096-7160-b0b5-554179a97463",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Developers Digest <124798203+developersdigest@users.noreply.github.com>"
+    }
+  }
+}
