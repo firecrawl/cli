@@ -148,7 +148,9 @@ export async function handleList(
   options: ListOptions
 ): Promise<void> {
   const asJson =
-    options.json || options.pretty || options.output?.endsWith('.json');
+    options.json ||
+    options.pretty ||
+    options.output?.toLowerCase().endsWith('.json');
   const receipts: {
     requestId: string;
     scrape_id?: string;
@@ -187,6 +189,11 @@ export async function handleList(
         ],
         options
       );
+      receipts.push({
+        requestId: envelope.requestId,
+        scrape_id: envelope.scrape_id,
+        creditsCost: envelope.data?.creditsCost,
+      });
       const item = envelope.data?.alexandria?.[0];
       if (!envelope.success || item?.error)
         throw new DiscoveryFailure(envelope);
@@ -204,11 +211,6 @@ export async function handleList(
         )
       )
         throw new Error('Find Tools returned an invalid catalogue response.');
-      receipts.push({
-        requestId: envelope.requestId,
-        scrape_id: envelope.scrape_id,
-        creditsCost: envelope.data.creditsCost,
-      });
       return { envelope, page };
     }
 

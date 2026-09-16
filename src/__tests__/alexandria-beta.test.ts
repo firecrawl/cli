@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -197,15 +197,17 @@ it('preserves scoped next requests, pagination and discovery receipts', async ()
     ],
     next
   );
+  const output = join(home, 'catalogue.JSON');
   const result = await cli([
     'list',
     '--request',
     JSON.stringify(next),
-    '--json',
+    '--output',
+    output,
   ]);
   expect(result.code).toBe(0);
   expect(requests[0].body.alexandria).toEqual([next]);
-  const parsed = JSON.parse(result.stdout);
+  const parsed = JSON.parse(readFileSync(output, 'utf8'));
   const page = parsed.data.alexandria[0].data;
   expect(page.nextCommand).toBe(
     `firecrawl list --request '${JSON.stringify(next)}'`
@@ -257,6 +259,12 @@ it('refuses execution through list and propagates discovery access errors', asyn
   expect(JSON.parse(result.stdout).data.alexandria[0].error).toEqual(
     response.data.alexandria[0].error
   );
+  expect(JSON.parse(result.stdout).discoveryRequests).toEqual([
+    {
+      requestId: expect.any(String),
+      creditsCost: 0,
+    },
+  ]);
   expect(requests).toHaveLength(1);
 });
 
