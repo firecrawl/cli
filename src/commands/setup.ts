@@ -310,7 +310,7 @@ export async function handleSetupCommand(
       }
       const args = buildSkillsInstallArgs({
         repo: path.resolve(__dirname, '../../beta-skills'),
-        skills: ['firecrawl-alexandria'],
+        skills: ['firecrawl-alexandria', 'firecrawl-agent'],
         agent: options.agent,
         includeNpxYes: true,
       });

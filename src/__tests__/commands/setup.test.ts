@@ -94,7 +94,7 @@ describe('handleSetupCommand', () => {
     );
   });
 
-  it('copies only the bundled Alexandria skill for explicit beta setup', async () => {
+  it('copies only the bundled beta skills for explicit beta setup', async () => {
     await handleSetupCommand('alexandria', { agent: 'claude-code', yes: true });
     expect(execFileSync).toHaveBeenCalledWith(
       'npx',
@@ -110,6 +110,7 @@ describe('handleSetupCommand', () => {
         'claude-code',
         '--skill',
         'firecrawl-alexandria',
+        'firecrawl-agent',
         '--copy',
       ],
       expect.objectContaining({ stdio: 'inherit' })
