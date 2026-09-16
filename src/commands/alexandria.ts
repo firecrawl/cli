@@ -6,7 +6,7 @@ import { getApiKey } from '../utils/config';
 import { writeOutput } from '../utils/output';
 
 type Call = AlexandriaCall & { options: Record<string, unknown> };
-type Options = {
+export type AlexandriaOptions = {
   apiKey?: string;
   apiUrl?: string;
   requestId?: string;
@@ -77,10 +77,10 @@ export function apiFailure(error: unknown): Record<string, unknown> {
   };
 }
 
-export async function handleAlexandria(
+export async function requestAlexandria(
   calls: Call[],
-  options: Options
-): Promise<void> {
+  options: AlexandriaOptions
+): Promise<Record<string, any>> {
   const requestId = options.requestId ?? randomUUID();
   if (!/^[A-Za-z0-9._:-]{1,128}$/.test(requestId))
     throw new Error('Invalid --request-id.');
@@ -107,19 +107,40 @@ export async function handleAlexandria(
   } catch (error) {
     envelope = apiFailure(error);
   }
+  return { ...envelope, requestId };
+}
+
+export async function handleAlexandria(
+  calls: Call[],
+  options: AlexandriaOptions
+): Promise<void> {
+  const envelope = await requestAlexandria(calls, options);
   const failed =
     !envelope.success ||
     envelope.data?.alexandria?.some((item: any) => item.error);
   if (failed) process.exitCode = 1;
   writeOutput(
-    JSON.stringify(
-      { ...envelope, requestId },
-      null,
-      options.pretty ? 2 : undefined
-    ),
+    JSON.stringify(envelope, null, options.pretty ? 2 : undefined),
     options.output,
     !!options.output
   );
+}
+
+export function parseFindToolsRequest(raw: string): Call {
+  const next = parseToolOptions(raw);
+  if (
+    next.provider !== 'firecrawl' ||
+    next.capability !== 'find-tools' ||
+    Object.keys(next).some(
+      (key) => !['provider', 'capability', 'options'].includes(key)
+    )
+  )
+    throw new Error('--request must be a Find Tools request.');
+  return {
+    provider: 'firecrawl',
+    capability: 'find-tools',
+    options: parseToolOptions(JSON.stringify(next.options)),
+  };
 }
 
 export function createFindToolsCommand(): Command {
@@ -153,16 +174,7 @@ export function createFindToolsCommand(): Command {
           throw new Error(
             '--request cannot be combined with URLs or --options.'
           );
-        const next = parseToolOptions(options.request);
-        if (
-          next.provider !== call.provider ||
-          next.capability !== call.capability ||
-          Object.keys(next).some(
-            (key) => !['provider', 'capability', 'options'].includes(key)
-          )
-        )
-          throw new Error('--request must be a Find Tools request.');
-        call.options = parseToolOptions(JSON.stringify(next.options));
+        call = parseFindToolsRequest(options.request);
       } else if (urls.length) call.options.urls = urls;
       await handleAlexandria([call], options);
     });

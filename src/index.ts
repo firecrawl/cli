@@ -80,6 +80,7 @@ import type { ScrapeFormat } from './types/scrape';
 import type { RelatedPapersOptions } from './types/research';
 import type { AgentWebhookConfig } from 'firecrawl';
 import { createCreateCommand } from './commands/create';
+import { createListCommand } from './commands/list';
 
 // Initialize global configuration from environment variables
 initializeConfig();
@@ -2199,6 +2200,12 @@ program.addCommand(createParseCommand());
 program.addCommand(createMonitorCommand());
 program.addCommand(createSearchCommand());
 program.addCommand(createFindToolsCommand());
+program.addCommand(createListCommand());
+program.addCommand(
+  new Command('alexandria')
+    .description('Alexandria catalogue commands')
+    .addCommand(createListCommand())
+);
 program.addCommand(createDeveloperCommand());
 program.addCommand(createResearchCommand());
 program.addCommand(createFeedbackCommand());

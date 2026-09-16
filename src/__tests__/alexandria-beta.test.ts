@@ -13,6 +13,7 @@ let server: Server;
 let baseUrl: string;
 let status = 200;
 let response: Record<string, any>;
+let responseFor: ((body: any) => Record<string, any>) | undefined;
 const home = mkdtempSync(join(tmpdir(), 'alexandria-cli-'));
 
 beforeAll(async () => {
@@ -25,7 +26,7 @@ beforeAll(async () => {
       body: raw ? JSON.parse(raw) : undefined,
     });
     res.writeHead(status, { 'content-type': 'application/json' });
-    res.end(JSON.stringify(response));
+    res.end(JSON.stringify(responseFor?.(requests.at(-1)?.body) ?? response));
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
@@ -39,6 +40,7 @@ afterAll(async () => {
 beforeEach(() => {
   requests.length = 0;
   status = 200;
+  responseFor = undefined;
   response = {
     success: true,
     scrape_id: 'scrape-1',
@@ -70,6 +72,189 @@ async function cli(args: string[], key = 'fc-test') {
     return result;
   }
 }
+
+function catalogue(level: string, items: any[], next?: unknown) {
+  return {
+    success: true,
+    scrape_id: 'discovery-1',
+    data: {
+      creditsCost: 0,
+      alexandria: [
+        {
+          provider: 'firecrawl',
+          capability: 'find-tools',
+          creditsCost: 0,
+          data: { level, items, total: items.length, next },
+        },
+      ],
+    },
+  };
+}
+
+it('browses live provider IDs directly or through a category without expanding contracts', async () => {
+  responseFor = (body) => {
+    const options = body.alexandria[0].options;
+    if (options.providers?.[0] === 'finance')
+      return catalogue(options.level, []);
+    return catalogue(options.level, [
+      { id: 'benzinga', provider: 'benzinga', name: 'Benzinga' },
+    ]);
+  };
+  for (const args of [[], ['finance'], ['benzinga'], ['finance', 'benzinga']]) {
+    expect((await cli(['list', ...args])).code).toBe(0);
+  }
+  expect((await cli(['alexandria', 'list', 'benzinga', '--groups'])).code).toBe(
+    0
+  );
+  expect(requests.map((request) => request.body.alexandria[0].options)).toEqual(
+    [
+      { level: 'providers', limit: 20 },
+      { providers: ['finance'], level: 'tools', limit: 20 },
+      { categories: ['finance'], level: 'providers', limit: 20 },
+      { providers: ['benzinga'], level: 'tools', limit: 20 },
+      { providers: ['finance'], level: 'providers', limit: 20 },
+      { categories: ['finance'], level: 'providers', limit: 20 },
+      {
+        categories: ['finance'],
+        providers: ['benzinga'],
+        level: 'tools',
+        limit: 20,
+      },
+      { providers: ['benzinga'], level: 'groups', limit: 20 },
+    ]
+  );
+  expect(
+    requests.every(
+      ({ url, body }) =>
+        url === '/v2/scrape' &&
+        body.alexandria[0].provider === 'firecrawl' &&
+        body.alexandria[0].capability === 'find-tools'
+    )
+  ).toBe(true);
+});
+
+it('expands only a selected tool and falls back to a compact group listing', async () => {
+  responseFor = (body) => {
+    const options = body.alexandria[0].options;
+    if (options.capabilities?.[0] === 'calendar') return catalogue('tools', []);
+    return catalogue(options.level, [
+      {
+        id: 'benzinga/calendar/earnings',
+        provider: 'benzinga',
+        capability: 'calendar/earnings',
+        creditsCost: 2,
+        ...(options.expand && {
+          options: { date: { type: 'string' } },
+          response: { type: 'object' },
+        }),
+      },
+    ]);
+  };
+  const leaf = await cli(['list', 'benzinga', 'calendar/earnings']);
+  expect(leaf.code).toBe(0);
+  expect(leaf.stdout).toContain('Inputs:');
+  expect(leaf.stdout).toContain('2 credits per call');
+  expect(requests.at(-1)?.body.alexandria[0].options).toMatchObject({
+    capabilities: ['calendar/earnings'],
+    expand: ['options', 'response', 'examples'],
+  });
+  const group = await cli(['list', 'benzinga', 'calendar']);
+  expect(group.code).toBe(0);
+  expect(group.stdout).not.toContain('Inputs:');
+  expect(requests.at(-1)?.body.alexandria[0].options).toEqual({
+    providers: ['benzinga'],
+    groups: ['calendar'],
+    level: 'tools',
+    limit: 20,
+  });
+});
+
+it('preserves scoped next requests, pagination and discovery receipts', async () => {
+  const next = {
+    provider: 'firecrawl',
+    capability: 'find-tools',
+    options: {
+      urls: ['https://example.com'],
+      providers: ['benzinga'],
+      level: 'tools',
+      offset: 20,
+      limit: 20,
+    },
+  };
+  response = catalogue(
+    'tools',
+    [
+      {
+        id: 'benzinga/news',
+        provider: 'benzinga',
+        capability: 'news',
+        next,
+      },
+    ],
+    next
+  );
+  const result = await cli([
+    'list',
+    '--request',
+    JSON.stringify(next),
+    '--json',
+  ]);
+  expect(result.code).toBe(0);
+  expect(requests[0].body.alexandria).toEqual([next]);
+  const parsed = JSON.parse(result.stdout);
+  const page = parsed.data.alexandria[0].data;
+  expect(page.nextCommand).toBe(
+    `firecrawl list --request '${JSON.stringify(next)}'`
+  );
+  expect(page.items[0].nextCommand).toBe(page.nextCommand);
+  expect(parsed.discoveryRequests).toEqual([
+    {
+      requestId: parsed.requestId,
+      scrape_id: 'discovery-1',
+      creditsCost: 0,
+    },
+  ]);
+});
+
+it('refuses execution through list and propagates discovery access errors', async () => {
+  expect(
+    (
+      await cli([
+        'list',
+        '--request',
+        '{"provider":"benzinga","capability":"news"}',
+      ])
+    ).code
+  ).toBe(1);
+  expect(
+    (
+      await cli([
+        'list',
+        'benzinga',
+        '--request',
+        '{"provider":"firecrawl","capability":"find-tools"}',
+      ])
+    ).code
+  ).toBe(1);
+  expect(requests).toHaveLength(0);
+  response = {
+    success: true,
+    data: {
+      alexandria: [
+        {
+          error: { code: 'provider_disabled', message: 'Provider is disabled' },
+        },
+      ],
+      creditsCost: 0,
+    },
+  };
+  const result = await cli(['list', '--json']);
+  expect(result.code).toBe(1);
+  expect(JSON.parse(result.stdout).data.alexandria[0].error).toEqual(
+    response.data.alexandria[0].error
+  );
+  expect(requests).toHaveLength(1);
+});
 
 it('documents the default discovery flow and respects explicit web-only search', async () => {
   const help = await cli(['--help']);

@@ -23,6 +23,23 @@ A complete contract returned by search needs no additional discovery call. Check
 
 `--sources web` opts out of Alexandria. `--sources web --domain-tools` includes tools for web-result domains. `--no-domain-tools` disables domain matching but does not remove semantic Alexandria results when that source is selected. Keep the normal default unless the user requests a narrower source.
 
+## Browse the catalog progressively
+
+With beta `1.23.4-alexandria-beta.8` or newer, use `list` when the user wants to browse providers, categories, or a known provider's tools:
+
+```sh
+npx firecrawl-cli@alexandria list
+npx firecrawl-cli@alexandria list finance
+npx firecrawl-cli@alexandria list benzinga
+npx firecrawl-cli@alexandria list benzinga --groups
+npx firecrawl-cli@alexandria list benzinga calendar --group
+npx firecrawl-cli@alexandria list benzinga <returned-capability-id> --json
+```
+
+The root lists visible providers. A category filters providers; a provider lists compact tools directly. Selecting a capability expands only that contract, including price, inputs, response, and examples. Categories are optional: use returned provider and capability IDs directly. `alexandria list` is an alias. `--category` and `--group` resolve ambiguous IDs explicitly.
+
+`list` only calls the free Find Tools meta tool through Scrape. `--json` preserves the API envelope and adds `discoveryRequests` receipts and `nextCommand` navigation. Page size defaults to 20 (`--limit 1–100`); follow the returned `More`/`nextCommand` only when needed. Generated commands start with `firecrawl`; replace that prefix with `npx firecrawl-cli@alexandria` to stay on this beta. Raw `--request` next requests preserve selectors and pagination and must not be mixed with a path or filters.
+
 ## Explicit requests for tools: search then the Find Tools meta tool
 
 For “find tools that can look up company filings,” search only tool capabilities:

@@ -1,0 +1,338 @@
+import { Command, InvalidArgumentError } from 'commander';
+import {
+  apiFailure,
+  parseFindToolsRequest,
+  requestAlexandria,
+  type AlexandriaOptions,
+} from './alexandria';
+import { writeOutput } from '../utils/output';
+
+type Selectors = Record<string, unknown>;
+type ListOptions = AlexandriaOptions & {
+  category?: boolean;
+  groups?: boolean;
+  group?: boolean;
+  limit?: number;
+  request?: string;
+};
+type Item = {
+  id: string;
+  provider: string;
+  name?: string;
+  description?: string;
+  attribution?: string;
+  group?: string;
+  capability?: string;
+  toolCount?: number;
+  creditsCost?: number;
+  perRecord?: boolean;
+  options?: unknown;
+  requiresOneOf?: unknown;
+  response?: unknown;
+  example?: unknown;
+  next?: unknown;
+  nextCommand?: string;
+};
+type Page = {
+  level: 'providers' | 'groups' | 'tools';
+  items: Item[];
+  total: number;
+  next?: unknown;
+  nextCommand?: string;
+};
+
+class DiscoveryFailure extends Error {
+  constructor(readonly envelope: Record<string, any>) {
+    super(envelope.error ?? 'Tool discovery failed.');
+  }
+}
+
+function quote(value: string): string {
+  return /^[a-zA-Z0-9_./:-]+$/.test(value)
+    ? value
+    : `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function nextCommand(request: unknown): string {
+  const call = parseFindToolsRequest(JSON.stringify(request));
+  return `firecrawl list --request ${quote(JSON.stringify(call))}`;
+}
+
+function itemCommand(item: Item): string | undefined {
+  if (!item.next) return undefined;
+  const { options } = parseFindToolsRequest(JSON.stringify(item.next));
+  const category = Array.isArray(options.categories)
+    ? options.categories[0]
+    : undefined;
+  const only = (value: unknown, id: string | undefined) =>
+    id === undefined
+      ? value === undefined
+      : Array.isArray(value) && value.length === 1 && value[0] === id;
+  // Keep scoped and future selectors intact when a short path cannot express them.
+  if (
+    ![item.provider, item.capability, item.group, category].every(
+      (id) =>
+        id === undefined ||
+        (typeof id === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_./:-]*$/.test(id))
+    ) ||
+    !only(options.providers, item.provider) ||
+    !only(options.categories, category) ||
+    !only(options.capabilities, item.capability) ||
+    (options.groups !== undefined && !only(options.groups, item.group)) ||
+    (options.offset !== undefined && options.offset !== 0) ||
+    Object.keys(options).some(
+      (key) =>
+        ![
+          'providers',
+          'categories',
+          'groups',
+          'capabilities',
+          'level',
+          'limit',
+          'offset',
+          'expand',
+        ].includes(key)
+    )
+  )
+    return nextCommand(item.next);
+  const base = `firecrawl list ${category ? `${quote(category)} ` : ''}${quote(item.provider)}`;
+  const flags =
+    (category ? ' --category' : '') +
+    (typeof options.limit === 'number' && options.limit !== 20
+      ? ` --limit ${options.limit}`
+      : '');
+  if (item.capability) return `${base} ${quote(item.capability)}${flags}`;
+  if (item.group) return `${base} ${quote(item.group)} --group${flags}`;
+  return `${base}${flags}`;
+}
+
+function render(page: Page): string {
+  const lines = [
+    `${page.level[0].toUpperCase() + page.level.slice(1)} (${page.items.length} of ${page.total})`,
+    '',
+  ];
+  for (const item of page.items) {
+    lines.push(`${item.id}${item.name ? `  ${item.name}` : ''}`);
+    if (item.description) lines.push(`  ${item.description}`);
+    if (item.toolCount !== undefined) lines.push(`  ${item.toolCount} tools`);
+    if (item.creditsCost !== undefined)
+      lines.push(
+        `  ${item.creditsCost} credits per ${item.perRecord ? 'record' : 'call'}`
+      );
+    if (item.attribution) lines.push(`  ${item.attribution}`);
+    for (const [label, value] of [
+      ['Inputs', item.options],
+      ['Required alternatives', item.requiresOneOf],
+      ['Returns', item.response],
+      ['Example', item.example],
+    ] as const) {
+      if (value !== undefined)
+        lines.push(`\n  ${label}:\n${JSON.stringify(value, null, 2)}`);
+    }
+    if (item.nextCommand) lines.push(`  Next: ${item.nextCommand}`);
+    if (item.options !== undefined && item.capability) {
+      lines.push(
+        `  Execute after filling the inputs: firecrawl scrape --alexandria ${quote(`${item.provider}/${item.capability}`)} --options '<input JSON>'`
+      );
+    }
+    lines.push('');
+  }
+  if (!page.items.length)
+    lines.push('No matching tools are visible for these selectors.', '');
+  if (page.nextCommand) lines.push(`More: ${page.nextCommand}`);
+  return lines.join('\n');
+}
+
+export async function handleList(
+  path: string[],
+  options: ListOptions
+): Promise<void> {
+  const asJson =
+    options.json || options.pretty || options.output?.endsWith('.json');
+  const receipts: {
+    requestId: string;
+    scrape_id?: string;
+    creditsCost?: number;
+  }[] = [];
+  try {
+    if (
+      options.request &&
+      (path.length ||
+        options.category ||
+        options.groups ||
+        options.group ||
+        options.limit !== undefined)
+    )
+      throw new Error(
+        '--request cannot be combined with a path or list filters.'
+      );
+    if (path.some((part) => !part.trim() || part.length > 200))
+      throw new Error('Use non-empty catalogue IDs of at most 200 characters.');
+    if (options.group && (options.groups || path.length < 2))
+      throw new Error(
+        '--group requires a provider and group path, without --groups.'
+      );
+    if ((options.category || options.groups) && !path.length)
+      throw new Error('Provide a category or provider ID.');
+    const limit = options.limit ?? 20;
+
+    async function fetchPage(selectors: Selectors) {
+      const envelope = await requestAlexandria(
+        [
+          {
+            provider: 'firecrawl',
+            capability: 'find-tools',
+            options: selectors,
+          },
+        ],
+        options
+      );
+      const item = envelope.data?.alexandria?.[0];
+      if (!envelope.success || item?.error)
+        throw new DiscoveryFailure(envelope);
+      const page = item?.data as Page | undefined;
+      if (
+        !page ||
+        !['providers', 'groups', 'tools'].includes(page.level) ||
+        !Array.isArray(page.items) ||
+        !Number.isInteger(page.total) ||
+        page.items.some(
+          (row) =>
+            !row ||
+            typeof row.id !== 'string' ||
+            typeof row.provider !== 'string'
+        )
+      )
+        throw new Error('Find Tools returned an invalid catalogue response.');
+      receipts.push({
+        requestId: envelope.requestId,
+        scrape_id: envelope.scrape_id,
+        creditsCost: envelope.data.creditsCost,
+      });
+      return { envelope, page };
+    }
+
+    async function resolve() {
+      if (options.request)
+        return fetchPage(parseFindToolsRequest(options.request).options);
+      if (!path.length) return fetchPage({ level: 'providers', limit });
+      const providerLevel = options.groups ? 'groups' : 'tools';
+      let scope: Selectors = { providers: [path[0]] };
+      let remaining = path.slice(1);
+      let result = options.category
+        ? undefined
+        : await fetchPage({
+            ...scope,
+            level: remaining.length ? 'providers' : providerLevel,
+            limit,
+          });
+      if (!result?.page.total) {
+        scope = { categories: [path[0]] };
+        result = await fetchPage({ ...scope, level: 'providers', limit });
+        if (!result.page.total || !remaining.length) return result;
+        scope.providers = [remaining[0]];
+        remaining = remaining.slice(1);
+        if (!remaining.length) {
+          if (options.group)
+            throw new Error('Provide a group ID after the provider ID.');
+          return fetchPage({ ...scope, level: providerLevel, limit });
+        }
+      }
+      if (!remaining.length) return result;
+      if (options.groups)
+        throw new Error(
+          '--groups lists a provider’s groups; omit it when selecting a tool.'
+        );
+      const selected = remaining.join('/');
+      if (!options.group) {
+        const contract = await fetchPage({
+          ...scope,
+          capabilities: [selected],
+          level: 'tools',
+          expand: ['options', 'response', 'examples'],
+          limit,
+        });
+        if (contract.page.total) return contract;
+      }
+      return fetchPage({ ...scope, groups: [selected], level: 'tools', limit });
+    }
+
+    const { envelope, page } = await resolve();
+    page.items = page.items.map((item) => ({
+      ...item,
+      nextCommand: itemCommand(item),
+    }));
+    if (page.next) page.nextCommand = nextCommand(page.next);
+    const output = asJson
+      ? JSON.stringify(
+          { ...envelope, discoveryRequests: receipts },
+          null,
+          options.pretty ? 2 : undefined
+        )
+      : render(page);
+    writeOutput(output, options.output, !!options.output);
+  } catch (error) {
+    process.exitCode = 1;
+    const failure =
+      error instanceof DiscoveryFailure ? error.envelope : apiFailure(error);
+    const message =
+      failure.error ??
+      failure.data?.alexandria?.[0]?.error?.message ??
+      'Tool discovery failed.';
+    writeOutput(
+      asJson
+        ? JSON.stringify(
+            { ...failure, discoveryRequests: receipts },
+            null,
+            options.pretty ? 2 : undefined
+          )
+        : `Error: ${message}`,
+      options.output,
+      !!options.output
+    );
+  }
+}
+
+export function createListCommand(): Command {
+  return new Command('list')
+    .description(
+      'Browse providers, categories and tool contracts through Find Tools; discovery only'
+    )
+    .argument(
+      '[path...]',
+      'Provider or category, optionally followed by a group or capability'
+    )
+    .option(
+      '--category',
+      'Treat the first ID as a category when a provider has the same ID'
+    )
+    .option('--groups', 'List a provider’s tool groups instead of its tools')
+    .option(
+      '--group',
+      'Treat the final path as a group instead of a capability'
+    )
+    .option(
+      '--limit <number>',
+      'Results per page (1-100; default: 20)',
+      (raw) => {
+        const value = Number(raw);
+        if (!Number.isInteger(value) || value < 1 || value > 100)
+          throw new InvalidArgumentError('Use an integer from 1 to 100.');
+        return value;
+      }
+    )
+    .option(
+      '--request <json>',
+      'Follow a complete next or pagination request from Find Tools'
+    )
+    .option('-k, --api-key <key>', 'Firecrawl API key')
+    .option('--api-url <url>', 'Firecrawl API URL')
+    .option('-o, --output <path>', 'Output file')
+    .option('--json', 'Output JSON with discovery receipts and next commands')
+    .option('--pretty', 'Format JSON')
+    .addHelpText(
+      'after',
+      '\nExamples:\n  firecrawl list\n  firecrawl list finance\n  firecrawl list benzinga\n  firecrawl list benzinga --groups\n  firecrawl list benzinga calendar --group\n  firecrawl list benzinga <capability> --json\n\nProvider IDs take precedence over categories; exact capabilities take precedence over groups.\nNo listed tool is executed. Search by task with firecrawl search --sources alexandria.\n'
+    )
+    .action(handleList);
+}
