@@ -32,7 +32,7 @@ npx firecrawl-cli@alexandria list benzinga calendar --group
 npx firecrawl-cli@alexandria list benzinga <capability> --json
 ```
 
-Available in `1.23.4-alexandria-beta.8` onward. `list` and `list-tools` are interchangeable, including under `firecrawl alexandria`. Provider IDs work directly; you do not need their category. Lists stay compact until you select a capability, which reveals its inputs, response, examples, and price. Each result includes a next command. Generated commands use `firecrawl`; when using `npx`, replace that prefix with `npx firecrawl-cli@alexandria`.
+Available in `1.23.4-alexandria-beta.8` onward. `list` and `list-tools` are interchangeable, including under `firecrawl alexandria`. Provider IDs work directly; you do not need their category. Lists stay compact until you select a capability, which reveals its inputs, response, examples, and price. Browsable results include next commands; selecting a capability displays the final contract. Generated commands use `firecrawl`; when using `npx`, replace that prefix with `npx firecrawl-cli@alexandria`.
 
 Discovery is free and never executes the listed tools. Results come from the live Find Tools catalog through Scrape and respect your access. `--limit` controls page size (default 20, maximum 100); follow the returned `More` command for the next page. `--json` includes the API envelope, next commands, and receipts for every discovery request.
 
