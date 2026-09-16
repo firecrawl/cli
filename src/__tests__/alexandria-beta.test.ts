@@ -106,6 +106,8 @@ it('browses live provider IDs directly or through a category without expanding c
   expect((await cli(['alexandria', 'list', 'benzinga', '--groups'])).code).toBe(
     0
   );
+  expect((await cli(['list-tools', 'benzinga'])).code).toBe(0);
+  expect((await cli(['alexandria', 'list-tools', 'benzinga'])).code).toBe(0);
   expect(requests.map((request) => request.body.alexandria[0].options)).toEqual(
     [
       { level: 'providers', limit: 20 },
@@ -121,6 +123,8 @@ it('browses live provider IDs directly or through a category without expanding c
         limit: 20,
       },
       { providers: ['benzinga'], level: 'groups', limit: 20 },
+      { providers: ['benzinga'], level: 'tools', limit: 20 },
+      { providers: ['benzinga'], level: 'tools', limit: 20 },
     ]
   );
   expect(

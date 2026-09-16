@@ -295,6 +295,7 @@ export async function handleList(
 
 export function createListCommand(): Command {
   return new Command('list')
+    .alias('list-tools')
     .description(
       'Browse providers, categories and tool contracts through Find Tools; discovery only'
     )

@@ -36,7 +36,7 @@ npx firecrawl-cli@alexandria list benzinga calendar --group
 npx firecrawl-cli@alexandria list benzinga <returned-capability-id> --json
 ```
 
-The root lists visible providers. A category filters providers; a provider lists compact tools directly. Selecting a capability expands only that contract, including price, inputs, response, and examples. Categories are optional: use returned provider and capability IDs directly. `alexandria list` is an alias. `--category` and `--group` resolve ambiguous IDs explicitly.
+The root lists visible providers. A category filters providers; a provider lists compact tools directly. Selecting a capability expands only that contract, including price, inputs, response, and examples. Categories are optional: use returned provider and capability IDs directly. `list-tools` is an alias for `list`; both also work under `alexandria`. `--category` and `--group` resolve ambiguous IDs explicitly.
 
 `list` only calls the free Find Tools meta tool through Scrape. `--json` preserves the API envelope and adds `discoveryRequests` receipts and `nextCommand` navigation. Page size defaults to 20 (`--limit 1–100`); follow the returned `More`/`nextCommand` only when needed. Generated commands start with `firecrawl`; replace that prefix with `npx firecrawl-cli@alexandria` to stay on this beta. Raw `--request` next requests preserve selectors and pagination and must not be mixed with a path or filters.
 
