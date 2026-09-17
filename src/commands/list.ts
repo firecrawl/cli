@@ -371,13 +371,30 @@ export async function handleList(
       }
       let scope: Selectors = { providers: [path[0]] };
       let remaining = path.slice(1);
-      let result = options.category
-        ? undefined
-        : await fetchPage({
+      let result;
+      if (!options.category) {
+        try {
+          result = await fetchPage({
             ...scope,
             level: remaining.length ? 'providers' : 'tools',
             limit,
           });
+        } catch (error) {
+          const envelope =
+            error instanceof DiscoveryFailure ? error.envelope : undefined;
+          const failure = envelope?.data?.alexandria?.[0]?.error ?? envelope;
+          const message = failure?.message ?? failure?.error;
+          // An unknown provider can still be a category; other failures must surface.
+          if (
+            failure?.code !== 'unknown_provider' &&
+            !(
+              typeof message === 'string' &&
+              message.startsWith('Unknown or unavailable providers.')
+            )
+          )
+            throw error;
+        }
+      }
       if (!result?.page.total) {
         scope = { categories: [path[0]] };
         result = await fetchPage({ ...scope, level: 'providers', limit });

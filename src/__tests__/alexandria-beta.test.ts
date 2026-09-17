@@ -904,3 +904,41 @@ it('fails clearly on an unknown thread', async () => {
   expect(malformed.code).toBe(1);
   expect(requests).toHaveLength(1);
 });
+
+it('falls back to category browsing after an unknown provider, but preserves other failures', async () => {
+  responseFor = (body) =>
+    body.alexandria[0].options.providers
+      ? {
+          success: true,
+          data: {
+            alexandria: [
+              {
+                provider: 'firecrawl',
+                capability: 'find-tools',
+                error: {
+                  status: 400,
+                  code: 'invalid_request',
+                  message:
+                    'Unknown or unavailable providers. Browse the catalogue for accessible IDs; use query for natural-language search.',
+                },
+              },
+            ],
+          },
+        }
+      : catalogue('providers', [{ id: 'amazon-com', provider: 'amazon-com' }]);
+  const result = await cli(['list', 'shopping', '--json']);
+  expect(result.code, JSON.stringify(result)).toBe(0);
+  expect(requests.map(({ body }) => body.alexandria[0].options)).toEqual([
+    { providers: ['shopping'], level: 'tools', limit: 20 },
+    { categories: ['shopping'], level: 'providers', limit: 20 },
+  ]);
+  expect(result.stdout).toContain('amazon-com');
+  requests.length = 0;
+  responseFor = () => ({
+    success: false,
+    error: 'Rate limit exceeded',
+    code: 'rate_limited',
+  });
+  expect((await cli(['list', 'shopping', '--json'])).code).toBe(1);
+  expect(requests).toHaveLength(1);
+});
