@@ -70,7 +70,7 @@ import { handleEnvPullCommand } from './commands/env';
 import { handleStatusCommand } from './commands/status';
 import { handleDoctorCommand } from './commands/doctor';
 import { isUrl, normalizeUrl } from './utils/url';
-import { parseScrapeOptions } from './utils/options';
+import { parseMaxPages, parseScrapeOptions } from './utils/options';
 import { isJobId } from './utils/job';
 import { ensureAuthenticated, printBanner } from './utils/auth';
 import { maybeShowUpdateNotice } from './utils/update-notice';
@@ -365,6 +365,11 @@ function createScrapeCommand(): Command {
     .option(
       '-f, --format <formats>',
       'Output format(s). Multiple formats can be specified with commas (e.g., "markdown,links,images"). Available: markdown, html, rawHtml, links, images, screenshot, summary, changeTracking, json, attributes, branding. Single format outputs raw content; multiple formats output JSON.'
+    )
+    .option(
+      '--max-pages <number>',
+      'Maximum PDF pages to parse (1-10000). PDFs cost 1 credit per parsed page; extra options may cost more.',
+      parseMaxPages
     )
     .option('--only-main-content', 'Include only main content', false)
     .option(

@@ -3,7 +3,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseFormats, parseScrapeOptions } from '../../utils/options';
+import {
+  parseFormats,
+  parseMaxPages,
+  parseScrapeOptions,
+} from '../../utils/options';
 
 describe('Option Parsing Utilities', () => {
   describe('parseFormats', () => {
@@ -425,4 +429,26 @@ describe('Option Parsing Utilities', () => {
       });
     });
   });
+});
+
+describe('PDF page cap options', () => {
+  it.each(['1', '5', '10000'])(
+    'accepts %s and preserves it in scrape options',
+    (value) => {
+      expect(
+        parseScrapeOptions({
+          url: 'https://example.com/report.pdf',
+          maxPages: parseMaxPages(value),
+        }).maxPages
+      ).toBe(Number(value));
+    }
+  );
+  it.each(['0', '-1', '10001', '1.5', '5pages', 'NaN', 'Infinity', '1e2', ''])(
+    'rejects %s',
+    (value) => {
+      expect(() => parseMaxPages(value)).toThrow(
+        'must be an integer between 1 and 10000'
+      );
+    }
+  );
 });

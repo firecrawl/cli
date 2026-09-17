@@ -115,6 +115,10 @@ export async function executeScrape(
     scrapeParams.maxAge = options.maxAge;
   }
 
+  if (options.maxPages !== undefined) {
+    scrapeParams.parsers = [{ type: 'pdf', maxPages: options.maxPages }];
+  }
+
   if (options.location) {
     scrapeParams.location = options.location;
   }

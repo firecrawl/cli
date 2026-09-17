@@ -7,6 +7,40 @@ describe('CLI argv parsing', () => {
   const cliPath = resolve(process.cwd(), 'dist/index.js');
   const testWithBuiltCli = existsSync(cliPath) ? it : it.skip;
 
+  testWithBuiltCli('rejects invalid PDF page caps before scraping', () => {
+    for (const value of ['0', '10001', '2.5', '3pages']) {
+      const result = spawnSync(
+        process.execPath,
+        [
+          cliPath,
+          'scrape',
+          'https://example.com/report.pdf',
+          '--max-pages',
+          value,
+        ],
+        { encoding: 'utf8' }
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('must be an integer between 1 and 10000');
+    }
+  });
+
+  testWithBuiltCli(
+    'documents the PDF cap and per-page price in scrape help',
+    () => {
+      const result = spawnSync(
+        process.execPath,
+        [cliPath, 'scrape', '--help'],
+        { encoding: 'utf8' }
+      );
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('--max-pages');
+      expect(result.stdout.replace(/\s+/g, ' ')).toContain(
+        '1 credit per parsed page'
+      );
+    }
+  );
+
   testWithBuiltCli('lists the developer command in root help output', () => {
     const result = spawnSync(process.execPath, [cliPath, '--help'], {
       cwd: process.cwd(),

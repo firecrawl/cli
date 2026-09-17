@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { executeScrape } from '../../commands/scrape';
-import { getClient } from '../../utils/client';
+import { getClient, isKeylessMode, keylessRequest } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { setupTest, teardownTest } from '../utils/mock-client';
 
@@ -14,6 +14,8 @@ vi.mock('../../utils/client', async () => {
   return {
     ...actual,
     getClient: vi.fn(),
+    isKeylessMode: vi.fn(() => false),
+    keylessRequest: vi.fn(),
   };
 });
 
@@ -56,6 +58,40 @@ describe('executeScrape', () => {
         formats: ['markdown'],
         integration: 'cli',
       });
+    });
+
+    it('forwards the PDF page cap without changing formats', async () => {
+      mockClient.scrape.mockResolvedValue({ markdown: 'First pages' });
+      await executeScrape({
+        url: 'https://example.com/report.pdf',
+        maxPages: 5,
+      });
+      expect(mockClient.scrape).toHaveBeenCalledWith(
+        'https://example.com/report.pdf',
+        {
+          formats: ['markdown'],
+          integration: 'cli',
+          parsers: [{ type: 'pdf', maxPages: 5 }],
+        }
+      );
+    });
+
+    it('forwards the PDF page cap in keyless requests', async () => {
+      vi.mocked(isKeylessMode).mockReturnValueOnce(true);
+      vi.mocked(keylessRequest).mockResolvedValueOnce({
+        data: { markdown: 'First page' },
+      });
+      await executeScrape({
+        url: 'https://example.com/report.pdf',
+        maxPages: 1,
+      });
+      expect(keylessRequest).toHaveBeenCalledWith('/v2/scrape', {
+        url: 'https://example.com/report.pdf',
+        formats: ['markdown'],
+        integration: 'cli',
+        parsers: [{ type: 'pdf', maxPages: 1 }],
+      });
+      expect(mockClient.scrape).not.toHaveBeenCalled();
     });
 
     it('should pass apiUrl to getClient when provided', async () => {

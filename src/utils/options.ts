@@ -2,6 +2,7 @@
  * Option parsing utilities
  */
 
+import { InvalidArgumentError } from 'commander';
 import type {
   ScrapeOptions,
   ScrapeFormat,
@@ -66,6 +67,19 @@ export function parseFormats(formatString: string): ScrapeFormat[] {
   return [...new Set(validFormats)];
 }
 
+export function parseMaxPages(value: string): number {
+  const pages = Number(value);
+  if (
+    !/^\d+$/.test(value) ||
+    !Number.isInteger(pages) ||
+    pages < 1 ||
+    pages > 10000
+  ) {
+    throw new InvalidArgumentError('must be an integer between 1 and 10000');
+  }
+  return pages;
+}
+
 /**
  * Convert commander options to ScrapeOptions
  */
@@ -119,6 +133,7 @@ export function parseScrapeOptions(options: any): ScrapeOptions {
     json: options.json,
     timing: options.timing,
     maxAge: options.maxAge,
+    maxPages: options.maxPages,
     location,
     query: options.query,
     profile,

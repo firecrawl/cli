@@ -37,6 +37,16 @@ Run `firecrawl scrape --help` for the full option list.
 
 **Done when:** you have the scraped content — on stdout, in your `-o` file, or under `.firecrawl/` for multi-URL scrapes — and have inspected it with bounded reads (`head`, `grep`) to answer the request.
 
+## PDFs and page budgets
+
+PDFs cost 1 credit per parsed page. Use `--max-pages` (an integer from 1 to 10000) to limit PDF parsing, especially for large or unknown documents:
+
+```bash
+firecrawl scrape "https://example.com/report.pdf" --max-pages 5 --json -o .firecrawl/report.json
+```
+
+The cap applies to each PDF, not the whole command or total credits. Extra formats and options can add charges. The CLI does not quote page counts or costs before execution. Use JSON output to inspect the returned `metadata.numPages` (parsed), `metadata.totalPages` (document total), and `metadata.creditsUsed` when present; a smaller parsed count means the result is partial.
+
 ## Tips
 
 - **Prefer plain scrape over `--query`.** Scrape to a file, then use `grep`, `head`, or read the markdown directly — you can search and reason over the full content yourself. Use `--query` only when you want a single targeted answer without saving the page (costs 5 extra credits).
