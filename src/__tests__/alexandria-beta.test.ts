@@ -472,6 +472,8 @@ it('relays terms refusals and keeps the request ID on failure', async () => {
   expect(result.code).toBe(1);
   const body = JSON.parse(result.stdout);
   expect(body).toMatchObject(response);
+  expect(body.guidance).toContain('wait for explicit approval');
+  expect(body.guidance).toContain('/app/settings?tab=data-sources');
   expect(result.stderr).toContain(body.requestId);
   expect(requests).toHaveLength(1);
 });

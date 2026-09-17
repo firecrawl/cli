@@ -66,7 +66,18 @@ export async function requestTerms(
       `Terms endpoint returned non-JSON (HTTP ${response.status}).`
     );
   if (!response.ok || body.success === false)
-    return { ...body, success: false, status: response.status };
+    return {
+      ...body,
+      success: false,
+      status: response.status,
+      ...(response.status === 403 && {
+        guidance: {
+          message:
+            'Terms access was refused. Show this error to the user and ask an organization admin to review access in Settings. Do not retry or accept automatically.',
+          url: 'https://www.firecrawl.dev/app/settings?tab=data-sources',
+        },
+      }),
+    };
   if (accept) {
     if (body.success !== true)
       throw new Error(
@@ -79,7 +90,12 @@ export async function requestTerms(
   const item = body.providers.find((entry: any) => entry.provider === provider);
   if (!item)
     throw new Error('Provider not found in the accessible terms catalog.');
-  return { success: true, ...item };
+  return {
+    ...item,
+    success: true,
+    instructions:
+      'Present the returned terms and any provider document links to the user. Ask for explicit approval before accepting this exact version and digest for their organization. Reading terms does not accept them; stop if approval is absent.',
+  };
 }
 
 async function handle(

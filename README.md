@@ -1032,6 +1032,10 @@ npx firecrawl-cli@alexandria alexandria terms accept benzinga \
 
 This posts to `/exchange/provider-terms/accept`. No automatic acceptance or retry
 occurs. A `409 terms_changed` requires reviewing the new agreement before retrying.
-The terms catalog may remain access-gated even when the acceptance endpoint is
-available. A failed catalog lookup does not imply acceptance is unavailable.
+Agents must present the returned terms and provider links, ask the user for explicit
+approval, and wait before accepting. If review is refused or a provider link is
+unavailable, show the error and direct an organization admin to
+https://www.firecrawl.dev/app/settings?tab=data-sources. Never infer consent from a
+failed lookup or automatically retry an acceptance. The API remains authoritative
+for organization access and acceptance authority.
 After confirmed success, rerun the original provider command; its normal credits apply.

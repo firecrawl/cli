@@ -120,9 +120,9 @@ export async function handleAlexandria(
     envelope.data?.alexandria?.some((item: any) => item.error);
   if (failed) process.exitCode = 1;
   if (envelope.code === 'THIRD_PARTY_DATA_TERMS_REQUIRED') {
-    console.error(
-      'Review the provider terms with firecrawl alexandria terms show <provider>. After review, accept with firecrawl alexandria terms accept <provider> --terms-version <version> --digest <sha256> --confirm.'
-    );
+    envelope.guidance =
+      'Review the provider terms with firecrawl alexandria terms show <provider>. Present the terms to the user and wait for explicit approval. Only then accept with firecrawl alexandria terms accept <provider> --terms-version <version> --digest <sha256> --confirm. If the API-provided link is unavailable, use https://www.firecrawl.dev/app/settings?tab=data-sources. Do not automatically retry or accept.';
+    console.error(envelope.guidance);
   }
   writeOutput(
     JSON.stringify(envelope, null, options.pretty ? 2 : undefined),
