@@ -119,6 +119,11 @@ export async function handleAlexandria(
     !envelope.success ||
     envelope.data?.alexandria?.some((item: any) => item.error);
   if (failed) process.exitCode = 1;
+  if (envelope.code === 'THIRD_PARTY_DATA_TERMS_REQUIRED') {
+    console.error(
+      'Review the provider terms with firecrawl alexandria terms show <provider>. After review, accept with firecrawl alexandria terms accept <provider> --version <version> --digest <sha256> --confirm.'
+    );
+  }
   writeOutput(
     JSON.stringify(envelope, null, options.pretty ? 2 : undefined),
     options.output,

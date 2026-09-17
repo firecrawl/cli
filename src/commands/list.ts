@@ -1,3 +1,4 @@
+import { createTermsCommand } from './terms';
 import { Command, InvalidArgumentError } from 'commander';
 import { randomUUID } from 'node:crypto';
 import {
@@ -493,5 +494,6 @@ export function createAlexandriaCommand(): Command {
       'Browse categories with alexandria <category>, or inspect providers with alexandria list'
     )
     .addCommand(createListCommand())
+    .addCommand(createTermsCommand())
     .addCommand(browse, { isDefault: true, hidden: true });
 }

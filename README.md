@@ -1012,3 +1012,26 @@ firecrawl setup workflows
 ## Documentation
 
 For more details, visit the [Firecrawl Documentation](https://docs.firecrawl.dev).
+
+### Alexandria provider terms (beta)
+
+When a provider returns `THIRD_PARTY_DATA_TERMS_REQUIRED`, review its linked terms.
+Read the current provider agreement and metadata with:
+
+```bash
+npx firecrawl-cli@alexandria alexandria terms show benzinga --pretty
+```
+
+After reviewing it, explicitly accept the exact version and digest for the organization
+associated with your Firecrawl API key:
+
+```bash
+npx firecrawl-cli@alexandria alexandria terms accept benzinga \
+  --version '<reviewed-version>' --digest '<reviewed-sha256>' --confirm
+```
+
+This posts to `/exchange/provider-terms/accept`. No automatic acceptance or retry
+occurs. A `409 terms_changed` requires reviewing the new agreement before retrying.
+The terms catalog may remain access-gated even when the acceptance endpoint is
+available. A failed catalog lookup does not imply acceptance is unavailable.
+After confirmed success, rerun the original provider command; its normal credits apply.
