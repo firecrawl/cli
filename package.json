@@ -1,6 +1,6 @@
 {
   "name": "firecrawl-cli",
-  "version": "1.23.4-alexandria-beta.15",
+  "version": "1.23.4-alexandria-beta.16",
   "publishConfig": {
     "tag": "alexandria"
   },
