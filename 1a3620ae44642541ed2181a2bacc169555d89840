@@ -1,0 +1,19 @@
+src/__tests__/utils/receipt.test.ts
+  s_8faf22d852794a::t_07c305d52f47a7 1-12,14-15,17-18,20-21,23-56,58-79,81-117,119-130,132,134-144,147-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1a3620ae44642541ed2181a2bacc169555d89840",
+  "prompts": {},
+  "sessions": {
+    "s_8faf22d852794a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0a6b8-22f2-7903-9cd1-38d24672b2f2",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Developers Digest <124798203+developersdigest@users.noreply.github.com>"
+    }
+  }
+}

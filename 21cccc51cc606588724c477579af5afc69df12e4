@@ -1,0 +1,29 @@
+src/types/exchange.ts
+  s_72504da98d9ee5::t_b77795753ead5f 45,94
+src/utils/alexandria.ts
+  s_72504da98d9ee5::t_b77795753ead5f 1-18,20-25,27-30,32-36,38-46,48-97,99-117,119-151,153-159
+src/types/search.ts
+  s_72504da98d9ee5::t_b77795753ead5f 6-7,9,11,25,134-135
+src/commands/search.ts
+  s_72504da98d9ee5::t_b77795753ead5f 19-21,23,46,50-55,57-59,61-68,125,152-153,166-167,179,344-346,373-375
+src/commands/exchange.ts
+  s_72504da98d9ee5::t_b77795753ead5f 23,186,188-191,211,213,223,545-546,550-553,563
+src/commands/skills.ts
+  s_72504da98d9ee5::t_da752507fa9830 1-26,28,33-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "21cccc51cc606588724c477579af5afc69df12e4",
+  "prompts": {},
+  "sessions": {
+    "s_72504da98d9ee5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a07c2c-dc83-7412-a139-5948d4045196",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Developers Digest <124798203+developersdigest@users.noreply.github.com>"
+    }
+  }
+}

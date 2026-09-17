@@ -1,0 +1,27 @@
+skills/firecrawl-search/SKILL.md
+  s_72504da98d9ee5::t_8e56a71e05db3e 4,12,31-47,57,59,81
+skills/firecrawl-scrape/SKILL.md
+  s_72504da98d9ee5::t_653a7050b9a9b1 44
+  s_72504da98d9ee5::t_8e56a71e05db3e 4,12,38-42
+skills/firecrawl/SKILL.md
+  s_72504da98d9ee5::t_8e56a71e05db3e 4,12,33-48,70,114
+skills/firecrawl/rules/alexandria.md
+  s_72504da98d9ee5::t_8e56a71e05db3e 1-55,57-58
+  s_72504da98d9ee5::t_653a7050b9a9b1 56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "08e5e13a471cd76352faad395e9c10b6c36caf6e",
+  "prompts": {},
+  "sessions": {
+    "s_72504da98d9ee5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a07c2c-dc83-7412-a139-5948d4045196",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Developers Digest <124798203+developersdigest@users.noreply.github.com>"
+    }
+  }
+}
