@@ -6,6 +6,7 @@
  */
 
 import { Command, Option } from 'commander';
+import { addFormatsAlias } from './utils/format-option';
 import {
   addAlexandriaScrapeOptions,
   buildCalls,
@@ -273,6 +274,7 @@ function getFirstPositionalArg(args: string[]): string | undefined {
         '--url',
         '-f',
         '--format',
+        '--formats',
       ].includes(arg) &&
       args[i + 1] !== undefined
     ) {
@@ -532,7 +534,7 @@ function createScrapeCommand(): Command {
     });
 
   addAlexandriaScrapeOptions(scrapeCmd);
-  return scrapeCmd;
+  return addFormatsAlias(scrapeCmd);
 }
 
 // Add scrape command to main program
@@ -627,7 +629,7 @@ function createDownloadCommand(): Command {
       });
     });
 
-  return downloadCmd;
+  return addFormatsAlias(downloadCmd);
 }
 
 // download command is registered under 'experimental' below
@@ -924,7 +926,7 @@ Max upload size: 50 MB
       });
     });
 
-  return parseCmd;
+  return addFormatsAlias(parseCmd);
 }
 
 /**
@@ -2444,7 +2446,17 @@ program
   });
 
 program
+  .command('status')
+  .description(
+    'Show version, auth status, concurrency, and credits (same as --status)'
+  )
+  .action(async () => {
+    await handleStatusCommand();
+  });
+
+program
   .command('credit-usage')
+  .alias('credits')
   .description('Get team credit usage information')
   .option(
     '-k, --api-key <key>',
