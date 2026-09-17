@@ -5,7 +5,7 @@ vi.mock('../utils/config', () => ({
   getConfig: () => ({}),
 }));
 afterEach(() => vi.unstubAllGlobals());
-const options = { version: 'v1', digest: 'a'.repeat(64), confirm: true };
+const options = { termsVersion: 'v1', digest: 'a'.repeat(64), confirm: true };
 it('requires explicit confirmation without making any request', async () => {
   const fetcher = vi.fn();
   vi.stubGlobal('fetch', fetcher);

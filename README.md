@@ -1027,7 +1027,7 @@ associated with your Firecrawl API key:
 
 ```bash
 npx firecrawl-cli@alexandria alexandria terms accept benzinga \
-  --version '<reviewed-version>' --digest '<reviewed-sha256>' --confirm
+  --terms-version '<reviewed-version>' --digest '<reviewed-sha256>' --confirm
 ```
 
 This posts to `/exchange/provider-terms/accept`. No automatic acceptance or retry

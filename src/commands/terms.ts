@@ -5,7 +5,7 @@ import { writeOutput } from '../utils/output';
 type TermsOptions = {
   apiKey?: string;
   apiUrl?: string;
-  version?: string;
+  termsVersion?: string;
   digest?: string;
   confirm?: boolean;
   json?: boolean;
@@ -22,12 +22,12 @@ export async function requestTerms(
   if (
     accept &&
     (!options.confirm ||
-      !options.version?.trim() ||
-      options.version.length > 200 ||
+      !options.termsVersion?.trim() ||
+      options.termsVersion.length > 200 ||
       !/^[a-f0-9]{64}$/.test(options.digest ?? ''))
   ) {
     throw new Error(
-      'Review the terms, then supply --version, --digest (64 lowercase hex characters), and --confirm.'
+      'Review the terms, then supply --terms-version, --digest (64 lowercase hex characters), and --confirm.'
     );
   }
   const key = getApiKey(options.apiKey);
@@ -50,7 +50,7 @@ export async function requestTerms(
         ? {
             body: JSON.stringify({
               provider,
-              version: options.version,
+              version: options.termsVersion,
               digest: options.digest,
               confirmed: true,
             }),
@@ -116,7 +116,7 @@ export function createTermsCommand(): Command {
     if (name === 'accept')
       command
         .requiredOption(
-          '--version <version>',
+          '--terms-version <version>',
           'Exact version of the terms you reviewed'
         )
         .requiredOption(
