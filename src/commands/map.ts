@@ -5,6 +5,12 @@
 import type { MapOptions, MapResult } from '../types/map';
 import { getClient } from '../utils/client';
 import { writeOutput } from '../utils/output';
+import {
+  agentHintMetadata,
+  withoutAgentHints,
+  writeAgentHints,
+} from '../utils/agent-hints';
+import { apiFailure } from './alexandria';
 
 /**
  * Execute map command
@@ -43,6 +49,8 @@ export async function executeMap(options: MapOptions): Promise<MapResult> {
 
     return {
       success: true,
+      ...(mapData.id && { id: mapData.id }),
+      ...agentHintMetadata(mapData),
       data: {
         links: mapData.links.map((link: any) => ({
           url: link.url,
@@ -52,10 +60,7 @@ export async function executeMap(options: MapOptions): Promise<MapResult> {
       },
     };
   } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
-    };
+    return apiFailure(error, 'Unknown error occurred');
   }
 }
 
@@ -73,7 +78,20 @@ function formatMapReadable(data: MapResult['data']): string {
  * Handle map command output
  */
 export async function handleMapCommand(options: MapOptions): Promise<void> {
-  const result = await executeMap(options);
+  const response = await executeMap(options);
+  const result =
+    options.agentHints === false ? withoutAgentHints(response) : response;
+
+  if (options.json) {
+    writeOutput(
+      JSON.stringify(result, null, options.pretty ? 2 : undefined),
+      options.output,
+      !!options.output
+    );
+    if (!result.success) process.exitCode = 1;
+    return;
+  }
+  writeAgentHints(result);
 
   if (!result.success) {
     console.error('Error:', result.error);
@@ -84,17 +102,7 @@ export async function handleMapCommand(options: MapOptions): Promise<void> {
     return;
   }
 
-  let outputContent: string;
-
-  // Use JSON format if --json flag is set
-  if (options.json) {
-    outputContent = options.pretty
-      ? JSON.stringify({ success: true, data: result.data }, null, 2)
-      : JSON.stringify({ success: true, data: result.data });
-  } else {
-    // Default to human-readable format (one URL per line)
-    outputContent = formatMapReadable(result.data);
-  }
+  const outputContent = formatMapReadable(result.data);
 
   writeOutput(outputContent, options.output, !!options.output);
 }

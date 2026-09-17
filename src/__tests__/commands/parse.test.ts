@@ -61,7 +61,9 @@ describe('executeParse', () => {
     ];
     expect(url).toBe('https://api.firecrawl.dev/v2/parse');
     expect(init.method).toBe('POST');
-    expect(init.headers).toBeUndefined();
+    expect(init.headers).toEqual({
+      'X-Firecrawl-Agent-Hints': 'true',
+    });
 
     const options = JSON.parse(init.body.get('options') as string);
     expect(options).toEqual({
@@ -84,6 +86,7 @@ describe('executeParse', () => {
       { headers?: Record<string, string> },
     ];
     expect(init.headers).toEqual({
+      'X-Firecrawl-Agent-Hints': 'true',
       Authorization: 'Bearer fc-test-key',
     });
   });

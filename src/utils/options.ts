@@ -131,6 +131,7 @@ export function parseScrapeOptions(options: any): ScrapeOptions {
     output: options.output,
     pretty: options.pretty,
     json: options.json,
+    agentHints: options.agentHints,
     timing: options.timing,
     maxAge: options.maxAge,
     maxPages: options.maxPages,

@@ -29,17 +29,15 @@ it('presents the selected agreement and requests human approval without acceptin
 });
 
 it('preserves refusal details and gives actionable guidance without retrying', async () => {
-  const fetch = vi
-    .fn()
-    .mockResolvedValue(
-      Response.json(
-        {
-          code: 'forbidden',
-          error: 'This endpoint is not enabled for this team.',
-        },
-        { status: 403 }
-      )
-    );
+  const fetch = vi.fn().mockResolvedValue(
+    Response.json(
+      {
+        code: 'forbidden',
+        error: 'This endpoint is not enabled for this team.',
+      },
+      { status: 403 }
+    )
+  );
   vi.stubGlobal('fetch', fetch);
   const result = await requestTerms('particle', {});
   expect(result).toMatchObject({

@@ -5,9 +5,15 @@ import { type AlexandriaCall } from 'firecrawl';
 import { getClient } from '../utils/client';
 import { getApiKey } from '../utils/config';
 import { writeOutput } from '../utils/output';
+import {
+  agentHintMetadata,
+  errorAgentHints,
+  type AgentHintMetadata,
+  type AgentHintOptions,
+} from '../utils/agent-hints';
 
 type Call = AlexandriaCall & { options: Record<string, unknown> };
-export type AlexandriaOptions = {
+export type AlexandriaOptions = AgentHintOptions & {
   apiKey?: string;
   apiUrl?: string;
   requestId?: string;
@@ -52,7 +58,25 @@ export function buildCalls(addresses: string[], values: string[] = []): Call[] {
   });
 }
 
-export function apiFailure(error: unknown): Record<string, any> {
+interface ApiFailure extends AgentHintMetadata {
+  [key: string]: unknown;
+  success: false;
+  error: string;
+  code?: string;
+  chargeId?: string;
+  requestId?: string;
+  scrapeId?: string;
+  requiresAction?: unknown;
+  id?: string;
+  scrape_id?: string;
+  status?: number;
+  retryAfterSeconds?: number;
+}
+
+export function apiFailure(
+  error: unknown,
+  fallback = 'Request failed'
+): ApiFailure {
   const candidate = error as any;
   const body =
     candidate?.response?.data ?? candidate?.details ?? candidate ?? {};
@@ -86,14 +110,15 @@ export function apiFailure(error: unknown): Record<string, any> {
         Math.ceil((timestamp - Date.now()) / 1000)
       );
   }
-  const result: Record<string, any> = {
+  const result: ApiFailure = {
     success: false,
     error:
       typeof body?.error === 'string'
         ? body.error
         : error instanceof Error
           ? error.message
-          : 'Request failed',
+          : fallback,
+    ...errorAgentHints(error),
   };
   for (const key of [
     'code',
@@ -137,6 +162,7 @@ export async function requestAlexandria(
     });
     envelope = {
       success: true,
+      ...agentHintMetadata(result),
       ...(result.scrapeId && { scrape_id: result.scrapeId }),
       data: {
         alexandria: result.alexandria,
@@ -161,6 +187,7 @@ export async function handleAlexandria(
     !envelope.success ||
     envelope.data?.alexandria?.some((item: any) => item.error);
   if (failed) process.exitCode = 1;
+  if (options.agentHints === false) delete envelope.agent_hints;
   if (envelope.code === 'THIRD_PARTY_DATA_TERMS_REQUIRED') {
     envelope.guidance =
       'Review the provider terms with firecrawl alexandria terms show <provider>. Present the terms to the user and wait for explicit approval. Only then accept with firecrawl alexandria terms accept <provider> --terms-version <version> --digest <sha256> --confirm. If the API-provided link is unavailable, use https://www.firecrawl.dev/app/settings?tab=data-sources. Do not automatically retry or accept.';
@@ -213,6 +240,7 @@ export function createFindToolsCommand(): Command {
     .option('-o, --output <path>', 'Output file')
     .option('--json', 'Output JSON')
     .option('--pretty', 'Format JSON')
+    .option('--no-agent-hints', 'Omit server guidance from CLI output')
     .action(async (urls: string[], options) => {
       let call: Call = {
         provider: 'firecrawl',

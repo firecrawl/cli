@@ -2,7 +2,9 @@
  * Types for map command
  */
 
-export interface MapOptions {
+import type { AgentHintMetadata, AgentHintOptions } from '../utils/agent-hints';
+
+export interface MapOptions extends AgentHintOptions {
   /** API key for Firecrawl */
   apiKey?: string;
   /** API URL for Firecrawl */
@@ -33,8 +35,9 @@ export interface MapOptions {
   timeout?: number;
 }
 
-export interface MapResult {
+export interface MapResult extends AgentHintMetadata {
   success: boolean;
+  id?: string;
   data?: {
     links: Array<{
       url: string;

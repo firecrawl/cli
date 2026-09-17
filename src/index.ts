@@ -390,6 +390,7 @@ function createScrapeCommand(): Command {
     )
     .option('--api-url <url>', 'API URL (overrides global --api-url)')
     .option('-o, --output <path>', 'Output file path (default: stdout)')
+    .option('--no-agent-hints', 'Omit server guidance from CLI output')
     .option('--json', 'Output as JSON format', false)
     .option('--pretty', 'Pretty print JSON output', false)
     .option(
@@ -809,6 +810,7 @@ function createMapCommand(): Command {
     )
     .option('--api-url <url>', 'API URL (overrides global --api-url)')
     .option('-o, --output <path>', 'Output file path (default: stdout)')
+    .option('--no-agent-hints', 'Omit server guidance from CLI output')
     .option('--json', 'Output as JSON format', false)
     .option('--pretty', 'Pretty print JSON output', false)
     .action(async (positionalUrl, options) => {
@@ -826,6 +828,7 @@ function createMapCommand(): Command {
         wait: options.wait,
         output: options.output,
         json: options.json,
+        agentHints: options.agentHints,
         pretty: options.pretty,
         apiKey: options.apiKey,
         apiUrl: options.apiUrl,
@@ -876,6 +879,7 @@ function createParseCommand(): Command {
     )
     .option('--api-url <url>', 'API URL (overrides global --api-url)')
     .option('-o, --output <path>', 'Output file path (default: stdout)')
+    .option('--no-agent-hints', 'Omit server guidance from CLI output')
     .option('--json', 'Output as JSON format', false)
     .option('--pretty', 'Pretty print JSON output', false)
     .option(
@@ -926,6 +930,7 @@ Max upload size: 50 MB
         output: options.output,
         pretty: options.pretty,
         json: options.json,
+        agentHints: options.agentHints,
         timing: options.timing,
         query: options.query,
       });
@@ -1000,6 +1005,7 @@ function createSearchCommand(): Command {
     )
     .option('--api-url <url>', 'API URL (overrides global --api-url)')
     .option('-o, --output <path>', 'Output file path (default: stdout)')
+    .option('--no-agent-hints', 'Omit server guidance from CLI output')
     // .option(
     //   '-p, --pretty',
     //   'Output as pretty JSON (default: human-readable)',
@@ -1072,6 +1078,7 @@ function createSearchCommand(): Command {
         apiUrl: options.apiUrl,
         output: options.output,
         json: options.json,
+        agentHints: options.agentHints,
         pretty: options.pretty,
       };
 
