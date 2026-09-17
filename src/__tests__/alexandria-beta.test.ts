@@ -288,6 +288,7 @@ it('preserves scoped next requests, pagination and discovery receipts', async ()
     output,
   ]);
   expect(result.code).toBe(0);
+  expect(result.stderr).not.toMatch(/Request ID:|Scrape ID:|Credits:/);
   expect(requests[0].body.alexandria).toEqual([next]);
   const parsed = JSON.parse(readFileSync(output, 'utf8'));
   const page = parsed.data.alexandria[0].data;

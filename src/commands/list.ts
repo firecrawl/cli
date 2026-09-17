@@ -330,7 +330,7 @@ export async function handleList(
             options: selectors,
           },
         ],
-        options
+        { ...options, showReceipt: false }
       );
       receipts.push({
         requestId: envelope.requestId,

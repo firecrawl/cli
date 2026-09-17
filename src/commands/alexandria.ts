@@ -15,6 +15,7 @@ export type AlexandriaOptions = {
   output?: string;
   json?: boolean;
   pretty?: boolean;
+  showReceipt?: boolean;
 };
 
 export function requireAlexandriaKey(apiKey?: string): void {
@@ -125,7 +126,7 @@ export async function requestAlexandria(
     throw new Error('Invalid --request-id.');
   requireAlexandriaKey(options.apiKey);
   // Print before execution so even an interrupted request can reuse its identity.
-  console.error(`Request ID: ${requestId}`);
+  if (options.showReceipt !== false) console.error(`Request ID: ${requestId}`);
   let envelope: Record<string, any>;
   try {
     const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
@@ -147,7 +148,7 @@ export async function requestAlexandria(
     envelope = apiFailure(error);
   }
   const receipt = receiptFor(envelope, 'scrape', requestId);
-  printReceipt(receipt, false);
+  if (options.showReceipt !== false) printReceipt(receipt, false);
   printRetry(envelope);
   return { ...envelope, requestId, receipt };
 }
