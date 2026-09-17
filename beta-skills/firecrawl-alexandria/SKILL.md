@@ -50,13 +50,15 @@ Inspect the returned tools before choosing a provider. Pass `AAPL` using the sel
 
 ## Browse the catalog progressively
 
+Workflow providers and capabilities come from the live published catalogue. Use the exact IDs returned by discovery; do not infer a provider ID from its display name or domain. In the examples below, set `RETURNED_PROVIDER` and `RETURNED_CAPABILITY` from the matching result you selected.
+
 With beta `1.23.4-alexandria-beta.9` or newer, use `list` when the user wants to browse categories, providers, or a known provider's tools:
 
 ```sh
 npx firecrawl-cli@alexandria alexandria list
 npx firecrawl-cli@alexandria list finance
-npx firecrawl-cli@alexandria list benzinga
-npx firecrawl-cli@alexandria list benzinga <returned-capability-id> --json
+npx firecrawl-cli@alexandria list "$RETURNED_PROVIDER" --json
+npx firecrawl-cli@alexandria list "$RETURNED_PROVIDER" "$RETURNED_CAPABILITY" --json
 ```
 
 The root shows an introduction, discovery/execution commands, and live categories with descriptions. A category lists its providers; a provider lists compact tools directly. Selecting a complete capability ID, such as `calendar/ratings`, expands only that contract, including price, inputs, response, and examples. Categories are optional: use returned provider and capability IDs directly. Use `list --providers` only when a flat provider inventory is needed. `list-tools` is an alias for `list`; both also work under `alexandria`. `--category` resolves ambiguous category/provider IDs explicitly. Category display names such as `retail`, `developer`, and `public-records` are accepted alongside the returned canonical IDs.
@@ -73,47 +75,37 @@ npx firecrawl-cli@alexandria search "tools to search company filings" --sources 
 
 Then use `find-tools` when the user wants a set of tools for a returned provider, a known website, or a specific contract. It is a meta tool: it lists tools and their inputs, without executing them. The CLI sends `firecrawl/find-tools` through the same Scrape API used for every provider execution. Do not call Exchange endpoints directly.
 
+Set `DOMAIN` to the user's website URL. For further browsing or inspection, set `RETURNED_NEXT_JSON` to the selected item's complete `next` request.
+
 ```sh
 # Known website: discover its providers, without fetching the URL
-npx firecrawl-cli@alexandria find-tools https://www.zillow.com --json
+npx firecrawl-cli@alexandria find-tools "$DOMAIN" --json
 
-# After discovery identifies zillow: list its tools, compactly
-npx firecrawl-cli@alexandria find-tools --options '{"providers":["zillow"],"level":"tools","limit":100}' --json
+# Or describe the needed capability
+npx firecrawl-cli@alexandria find-tools --options '{"query":"USAspending agency obligations"}' --json
 
-# Inspect only the selected contract
-npx firecrawl-cli@alexandria find-tools --options '{"providers":["zillow"],"capabilities":["properties/locations"],"level":"tools","expand":["options","response"]}' --json
+# Follow the selected result to its tools or contract
+npx firecrawl-cli@alexandria find-tools --request "$RETURNED_NEXT_JSON" --json
 ```
 
-`find-tools` accepts URLs and catalogue selectors, not a free-text query. Use Alexandria-only search for natural-language tool intent. Valid catalogue selectors: `urls`, `providers`, `categories`, `groups`, `capabilities`. Valid `level` values: `providers`, `groups`, `tools` (not `capabilities`). `limit` accepts 1–100 and defaults to 5; use 100 for an explicitly requested broad tool list. Follow pagination only if more results are needed. Add `examples` to `expand` only when inputs remain unclear.
+`find-tools` accepts free-text `query` through `--options`, URLs, and catalogue selectors: `urls`, `providers`, `categories`, `groups`, `capabilities`. Discovery is free. Valid `level` values: `providers`, `groups`, `tools` (not `capabilities`). `limit` accepts 1–100 and defaults to 5; use 100 for an explicitly requested broad tool list. Follow pagination only if more results are needed. Add `examples` to `expand` only when inputs remain unclear.
 
-Items are at `data.alexandria[i].data.items`; each call has its own envelope. A returned `next` is a complete request for the same meta tool:
-
-```sh
-npx firecrawl-cli@alexandria find-tools --request '<returned next request JSON>' --json
-```
-
-Pass that request unchanged; do not combine `--request` with URL/filter arguments. The equivalent explicit meta-tool execution is:
-
-```sh
-npx firecrawl-cli@alexandria scrape --alexandria firecrawl/find-tools --options '{"providers":["zillow"],"level":"tools","limit":100}' --json
-```
+Items are at `data.alexandria[i].data.items`; each call has its own envelope. An item's `next` browses or expands that result; the page's `data.alexandria[i].data.next` continues pagination. Pass either request unchanged through `--request`; do not combine it with URL/filter arguments. If a result already has the full contract, proceed with that contract without another discovery call.
 
 An empty URL lookup means no visible provider matched that domain. A semantic match can still target a different country or unsupported segment. Never make an unrelated paid probe to test coverage.
 
 ## Execute through Scrape
 
-After inspecting a fitting contract, run it through the normal scrape command:
+After inspecting a fitting contract and its price, use its returned provider and capability IDs. Set `INPUT_JSON` to options constructed from that contract's inputs and the user's task:
 
 ```sh
-npx firecrawl-cli@alexandria scrape --alexandria zillow/properties/locations --options '{"query":"800 Haight Street San Francisco","count":3}' --json
+npx firecrawl-cli@alexandria scrape --alexandria "$RETURNED_PROVIDER/$RETURNED_CAPABILITY" --options "$INPUT_JSON" --json
 ```
-
-This resolves an address; it does not itself return nearby rental prices. Continue only with supported capabilities and returned identifiers.
 
 For an existing URL, ordinary scrape can optionally return related tools alongside the page:
 
 ```sh
-npx firecrawl-cli@alexandria scrape https://www.zillow.com --domain-tools --json
+npx firecrawl-cli@alexandria scrape "$DOMAIN" --domain-tools --json
 ```
 
 This discovers tools without executing them. On access refusal, report it rather than repeatedly retrying or bypassing the gate.

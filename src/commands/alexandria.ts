@@ -156,7 +156,7 @@ export function createFindToolsCommand(): Command {
     .argument('[urls...]', 'Known HTTP(S) URLs to find tools for')
     .option(
       '--options <json>',
-      'Catalogue selectors: providers, categories, groups, capabilities; level: providers|groups|tools; limit: 1-100; expand: options,response,examples'
+      'Discovery options: query, urls, providers, categories, groups, capabilities; level: providers|groups|tools; limit: 1-100; expand: options,response,examples. Use provider and capability IDs returned by discovery.'
     )
     .option(
       '--request <json>',
