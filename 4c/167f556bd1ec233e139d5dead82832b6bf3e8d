@@ -1,0 +1,19 @@
+src/commands/parse.ts
+  s_8ea5798f71e747::t_d6872e28e2b767 6-8,33-43,61-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4c167f556bd1ec233e139d5dead82832b6bf3e8d",
+  "prompts": {},
+  "sessions": {
+    "s_8ea5798f71e747": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b3d73404-7f91-4014-957e-2fd173d63c45",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Abimael Martell <1450169+abimaelmartell@users.noreply.github.com>"
+    }
+  }
+}
