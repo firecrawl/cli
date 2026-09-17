@@ -23,7 +23,7 @@ firecrawl scrape "<url>" --only-main-content -o .firecrawl/page.md
 # Wait for JS to render, then scrape
 firecrawl scrape "<url>" --wait-for 3000 -o .firecrawl/page.md
 
-# Multiple URLs (markdown only; each saved to .firecrawl/; -o is ignored)
+# Multiple URLs (successful results saved to .firecrawl/; failures reported)
 firecrawl scrape https://example.com https://example.com/blog https://example.com/docs
 
 # Get markdown and links together
@@ -47,11 +47,22 @@ firecrawl scrape "https://example.com/report.pdf" --max-pages 5 --json -o .firec
 
 The cap applies to each PDF, not the whole command or total credits. Extra formats and options can add charges. The CLI does not quote page counts or costs before execution. Use JSON output to inspect the returned `metadata.numPages` (parsed), `metadata.totalPages` (document total), and `metadata.creditsUsed` when present; a smaller parsed count means the result is partial.
 
+## Receipts and recovery
+
+Use `--json` to preserve metadata and the additive `receipt` (at the root for a single scrape, on each result item for multiple URLs). `receipt.creditsUsed` is actual returned usage, including zero; missing means unknown. Existing `metadata.creditsUsed` remains available when returned. `receipt.operationId` identifies the server scrape; Alexandria `receipt.requestId` is a separate client idempotency ID. Available IDs, credit usage, and retry timing print to stderr. Keep stderr separate from JSON stdout.
+
+Failures with `--json` or `-o` write structured errors before exiting nonzero, even if the filename ends in `.md`. Inspect the exit code and saved error/status fields before using the content. A successful transport response can still contain a refused or unsuccessful page; do not treat it as task completion or infer a refund.
+
+- Use `--timeout <milliseconds>` to set the server-side scrape timeout; the SDK allows transport overhead. A timeout does not prove the operation stopped or cost zero credits.
+- Use `--max-age 0` when fresh URL content is required. This does not guarantee the source page succeeds.
+- On rate limits, honor the returned retry delay when available, otherwise use bounded exponential backoff. Limits are shared across a team's keys and depend on plan and endpoint.
+- For Alexandria, keep the same `--request-id` while an operation is unresolved. A completed failure can replay under the same ID; starting a new attempt requires a new ID and may charge again. Never rotate IDs automatically. Ordinary URL scrape does not support `--request-id`.
+
 ## Tips
 
 - **Prefer plain scrape over `--query`.** Scrape to a file, then use `grep`, `head`, or read the markdown directly — you can search and reason over the full content yourself. Use `--query` only when you want a single targeted answer without saving the page (costs 5 extra credits).
 - **Scrape handles static pages and JS-rendered SPAs.** Escalate to `interact` when the page needs interaction (clicks, form fills, pagination) or scrape misses content.
-- Multiple URLs are scraped concurrently — check `firecrawl --status` for your concurrency limit. This mode saves markdown only and ignores `-o`; other requested formats are dropped. If markdown wasn't requested, the whole JSON response is written into the `.md` file.
+- Multiple URLs are scraped concurrently. Use `--json` for an ordered JSON array on stdout or `-o results.json` to save it. Each item contains `url`, `success`, and full `data` with metadata or an `error`; any failed URL makes the command exit nonzero. Without either flag, successful results are saved under `.firecrawl/` as markdown when available, otherwise JSON in a `.md` file. Failed URLs are reported on stderr without creating per-URL files. Check `firecrawl --status` for your concurrency limit.
 - Single format outputs raw content. Multiple formats (e.g., `--format markdown,links`) output JSON.
 - Always quote URLs — shell interprets `?` and `&` as special characters.
 - Naming convention: `.firecrawl/{site}-{path}.md`

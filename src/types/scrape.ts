@@ -1,3 +1,4 @@
+import type { Receipt } from '../utils/receipt';
 /**
  * Types and interfaces for the scrape command
  */
@@ -32,6 +33,8 @@ export interface ScrapeOptions {
   onlyMainContent?: boolean;
   /** Wait time before scraping (ms) */
   waitFor?: number;
+  /** Server-side scrape timeout in milliseconds. */
+  timeout?: number;
   /** Take screenshot */
   screenshot?: boolean;
   /** Take full page screenshot */
@@ -78,6 +81,10 @@ export interface ScrapeOptions {
 }
 
 export interface ScrapeResult {
+  receipt?: Receipt;
+  status?: number;
+  code?: string;
+  retryAfterSeconds?: number;
   success: boolean;
   data?: any;
   error?: string;

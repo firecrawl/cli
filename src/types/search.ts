@@ -1,3 +1,4 @@
+import type { Receipt } from '../utils/receipt';
 /**
  * Types for search command
  */
@@ -122,6 +123,10 @@ export interface SearchResultData {
 }
 
 export interface SearchResult {
+  receipt?: Receipt;
+  status?: number;
+  code?: string;
+  retryAfterSeconds?: number;
   success: boolean;
   data?: SearchResultData;
   warning?: string;

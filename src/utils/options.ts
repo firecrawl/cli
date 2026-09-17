@@ -118,6 +118,7 @@ export function parseScrapeOptions(options: any): ScrapeOptions {
     formats,
     onlyMainContent: options.onlyMainContent,
     waitFor: options.waitFor,
+    timeout: options.timeout,
     screenshot: options.screenshot,
     fullPageScreenshot: options.fullPageScreenshot,
     includeTags: options.includeTags
@@ -140,4 +141,14 @@ export function parseScrapeOptions(options: any): ScrapeOptions {
     lockdown: options.lockdown,
     redactPII: options.redactPii ?? options.redactPII,
   };
+}
+
+export function parseScrapeTimeout(value: string): number {
+  const timeout = Number(value);
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(timeout) || timeout <= 0) {
+    throw new InvalidArgumentError(
+      '--timeout must be a positive integer in milliseconds.'
+    );
+  }
+  return timeout;
 }

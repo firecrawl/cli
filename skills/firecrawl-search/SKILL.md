@@ -28,7 +28,7 @@ Run `firecrawl search --help` for the full option list.
 
 `--categories developer` weighs the developer index beside ordinary web results in this same call (no passage control, no index filters). `--categories research` is a website filter, not the paper index. Dedicated skills: [firecrawl-developer-index](../firecrawl-developer-index/SKILL.md) and [firecrawl-research-index](../firecrawl-research-index/SKILL.md).
 
-**Done when:** results are saved under `.firecrawl/`, verified non-empty, processed for the request, and one feedback event is sent within the time window (unless opted out).
+**Done when:** the response is saved under `.firecrawl/`, results or an empty result set have been inspected and handled for the request, and eligible feedback is sent within the time window (unless opted out).
 
 ## Alexandria in normal search
 
@@ -39,6 +39,14 @@ A tool match is not executed data. If it fits the task, read its inputs, coverag
 Use `find-tools` only for an explicitly requested tool set or a missing contract. It runs the `firecrawl/find-tools` meta tool through Scrape and never executes the tools it discovers. It accepts URLs or catalogue selectors; for “tools that can do X,” first use `search "X" --sources alexandria`, then narrow the returned providers with `find-tools --options '{"providers":["<returned-provider>"],"level":"tools","limit":100}'`.
 
 If no returned tool covers the country/market/segment or required inputs, continue with ordinary web results. Do not exhaust the catalogue or pay for adjacent tools just to probe coverage. `--sources web` explicitly opts out of Alexandria; `--sources web --domain-tools` retains domain matches only.
+
+## Receipts and failures
+
+JSON output preserves the response and additive `receipt`, including empty results. Read `receipt.creditsUsed` for actual reported usage (zero is valid; missing means unknown) and `receipt.operationId` with `operationType: "search"` for the server search ID. Existing `id` and `creditsUsed` fields remain available. Search IDs identify results; they are not Alexandria client idempotency IDs.
+
+Available IDs, credits, and retry timing print to stderr. Keep stderr separate from JSON stdout. Failed calls with `--json` or `-o` write structured errors before exiting nonzero; check the exit code and `success` before using the file. Empty successful searches still write the requested output and retain their metadata.
+
+On rate limits, wait at least the returned retry delay when available; otherwise use bounded exponential backoff. API keys on one team share limits, which vary by plan and endpoint. Do not invent a universal requests-per-minute quota or infer zero billing from a missing receipt.
 
 ## Tips
 
@@ -66,13 +74,13 @@ Search costs 2 credits. After you've actually used the results (or decided they 
 - **Idempotent:** re-submitting for the same search id returns success but no extra refund.
 - **`--silent &`** is the right pattern — exit code 0 even on failure, so a rejected/expired call never crashes your pipeline.
 
-Verify the search returned results before reading its `id`. Zero-result searches write no output file, so the file may be missing — or left over from an earlier search. The guard below skips feedback when the file is missing or has zero results; call `search-feedback` only inside it:
+Verify the search succeeded before reading its `id`. Empty successful searches preserve their JSON output; failed searches contain error output. The guard below only sends feedback for a successful response with an ID and nonempty results; call `search-feedback` only inside it:
 
 ```bash
 # Send once per search. Rate honestly and replace the placeholder with the
 # rating that matches what actually happened. The two fields shown
 # satisfy the substantive-content rule for every rating.
-if SEARCH_ID=$(jq -er 'select(any(.data[]; length > 0)) | .id' .firecrawl/search-react-hooks.json); then
+if SEARCH_ID=$(jq -er 'select(.success == true and any(.data[]; length > 0)) | .id' .firecrawl/search-react-hooks.json); then
   firecrawl search-feedback "$SEARCH_ID" \
     --rating "<good|partial|bad>" \
     --valuable-sources '[{"url":"https://react.dev/reference/react/hooks","reason":"Most authoritative"}]' \

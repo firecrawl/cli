@@ -180,7 +180,15 @@ export function handleScrapeOutput(
   if (!result.success) {
     // Always use stderr for errors to allow piping
     console.error('Error:', result.error);
-    process.exit(1);
+    if (json || pretty || outputPath) {
+      writeOutput(
+        JSON.stringify(result, null, pretty ? 2 : undefined),
+        outputPath,
+        !!outputPath
+      );
+    }
+    process.exitCode = 1;
+    return;
   }
 
   if (!result.data) {
@@ -190,6 +198,7 @@ export function handleScrapeOutput(
   // Determine if we should force JSON output
   const forceJson =
     shouldOutputJson(outputPath, json) ||
+    pretty ||
     Array.isArray((result.data as any).tools);
 
   // If JSON is forced, always output JSON regardless of format
@@ -197,8 +206,18 @@ export function handleScrapeOutput(
     let jsonContent: string;
     try {
       jsonContent = pretty
-        ? JSON.stringify(result.data, null, 2)
-        : JSON.stringify(result.data);
+        ? JSON.stringify(
+            {
+              ...result.data,
+              ...(result.receipt ? { receipt: result.receipt } : {}),
+            },
+            null,
+            2
+          )
+        : JSON.stringify({
+            ...result.data,
+            ...(result.receipt ? { receipt: result.receipt } : {}),
+          });
     } catch (error) {
       jsonContent = JSON.stringify({
         error: 'Failed to serialize response',
@@ -246,6 +265,7 @@ export function handleScrapeOutput(
     outputData = extractMultipleFormats(result.data, formats);
   }
 
+  if (result.receipt) outputData = { ...outputData, receipt: result.receipt };
   let jsonContent: string;
   try {
     jsonContent = pretty

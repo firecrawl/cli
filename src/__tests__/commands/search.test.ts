@@ -637,6 +637,7 @@ describe('executeSearch', () => {
       expect(result).toEqual({
         success: false,
         error: errorMessage,
+        receipt: {},
       });
     });
 
@@ -648,7 +649,7 @@ describe('executeSearch', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('Unknown error occurred');
+      expect(result.error).toBe('Request failed');
     });
   });
 
