@@ -910,7 +910,9 @@ it('falls back to category browsing after an unknown provider, but preserves oth
     body.alexandria[0].options.providers
       ? {
           success: true,
+          scrape_id: 'discovery-1',
           data: {
+            creditsCost: 0,
             alexandria: [
               {
                 provider: 'firecrawl',
