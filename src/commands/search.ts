@@ -16,6 +16,8 @@ import { getClient, isKeylessMode, keylessRequest } from '../utils/client';
 import { writeOutput } from '../utils/output';
 import { apiFailure, requireAlexandriaKey } from './alexandria';
 
+const DEFAULT_SEARCH_LIMIT = 5;
+
 /**
  * Execute search command
  */
@@ -27,7 +29,7 @@ export async function executeSearch(
       requireAlexandriaKey(options.apiKey);
     // Build search options for the SDK
     const searchParams: Record<string, any> = {
-      limit: options.limit,
+      limit: options.limit ?? DEFAULT_SEARCH_LIMIT,
       integration: 'cli',
     };
     if (options.domainTools !== undefined)

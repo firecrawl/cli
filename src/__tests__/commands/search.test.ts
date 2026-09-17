@@ -82,7 +82,7 @@ describe('executeSearch', () => {
       expect(mockHttpPost).toHaveBeenCalledTimes(1);
       expect(mockHttpPost).toHaveBeenCalledWith('/v2/search', {
         query: 'test query',
-        limit: undefined,
+        limit: 5,
         integration: 'cli',
       });
     });
