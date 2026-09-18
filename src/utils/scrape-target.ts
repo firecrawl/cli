@@ -63,14 +63,15 @@ export function resolveScrapeTarget(
   const unknown: string[] = [];
   for (const arg of args) {
     if (isScrapeUrl(arg)) urls.push(normalizeUrl(arg));
-    else if (
-      /^[a-z0-9][a-z0-9-]*\/[a-z0-9_~.-]+(?:\/[a-z0-9_~.-]+)*$/i.test(arg)
-    )
+    else if (/^[a-z0-9_~.-]+\/[a-z0-9_~.-]+(?:\/[a-z0-9_~.-]+)*$/i.test(arg))
       tools.push(arg);
     else if (isPositionalFormat(arg)) positionalFormats.push(arg);
     else unknown.push(arg);
   }
-  if (options.url) urls.push(normalizeUrl(options.url));
+  if (options.url !== undefined) {
+    if (!isScrapeUrl(options.url)) ambiguous(options.url);
+    urls.push(normalizeUrl(options.url));
+  }
   if (unknown.length) ambiguous(unknown[0]);
   if (tools.length && options.alexandria?.length)
     throw new Error('Use positional tool addresses or --alexandria, not both.');

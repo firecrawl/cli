@@ -39,7 +39,24 @@ describe('scrape target routing', () => {
     '[::1]:3000/a',
   ])('keeps %s on URL scraping', (target) => {
     expect(resolveScrapeTarget([target], {}).kind).toBe('url');
+    expect(resolveScrapeTarget([], { url: target }).kind).toBe('url');
   });
+
+  it.each(['provider_name/search', 'provider~name/search', '_provider/search'])(
+    'accepts supported address characters in %s',
+    (address) => {
+      expect(resolveScrapeTarget([address], {})).toEqual(
+        resolveScrapeTarget([], { alexandria: [address] })
+      );
+    }
+  );
+
+  it.each(['amazon', 'provider/search', 'https://', ''])(
+    'rejects invalid --url %s locally',
+    (url) => {
+      expect(() => resolveScrapeTarget([], { url })).toThrow('firecrawl list');
+    }
+  );
 
   it('preserves multiple URLs and positional output formats', () => {
     expect(

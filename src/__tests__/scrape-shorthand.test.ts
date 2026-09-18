@@ -74,6 +74,8 @@ it('sends shorthand and explicit calls identically, rejects bare names locally, 
     ).toBe(0);
     expect(requests).toHaveLength(2);
     expect(requests[0]).toEqual(requests[1]);
+    expect(requests[0].body.url).toBeUndefined();
+    expect(requests[1].body.url).toBeUndefined();
     expect(requests[0].path).toBe('/v2/scrape');
     expect(requests[0].body.alexandria).toEqual([
       {
@@ -86,6 +88,10 @@ it('sends shorthand and explicit calls identically, rejects bare names locally, 
     expect(bare.code).toBe(1);
     expect(bare.stderr).toContain('https://amazon.com (suggestion only)');
     expect(bare.stderr).toContain('firecrawl list');
+    expect(requests).toHaveLength(2);
+    const bareUrl = await run(['--url', 'amazon']);
+    expect(bareUrl.code).toBe(1);
+    expect(bareUrl.stderr).toContain('https://amazon.com (suggestion only)');
     expect(requests).toHaveLength(2);
     const typo = await run(['benzing/news/search', ...common]);
     expect(typo.code).toBe(1);
