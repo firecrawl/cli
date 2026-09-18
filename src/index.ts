@@ -920,7 +920,8 @@ Max upload size: 50 MB
 function createSearchCommand(): Command {
   const searchCmd = new Command('search')
     .description('Search the web and discover relevant Alexandria tools')
-    .argument('<query>', 'Search query')
+    .argument('<query>', 'Search query, or alexandria for semantic tool search')
+    .argument('[tool-query]', 'Query for search alexandria')
     .option(
       '--limit <number>',
       'Maximum number of results (default: 5, max: 100)',
@@ -986,9 +987,30 @@ function createSearchCommand(): Command {
     //   false
     // )
     .option('--json', 'Output as compact JSON', false)
-    .action(async (query, options) => {
+    .action(async (query, toolQuery, options) => {
+      const alexandriaOnly = toolQuery !== undefined;
+      if (alexandriaOnly && query !== 'alexandria') {
+        throw new Error(
+          'Quote your search query, or use search alexandria "query".'
+        );
+      }
+      if (alexandriaOnly && !toolQuery.trim()) {
+        throw new Error('Provide a non-empty Alexandria search query.');
+      }
+      if (
+        alexandriaOnly &&
+        options.sources &&
+        options.sources.trim().toLowerCase() !== 'alexandria'
+      ) {
+        throw new Error(
+          'search alexandria requires --sources alexandria; omit --sources or use regular search.'
+        );
+      }
+      if (alexandriaOnly) query = toolQuery;
       // Parse sources
-      let sources: SearchSource[] = ['web', 'alexandria'];
+      let sources: SearchSource[] = alexandriaOnly
+        ? ['alexandria']
+        : ['web', 'alexandria'];
       if (options.sources) {
         sources = options.sources
           .split(',')
@@ -1035,7 +1057,9 @@ function createSearchCommand(): Command {
 
       const searchOptions = {
         query,
-        domainTools: options.domainTools ?? sources.includes('alexandria'),
+        domainTools:
+          options.domainTools ??
+          (!alexandriaOnly && sources.includes('alexandria')),
         limit: options.limit,
         sources,
         categories,
@@ -1065,6 +1089,10 @@ function createSearchCommand(): Command {
   searchCmd.option(
     '--no-domain-tools',
     'Disable domain matching; source selection still controls semantic tools'
+  );
+  searchCmd.addHelpText(
+    'after',
+    '\nSemantic tool search: firecrawl search alexandria "find company contacts"\n'
   );
   return searchCmd;
 }

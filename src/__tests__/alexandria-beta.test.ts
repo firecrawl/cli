@@ -418,6 +418,27 @@ it('preserves mixed search results, tools and billing metadata', async () => {
   );
 });
 
+it('searches Alexandria semantically with the positional shortcut', async () => {
+  response = { success: true, data: { tools: [] } };
+  const result = await cli(['search', 'alexandria', 'hello world', '--json']);
+  expect(result.code).toBe(0);
+  expect(requests).toHaveLength(1);
+  expect(requests[0].body).toMatchObject({
+    query: 'hello world',
+    sources: [{ type: 'alexandria' }],
+    domainTools: false,
+  });
+  const invalid = await cli([
+    'search',
+    'alexandria',
+    'hello world',
+    '--sources',
+    'web',
+  ]);
+  expect(invalid.code).not.toBe(0);
+  expect(requests).toHaveLength(1);
+});
+
 it('sends provider calls to Scrape with a stable retry ID and preserves the receipt', async () => {
   const args = [
     'scrape',
