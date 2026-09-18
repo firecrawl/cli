@@ -528,6 +528,7 @@ it('retains successful results and billing when one provider fails', async () =>
     'scrape',
     '--alexandria',
     'provider/lookup',
+    '--alexandria',
     'other/lookup',
   ]);
   expect(result.code).toBe(1);

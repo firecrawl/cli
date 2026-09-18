@@ -1013,6 +1013,19 @@ firecrawl setup workflows
 
 For more details, visit the [Firecrawl Documentation](https://docs.firecrawl.dev).
 
+### Alexandria tool shorthand
+
+Use a provider/capability in place of a URL. The explicit `--alexandria` form remains supported:
+
+```bash
+firecrawl scrape benzinga/news/search --options '{"pageSize":10}'
+firecrawl scrape firecrawl-research-index/read --options '{"paperId":"123","query":"methodology","k":4}'
+firecrawl scrape --alexandria benzinga/news/search --options '{"pageSize":10}'
+firecrawl scrape https://example.com
+```
+
+URLs (including domains, IP addresses and localhost) continue to scrape websites. Tool addresses go directly to Alexandria, which validates the provider and capability; they never fall back to URL scraping. There is no extra catalog lookup. Bare names such as `firecrawl scrape amazon` fail locally with a suggested website URL and directions to `firecrawl list`. Suggestions are not verified or executed. Mixing URLs and tools in one command is rejected.
+
 ### Alexandria provider terms (beta)
 
 When a provider returns `THIRD_PARTY_DATA_TERMS_REQUIRED`, review its linked terms.

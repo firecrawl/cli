@@ -9,7 +9,6 @@ import { Command, Option } from 'commander';
 import { addFormatsAlias } from './utils/format-option';
 import {
   addAlexandriaScrapeOptions,
-  buildCalls,
   createFindToolsCommand,
   handleAlexandria,
 } from './commands/alexandria';
@@ -71,6 +70,7 @@ import { handleEnvPullCommand } from './commands/env';
 import { handleStatusCommand } from './commands/status';
 import { handleDoctorCommand } from './commands/doctor';
 import { isUrl, normalizeUrl } from './utils/url';
+import { resolveScrapeTarget } from './utils/scrape-target';
 import { parseMaxPages, parseScrapeOptions } from './utils/options';
 import { isJobId } from './utils/job';
 import { ensureAuthenticated, printBanner } from './utils/auth';
@@ -338,6 +338,8 @@ program
 
     // Check if this command requires authentication
     const commandName = actionCommand.name();
+    if (commandName === 'scrape')
+      resolveScrapeTarget(actionCommand.args, commandOptions);
     if (AUTH_REQUIRED_COMMANDS.includes(commandName)) {
       // Skip auth for custom API URLs (e.g., local development)
       // Check both global and command-level options
@@ -356,9 +358,9 @@ program
 function createScrapeCommand(): Command {
   const scrapeCmd = new Command('scrape')
     .description(
-      'Scrape one or more URLs. Multiple URLs are scraped concurrently and saved to .firecrawl/'
+      'Scrape URLs or execute Alexandria provider/capability tools. Multiple URLs are saved to .firecrawl/'
     )
-    .argument('[urls...]', 'URL(s) to scrape')
+    .argument('[urls...]', 'URL(s) or provider/capability tool address(es)')
     .option(
       '-u, --url <url>',
       'URL to scrape (alternative to positional argument)'
@@ -435,44 +437,12 @@ function createScrapeCommand(): Command {
     .option('--proxy <proxy>', 'Proxy mode for scraping (e.g., auto, basic)')
 
     .action(async (positionalArgs, options) => {
-      // Collect URLs from positional args and --url option
-      let urls: string[] = [];
-
-      if (positionalArgs && positionalArgs.length > 0) {
-        for (const arg of positionalArgs) {
-          if (isUrl(arg)) {
-            urls.push(normalizeUrl(arg));
-          }
-        }
-      }
-
-      if (options.url) {
-        urls.push(normalizeUrl(options.url));
-      }
-
-      // Remove duplicates
-      urls = [...new Set(urls)];
-
-      if (options.alexandria) {
-        if (urls.length || options.domainTools)
-          throw new Error(
-            'Provider execution cannot be combined with URL scraping.'
-          );
-        await handleAlexandria(
-          buildCalls(options.alexandria, options.options),
-          options
-        );
+      const target = resolveScrapeTarget(positionalArgs ?? [], options);
+      if (target.kind === 'alexandria') {
+        await handleAlexandria(target.calls, options);
         return;
       }
-      if (options.options || options.requestId)
-        throw new Error('--options and --request-id require --alexandria.');
-
-      if (urls.length === 0) {
-        console.error(
-          'Error: URL is required. Provide it as argument or use --url option.'
-        );
-        process.exit(1);
-      }
+      const { urls, positionalFormats } = target;
 
       let schema: Record<string, unknown> | undefined;
       let actions: Record<string, unknown>[] | undefined;
@@ -504,9 +474,6 @@ function createScrapeCommand(): Command {
 
       // Determine format
       let format: string;
-      const positionalFormats = (positionalArgs || []).filter(
-        (arg: string) => !isUrl(arg)
-      );
       if (positionalFormats.length > 0) {
         format = positionalFormats.join(',');
       } else if (options.html) {
@@ -538,6 +505,19 @@ function createScrapeCommand(): Command {
       }
     });
 
+  scrapeCmd.addHelpText(
+    'after',
+    `
+Examples:
+  firecrawl scrape https://example.com
+  firecrawl scrape example.com markdown
+  firecrawl scrape benzinga/news/search --options '{"pageSize":10}'
+  firecrawl scrape --alexandria benzinga/news/search --options '{"pageSize":10}'
+
+Bare names such as "amazon" show guidance without a lookup or execution.
+Tool addresses are validated by Alexandria; unknown tools never fall back to URL scraping.
+`
+  );
   addAlexandriaScrapeOptions(scrapeCmd);
   return addFormatsAlias(scrapeCmd);
 }

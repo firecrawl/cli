@@ -245,7 +245,7 @@ export function addAlexandriaScrapeOptions(command: Command): void {
     .addOption(
       new Option(
         '--options <json>',
-        'Input object for each --alexandria call, in matching order'
+        'Input object for each provider/capability call, in matching order'
       ).argParser((value: string, previous: string[] = []) => [
         ...previous,
         value,
