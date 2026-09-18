@@ -413,6 +413,9 @@ it('preserves mixed search results, tools and billing metadata', async () => {
   const readable = await cli(['search', 'pizza hut']);
   expect(readable.stdout).toContain('=== Alexandria Tools ===');
   expect(readable.stdout).toContain('series/observations');
+  expect(readable.stdout).toContain(
+    'Inspect: npx firecrawl-cli@alexandria list fred/series/observations --json'
+  );
 });
 
 it('sends provider calls to Scrape with a stable retry ID and preserves the receipt', async () => {

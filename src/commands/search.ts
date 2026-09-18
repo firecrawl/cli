@@ -292,7 +292,12 @@ function formatSearchReadable(
           : undefined;
       const title = tool.label ?? tool.name ?? address ?? tool.id ?? 'Tool';
       lines.push(String(title));
-      if (address) lines.push(`  Tool: ${address}`);
+      if (address) {
+        lines.push(`  Tool: ${address}`);
+        lines.push(
+          `  Inspect: npx firecrawl-cli@alexandria list ${address} --json`
+        );
+      }
       if (typeof tool.description === 'string')
         lines.push(`  ${clipPassage(tool.description)}`);
       if (typeof tool.creditsCost === 'number')
