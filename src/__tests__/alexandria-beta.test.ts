@@ -255,6 +255,53 @@ it('expands only a selected tool without falling back to a group', async () => {
   expect(requests).toHaveLength(4);
 });
 
+it('inspects a combined tool address in one request and preserves provider errors', async () => {
+  response = catalogue('tools', [
+    {
+      id: 'pizzahut-com/restaurants/store',
+      provider: 'pizzahut-com',
+      capability: 'restaurants/store',
+      options: { store_number: { type: 'string' } },
+    },
+  ]);
+  const result = await cli([
+    'list',
+    'pizzahut-com/restaurants/store',
+    '--json',
+  ]);
+  expect(result.code).toBe(0);
+  expect(requests).toHaveLength(1);
+  expect(requests[0].body.alexandria[0].options).toEqual({
+    providers: ['pizzahut-com'],
+    capabilities: ['restaurants/store'],
+    level: 'tools',
+    expand: ['options', 'response', 'examples'],
+    limit: 20,
+  });
+  expect(result.stdout).toContain('store_number');
+  response = {
+    success: true,
+    data: {
+      creditsCost: 0,
+      alexandria: [
+        {
+          provider: 'firecrawl',
+          capability: 'find-tools',
+          error: {
+            code: 'unknown_provider',
+            message: 'Unknown provider',
+            status: 404,
+          },
+        },
+      ],
+    },
+  };
+  const missing = await cli(['list', 'missing/restaurants/store', '--json']);
+  expect(missing.code).not.toBe(0);
+  expect(requests).toHaveLength(2);
+  expect(missing.stdout).toContain('unknown_provider');
+});
+
 it('preserves scoped next requests, pagination and discovery receipts', async () => {
   const next = {
     provider: 'firecrawl',

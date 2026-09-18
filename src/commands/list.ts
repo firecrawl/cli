@@ -361,6 +361,25 @@ export async function handleList(
       if (options.request)
         return fetchPage(parseFindToolsRequest(options.request).options);
       if (!path.length) return fetchPage({ level: 'providers', limit });
+      if (!options.category && path[0].includes('/')) {
+        const [provider, ...segments] = path[0].split('/');
+        if (
+          path.length !== 1 ||
+          !provider ||
+          segments.some((segment) => !segment)
+        )
+          throw new Error(
+            'Use list <provider>/<capability> without extra path arguments.'
+          );
+        return fetchPage({
+          providers: [provider],
+          capabilities: [segments.join('/')],
+          level: 'tools',
+          expand: ['options', 'response', 'examples'],
+          limit,
+        });
+      }
+
       if (options.contracts && options.category && path.length === 1) {
         return fetchPage({
           categories: [categoryId(path[0])],
