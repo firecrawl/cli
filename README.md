@@ -486,9 +486,20 @@ Paper ids accept `pmid:`, `pmcid:`, `doi:`, and `arxiv:` forms, plus canonical `
 
 ### `feedback` - Send endpoint job feedback
 
-Send concise feedback for a completed v2 `search`, `scrape`, `parse`, or `map`
-job. For search-result quality, `search-feedback` is still the most guided
-command; `feedback` is the generic endpoint/job surface.
+Send optional evidence through `/v2/feedback`. Keyless `search`, `scrape`, and
+`parse` jobs require `--rating`, `--task`, `--assessment`, and 1-20 observations
+provided through `--observations` or `--observations-file`. Keyless Parse also requires `--doc-class born_digital|scanned|mixed|unknown` once per submission. Use the returned job
+reference and evidence already available; no user interview or additional
+investigation is required. Run `firecrawl feedback --help` for category fields.
+
+Keyless feedback accepts one new submission per identity per UTC day across
+Search, Scrape, Parse, and all clients. References expire after 24 hours.
+Submitting feedback does not consume or restore operation allowance. Invitations
+and references appear in metadata or stderr, preserving ordinary stdout.
+
+Authenticated callers retain the existing fields. `search-feedback` remains an
+authenticated Search command and cannot submit feedback for keyless jobs. The
+following example uses the authenticated endpoint feedback contract:
 
 ```bash
 firecrawl feedback scrape 0193f6c5-1234-7890-abcd-1234567890ab \
@@ -503,25 +514,79 @@ firecrawl feedback scrape 0193f6c5-1234-7890-abcd-1234567890ab \
 Keep notes and metadata small. Do not send raw scrape or parse outputs as
 feedback.
 
-Set `FIRECRAWL_NO_ENDPOINT_FEEDBACK=1` to make `firecrawl feedback` skip
-endpoint feedback calls silently.
+Search: useful and irrelevant require a one-based position within the delivered group. source names the response group the position refers to: web, images, or news. It is required for multi-source jobs. Omission defaults to web, so images-only and news-only jobs must explicitly name their source. The position must exist in that requested group. irrelevant requires reason: aggregator_over_official, off_topic, stale, wrong_content_type, snippet_misleading, or blocked_or_paywalled. vertical is required on missing and optional on useful/irrelevant: web_general, social, business, research, developer, news, government, finance, or other. missing may include topic (up to 200 characters). missing and irrelevant may include knownSources (up to 20 HTTP(S) URLs): where absent content lives or the source that should have ranked instead. Unmentioned results are unassessed; a full ranking is not required. Do not submit engine attribution.
+
+Scrape: kind correct, wrong_success, incomplete, or incorrect. wrong_success requires reason: blocked_shell, login_required, paywall, empty, wrong_page, stale, or wrong_locale. incomplete requires reason: partial_content, dynamic_content, pagination, main_content_stripped, or format_lost. incorrect requires reason: wrong, hallucinated, or missing_fields. correct has no reason. Optional location is up to 200 characters. No retryOutcome. hallucinated applies only to json, deterministicJson, summary, question, highlights, and changeTracking in json mode; missing_fields applies only to json and deterministicJson. For incomplete and incorrect, prefer source_comparison when the source is already available.
+
+Parse: `--doc-class` is required once per submission: born_digital, scanned, mixed, or unknown. Observation kind: correct, text_ocr, table, formula, chart_figure, reading_order, headers_footers, headings_formatting, completeness, images_dropped, or incorrect. text_ocr requires reason: misread_chars, garbled, or missing_text. table requires reason: structure, cells_glued, or digits. completeness requires reason: pages_missing, truncated_at_max_pages, or sections_dropped. incorrect requires reason: wrong, hallucinated, or missing_fields. Other kinds have no reason subtype. Optional page is a one-based positive integer. incorrect applies to json and summary outputs. For text_ocr and table, include the correct text or cell values in comparison.detail when already known. Parse feedback does not automatically retain the document, extracted output, page images, or layout blocks; submitted observations and corrections are retained.
+
+Scrape and Parse observations other than failure: format must be a format type the job requested. It is required for output and source_comparison observations when multiple formats were requested; optional for expectation observations and single-format jobs. All observations retain detail and basis; source_comparison requires comparison: {reference, detail}. comparison.detail contains the correct content from the inspected source.
+
+Failed Search, Scrape, or Parse jobs: use kind failure with reason timeout, transport_error, proxy_error, or other. Accepted only for a failed job. Include detail and basis; do not supply position, source, format, location, or page. Parse still requires docClass (unknown is allowed).
+
+The stored keyless submission must fit within 8 KiB (8192 UTF-8 bytes), including server defaults and verification flags. By default, one accepted submission per caller IP per UTC day is shared across Search, Scrape, Parse, and all clients; the server invitation states the deployment allowance. Attempts, including rejected requests, are limited to 30 per minute. Submit within 24 hours from the same caller IP. Contract and example: https://docs.firecrawl.dev/api-reference/endpoint/feedback.
+
+If the saved Search response is unavailable, otherwise valid observations are accepted and stored with metadata.unverified: true because their positions could not be checked. Job ownership and requested sources are still checked. Available results must contain every referenced position.
+
+Reason definitions:
+
+- aggregator_over_official: An intermediary was returned where the task needed an available official or primary source.
+- off_topic: The result addresses a different topic from the task.
+- stale: The content is outdated for the time or version the task requires.
+- wrong_content_type: The destination has the wrong content type for the task, such as a discussion instead of a reference.
+- snippet_misleading: The returned description misrepresents source content already inspected.
+- blocked_or_paywalled: Access to the destination was observed to be blocked or require a subscription; do not infer this from its URL or snippet.
+- blocked_shell: The successful response contains a bot challenge or access-blocking shell instead of the requested content.
+- login_required: The successful response contains a login requirement instead of the requested content.
+- paywall: The successful response contains a subscription barrier instead of the requested content.
+- empty: The successful response contains no meaningful requested content.
+- wrong_page: The successful response contains a different page or resource.
+- wrong_locale: The response uses the wrong language or region for the task.
+- partial_content: Only part of the expected content was returned, without a more specific known cause.
+- dynamic_content: Content loaded by client-side rendering or interaction is missing.
+- pagination: Expected content on additional pages is missing.
+- main_content_stripped: Content filtering removed requested primary content.
+- format_lost: Text is present, but meaningful structure such as headings, lists, or code formatting was lost.
+- wrong: Returned facts or values conflict with the inspected source.
+- hallucinated: The output asserts content unsupported by the inspected source.
+- missing_fields: Requested fields are absent from the structured output.
+- misread_chars: Characters were recognized incorrectly.
+- garbled: Extracted text is corrupted or unreadable.
+- missing_text: Visible source text was omitted.
+- structure: Table rows, columns, or header relationships were reconstructed incorrectly.
+- cells_glued: Distinct table cells were merged.
+- digits: Numeric table values were recognized incorrectly.
+- pages_missing: Source pages are absent from the output.
+- truncated_at_max_pages: Extraction ended at the configured page limit; this does not by itself imply a parser error.
+- sections_dropped: Sections within processed pages were omitted.
+- timeout: The operation explicitly reported a timeout.
+- transport_error: The operation explicitly reported a network, connection, or TLS failure.
+- proxy_error: The operation explicitly reported a proxy failure.
+- other: Another operation failure was reported; describe the returned error without guessing its cause.
+
+Set `FIRECRAWL_NO_ENDPOINT_FEEDBACK=1` or `FIRECRAWL_DISABLE_ENDPOINT_FEEDBACK=1` to skip authenticated endpoint feedback calls. These flags do not suppress keyless invitations or submissions. The API includes a pointer on every eligible keyless job response. Submitting feedback remains optional and is never required for continued keyless access.
 
 #### Feedback Options
 
-| Option                           | Description                                  |
-| -------------------------------- | -------------------------------------------- |
-| `--rating <rating>`              | Required: `good`, `partial`, or `bad`        |
-| `--issues <codesOrJson>`         | Comma-separated issue codes or JSON array    |
-| `--tags <codesOrJson>`           | Comma-separated tags or JSON array           |
-| `--note <text>`                  | Short human-readable feedback                |
-| `--valuable-sources <json>`      | JSON array of `{url, reason}` entries        |
-| `--missing-content <json>`       | JSON array of `{topic, description}` entries |
-| `--query-suggestions <text>`     | Search/query improvement notes               |
-| `--url <url>`                    | Relevant URL for scrape or parse feedback    |
-| `--page-numbers <numbersOrJson>` | Comma-separated page numbers or JSON array   |
-| `--metadata <json>`              | Small JSON object with extra context         |
-| `--metadata-file <path>`         | Path to small metadata JSON object           |
-| `--silent`                       | Suppress output for background agent calls   |
+| Option                           | Description                                          |
+| -------------------------------- | ---------------------------------------------------- |
+| `--rating <rating>`              | Required: `good`, `partial`, or `bad`                |
+| `--task <text>`                  | Task intent, required for keyless feedback           |
+| `--doc-class <class>`            | Document class, required for keyless Parse           |
+| `--assessment <text>`            | Assessment, required for keyless feedback            |
+| `--observations <json>`          | JSON array of category-specific keyless observations |
+| `--observations-file <path>`     | File containing the observations JSON array          |
+| `--issues <codesOrJson>`         | Comma-separated issue codes or JSON array            |
+| `--tags <codesOrJson>`           | Comma-separated tags or JSON array                   |
+| `--note <text>`                  | Short human-readable feedback                        |
+| `--valuable-sources <json>`      | JSON array of `{url, reason}` entries                |
+| `--missing-content <json>`       | JSON array of `{topic, description}` entries         |
+| `--query-suggestions <text>`     | Search/query improvement notes                       |
+| `--url <url>`                    | Relevant URL for scrape or parse feedback            |
+| `--page-numbers <numbersOrJson>` | Comma-separated page numbers or JSON array           |
+| `--metadata <json>`              | Small JSON object with extra context                 |
+| `--metadata-file <path>`         | Path to small metadata JSON object                   |
+| `--silent`                       | Suppress output for background agent calls           |
 
 ---
 

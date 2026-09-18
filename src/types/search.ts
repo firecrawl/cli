@@ -122,6 +122,7 @@ export interface SearchResultData {
 }
 
 export interface SearchResult {
+  metadata?: Record<string, unknown>;
   success: boolean;
   data?: SearchResultData;
   warning?: string;
