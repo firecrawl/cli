@@ -1152,7 +1152,7 @@ Examples:
 function createResearchCommand(): Command {
   const researchCmd = new Command('research')
     .description(
-      "Search Firecrawl's research paper index: ~43M abstracts, around 90% biomedical (PubMed, bioRxiv, medRxiv) plus arXiv. Use this for biomedical, clinical, and scientific literature instead of scraping PubMed, bioRxiv, or Google Scholar by hand. Also searches GitHub issue/PR history."
+      "Search Firecrawl's research paper index: ~43M abstracts, around 90% biomedical (PubMed, bioRxiv, medRxiv) plus arXiv. Use this for biomedical, clinical, and scientific literature instead of scraping PubMed, bioRxiv, or Google Scholar by hand. GitHub issue/PR history moved to `firecrawl developer`; `research search-github` is deprecated and stops working after 2026-11-03."
     )
     .addHelpText(
       'after',
@@ -1164,7 +1164,7 @@ Examples:
   $ firecrawl research related-papers pmcid:PMC12530322 --intent "in vivo delivery"
   $ firecrawl research read-paper doi:10.1016/j.neunet.2025.108095 --question "What was the sample size?"
   $ firecrawl research read-paper arxiv:1706.03762 --question "What is the attention mechanism?"
-  $ firecrawl research search-github "foundationdb queue worker shutdown" --limit 10
+  $ firecrawl developer "foundationdb queue worker shutdown" --limit 10   (search-github is deprecated: stops working after 2026-11-03)
 `
     );
 
