@@ -2,9 +2,6 @@
 name: firecrawl-map
 description: |
   Discover and list a site's URLs, with search filtering. Use for "map the site" or "find the URL for" requests — when the user knows the site but not the exact page, or wants site structure.
-allowed-tools:
-  - Bash(firecrawl *)
-  - Bash(npx firecrawl-cli *)
 ---
 
 # firecrawl map
@@ -12,6 +9,13 @@ allowed-tools:
 Discover URLs on a site. Use `--search` to find a specific page within a large site.
 
 **Prerequisite:** `map` requires authentication (no keyless free tier); without credentials the CLI prompts an interactive login.
+
+## Tool Choice & Quick Start
+
+- MCP: **`firecrawl_map(url, search?, limit?, ...)`**
+  Call directly when Firecrawl MCP tools are exposed.
+- CLI: **`firecrawl map <url> [--search <query>] [--limit <n>] [-o <path>]`**
+  Fallback when running in a CLI environment.
 
 ## Quick start
 

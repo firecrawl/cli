@@ -2,9 +2,6 @@
 name: firecrawl-crawl
 description: |
   Bulk-extract many pages from one site or section. Use for "crawl", "everything under /docs", or content spanning linked pages.
-allowed-tools:
-  - Bash(firecrawl *)
-  - Bash(npx firecrawl-cli *)
 ---
 
 # firecrawl crawl
@@ -12,6 +9,14 @@ allowed-tools:
 Bulk extract content from a website. Crawls pages following links up to a depth/limit.
 
 **Prerequisite:** `crawl` requires authentication (no keyless free tier); without credentials the CLI prompts an interactive login.
+
+## Tool Choice & Quick Start
+
+- MCP: **`firecrawl_crawl(url, includePaths?, excludePaths?, limit?, maxDiscoveryDepth?, ...)`**
+  Check status: **`firecrawl_check_crawl_status(id)`**
+  Call directly when Firecrawl MCP tools are exposed.
+- CLI: **`firecrawl crawl <url> [--include-paths <paths>] [--limit <n>] [--wait] [-o <path>]`**
+  Fallback when running in a CLI environment.
 
 ## Quick start
 

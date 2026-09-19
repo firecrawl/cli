@@ -2,14 +2,19 @@
 name: firecrawl-search
 description: |
   Web search with full page content. Use when no URL is known: finding sources, articles, or news. For papers use firecrawl-research-index; for library, API, error, or bug questions use firecrawl-developer-index.
-allowed-tools:
-  - Bash(firecrawl *)
-  - Bash(npx firecrawl-cli *)
 ---
 
 # firecrawl search
 
 Search naturally using the user’s actual question. In the Alexandria beta, default search returns web results plus relevant Alexandria tools, with optional web content scraping.
+
+## Tool Choice & Quick Start
+
+- MCP: **`firecrawl_search(query, scrapeOptions?, categories?, limit?, sources?, ...)`**
+  Call directly when Firecrawl MCP tools are exposed.
+  Feedback: **`firecrawl_search_feedback(searchId, rating, ...)`**
+- CLI: **`firecrawl search <query> [--scrape] [--json] [-o <path>]`**
+  Fallback when running in a CLI environment.
 
 ## Quick start
 

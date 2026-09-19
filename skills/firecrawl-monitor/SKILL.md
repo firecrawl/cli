@@ -2,14 +2,19 @@
 name: firecrawl-monitor
 description: |
   Alert by webhook/email on web changes — use for "monitor/watch/track/alert me when": recurring checks on known URLs (prefer over repeated one-off scrapes) or web-wide watches for new results (queries + goal).
-allowed-tools:
-  - Bash(firecrawl *)
-  - Bash(npx firecrawl-cli *)
 ---
 
 # firecrawl monitor
 
 Detect when content on a website changes and get notified by webhook or email. Firecrawl handles fetching, diffing, judging, and notifying server-side. Each page in a check is labeled `same`, `new`, `changed`, `removed`, or `error`.
+
+## Tool Choice & Quick Start
+
+- MCP: **`firecrawl_monitor_create(goal?, page?, pages?, queries?, scheduleText?, ...)`**
+  Manage & check: **`firecrawl_monitor_get`**, **`firecrawl_monitor_run`**, **`firecrawl_monitor_check`**, **`firecrawl_monitor_checks`**, **`firecrawl_monitor_update`**, **`firecrawl_monitor_delete`**, **`firecrawl_monitor_list`**
+  Call directly when Firecrawl MCP tools are exposed.
+- CLI: **`firecrawl monitor <create|list|get|update|delete|run|checks|check>`**
+  Fallback when running in a CLI environment.
 
 **Pick a target mode** by what you're watching:
 
