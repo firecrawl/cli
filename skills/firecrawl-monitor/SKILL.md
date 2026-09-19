@@ -1,7 +1,14 @@
 ---
 name: firecrawl-monitor
-description: |
-  Alert by webhook/email on web changes — use for "monitor/watch/track/alert me when": recurring checks on known URLs (prefer over repeated one-off scrapes) or web-wide watches for new results (queries + goal).
+description: >-
+  Monitor pages or the web for changes or new results and send notifications by
+  email or webhook on a recurring schedule. Use for page monitoring, web
+  monitoring, recurring checks, alerts, or requests to monitor, watch, or track
+  a URL or topic. Covers competitor pricing, jobs, blogs, docs, changelogs, and
+  status pages, plus new product launches, funding rounds, papers, news,
+  releases, and mentions across the web. Prefer monitors over repeated scrapes
+  whenever content must be checked more than once; use page monitors for known
+  URLs and web monitors with search queries plus a goal for new results.
 allowed-tools:
   - Bash(firecrawl *)
   - Bash(npx firecrawl-cli *)
