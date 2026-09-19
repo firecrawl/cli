@@ -448,7 +448,7 @@ firecrawl research related-papers pmcid:PMC12530322 --intent "in vivo delivery"
 # Read full-text passages to verify a specific claim
 firecrawl research read-paper doi:10.1016/j.neunet.2025.108095 --question "What was the sample size?"
 
-# Search GitHub issue/PR history and repository READMEs
+# Deprecated (stops working after 2026-11-03): use `firecrawl developer` instead
 firecrawl research search-github "foundationdb queue worker shutdown" --limit 10
 ```
 
@@ -462,7 +462,7 @@ Paper ids accept `pmid:`, `pmcid:`, `doi:`, and `arxiv:` forms, plus canonical `
 | `inspect-paper <paperId>`     | Canonical metadata: title, abstract, authors, categories, source ids, dates |
 | `related-papers <seedIds...>` | Citation-graph expansion from seed papers, ranked against `--intent`        |
 | `read-paper <paperId>`        | Best-matching in-body full-text passages for a `--question`                 |
-| `search-github <query>`       | GitHub issue/PR history and repository READMEs                              |
+| `search-github <query>`       | Deprecated, stops working after 2026-11-03: use `firecrawl developer`       |
 
 #### `search-papers` Options
 

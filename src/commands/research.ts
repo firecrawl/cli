@@ -292,6 +292,11 @@ export async function handleReadPaperCommand(
 export async function handleSearchGitHubCommand(
   options: SearchGitHubOptions
 ): Promise<void> {
+  // The endpoint behind this command is deprecated and stops responding after
+  // 2026-11-03; say so on stderr so scripts keep their stdout and humans see it.
+  console.error(
+    'firecrawl research search-github is deprecated and stops working after 2026-11-03. Use `firecrawl developer <query>` (GitHub issues, PRs, READMEs and curated docs): https://docs.firecrawl.dev/features/developer'
+  );
   try {
     const params = new URLSearchParams();
     appendParam(params, 'query', options.query);

@@ -1349,10 +1349,13 @@ Examples:
       });
     });
 
+  // Deprecated: GET /v2/search/research/github stops responding after 2026-11-03
+  // (the API's deprecations table); `firecrawl developer` is the replacement, on
+  // the developer index. The command keeps working until the sunset and says so.
   researchCmd
     .command('search-github')
     .description(
-      'Search GitHub issue/PR history and repository readmes. Returns ranked matches with repo, url, a short snippet, and when available the full matched content in markdown.'
+      '[Deprecated: use `firecrawl developer`; the endpoint stops responding after 2026-11-03] Search GitHub issue/PR history and repository readmes. Returns ranked matches with repo, url, a short snippet, and when available the full matched content in markdown.'
     )
     .argument('<query>', 'GitHub history/readme search query')
     .option(
