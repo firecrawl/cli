@@ -3,7 +3,9 @@
  *
  * Uploads a local file to the Firecrawl /v2/parse endpoint and returns the
  * parsed document in the requested format(s). Supported file types:
- *   .html, .htm, .pdf, .docx, .doc, .odt, .rtf, .xlsx, .xls
+ *   .html, .htm, .pdf, .docx, .doc, .odt, .rtf, .xlsx, .xls, and raster
+ *   images (.png, .jpg, .jpeg, .jp2, .tif, .tiff, .gif, .bmp, .webp, .avif),
+ *   which the API OCRs as one-page documents.
  */
 
 import * as fs from 'fs';
@@ -28,6 +30,17 @@ const SUPPORTED_EXTENSIONS = new Set([
   '.rtf',
   '.xlsx',
   '.xls',
+  // Raster images, OCR'd by the API as one-page documents.
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.jp2',
+  '.tif',
+  '.tiff',
+  '.gif',
+  '.bmp',
+  '.webp',
+  '.avif',
 ]);
 
 /**
@@ -45,6 +58,16 @@ const CONTENT_TYPE_BY_EXT: Record<string, string> = {
   '.rtf': 'application/rtf',
   '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   '.xls': 'application/vnd.ms-excel',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.jp2': 'image/jp2',
+  '.tif': 'image/tiff',
+  '.tiff': 'image/tiff',
+  '.gif': 'image/gif',
+  '.bmp': 'image/bmp',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
 };
 
 function outputTiming(
