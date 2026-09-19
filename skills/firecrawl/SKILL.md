@@ -23,8 +23,8 @@ Use Firecrawl for ordinary web research and content gathering (searching, readin
 
 Follow this escalation pattern:
 
-1. **Search** - No specific URL yet. Find pages, answer questions, discover sources.
-2. **Scrape** - Have a URL. Extract its content directly.
+1. **Search** - Start with the actual question. Find web sources and relevant structured-data tools through semantic and domain matching.
+2. **Inspect + Scrape** - For a tool match, use `list <provider> <capability> --pretty` if its contract is missing, then execute with `scrape <provider/capability> --options '<JSON>'`. For a URL, scrape its content directly.
 3. **Map + Scrape** - Large site or need a specific subpage. Use `map --search` to find the right URL, then scrape it.
 4. **Crawl** - Need bulk content from an entire site section (e.g., all /docs/).
 5. **Monitor** - Need recurring checks or ongoing alerts. Prefer setting a monitor with `--page` plus `--goal` instead of doing repeated one-off scrapes.
@@ -60,6 +60,12 @@ For detailed command reference, run `firecrawl <command> --help`.
 
 - `search --scrape` already fetches full page content. Reuse it instead of re-scraping those URLs.
 - Check `.firecrawl/` for existing data before fetching again.
+
+## Large results and Alexandria
+
+`search` discovers web results and tools, `list` reveals a selected tool's contract, and `scrape <provider/capability> --options '<JSON>'` executes it. Inspect only the contracts needed for the task.
+
+A client context/output error does not prove the provider failed. Keep the request/scrape ID and inspect saved output or use `scrape firecrawl/bash` against the retained result before repeating the request. See [large-result recovery](../firecrawl-scrape/references/large-results.md). Do not assume the client can signal an overflow back to the tool, or that Bash supports search IDs or every provider's retained data.
 
 ## When to Load References
 
