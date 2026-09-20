@@ -34,6 +34,13 @@ npx firecrawl-cli@alexandria list <provider-id> <capability-id> --pretty
 
 Check required inputs, supported location/market, returned fields, and access requirements. Use lookup tools to resolve record IDs rather than inventing them. Displayed pricing is informational, not an additional confirmation gate. If no tool fits, continue with web results or URL scrape rather than exhausting the catalogue.
 
+Read the expanded contract before building inputs or parsing results:
+
+- `required: true` requires that input; each `requiresOneOf` group requires at least one member, not all of them.
+- Selected-contract inspection already requests examples. Read the singular `example.request` and `example.response` when present; an empty request can be valid for tools with optional inputs.
+- `response.key` identifies the records field inside `data.alexandria[i].data`; an empty key means that data object itself. Do not assume every provider returns `records`.
+- Provider pagination differs from catalogue `next`: use the contract's continuation input and the returned page/cursor, preserve filters, and stop at its exhaustion signal. `paginated: true` alone does not specify that mapping.
+
 For progressive browsing:
 
 ```bash
@@ -77,6 +84,6 @@ npx firecrawl-cli@alexandria scrape --help
 
 ## Large results and context recovery
 
-Save large JSON responses with `--json -o <path>` when a local filesystem is available, then inspect bounded sections. Keep stderr separate; receipt lines are not JSON.
+Save large JSON responses with `--json -o <path>` when a local filesystem is available, then select the needed fields and rows with `jq`. Keep stderr separate; receipt lines are not JSON. Do not use `2>&1` when piping JSON to a parser.
 
 If the agent's output/context limit hides a response, the upstream request may already have succeeded. Preserve the returned request or scrape ID before considering another execution. Remote `firecrawl/bash` can inspect eligible retained results, sample records, filter fields, and read sections without returning the whole payload to context. Read [large-result recovery](references/large-results.md) when you need that path. Search IDs are not valid Bash sources, and not every result is retained.
