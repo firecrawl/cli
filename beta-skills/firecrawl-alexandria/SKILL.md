@@ -26,7 +26,7 @@ npx firecrawl-cli@alexandria search alexandria '<data you need>' --json
 
 ## Inspect only what you need
 
-Tool summaries identify candidates without loading every input/output contract. A compact result may contain only `provider`, `capability` and `description`; use those IDs to inspect it without an `id` or `next` field. If a result already includes its complete contract, reuse it. Otherwise inspect the selected provider and capability before execution:
+Tool summaries identify candidates without loading every input/output contract. A compact result may contain only `provider`, `capability` and `description`; use the `provider` and `capability` IDs to inspect it without an `id` or `next` field. If a result already includes its complete contract, reuse it. Otherwise inspect the selected provider and capability before execution:
 
 ```bash
 npx firecrawl-cli@alexandria list <provider-id> <capability-id> --pretty
