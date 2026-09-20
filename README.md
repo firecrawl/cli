@@ -18,25 +18,6 @@ npx -y firecrawl-cli@latest init -y --browser
 - `--browser` opens the browser for Firecrawl authentication automatically
 - skills install globally to every detected AI coding agent by default
 
-### Alexandria beta: browse tools
-
-Use the Alexandria beta with your existing Firecrawl login or API key:
-
-```bash
-npx firecrawl-cli@alexandria alexandria list          # introduction and live categories
-npx firecrawl-cli@alexandria list --providers         # flat provider list
-npx firecrawl-cli@alexandria list finance             # providers in a category
-npx firecrawl-cli@alexandria list benzinga            # provider's tools
-npx firecrawl-cli@alexandria list-tools benzinga      # same browsing interface
-npx firecrawl-cli@alexandria list benzinga <capability> --json
-```
-
-The category overview is available in `1.23.4-alexandria-beta.9` onward. `list` and `list-tools` are interchangeable, including under `firecrawl alexandria`. The root explains how to find and call tools and lists live category descriptions. Choose a category to see its providers, or jump directly to a provider. Selecting a capability reveals its inputs, response, examples, and price. Browsable results expose next commands in JSON; the text guide explains how to select each category. Selecting a capability displays the final contract. Generated commands use `firecrawl`; when using `npx`, replace that prefix with `npx firecrawl-cli@alexandria`.
-
-Discovery is free and never executes the listed tools. The root reads `GET /exchange/discover` on the configured Firecrawl API using your existing credentials; provider and tool lookups use the Find Tools meta tool through Scrape. Category membership and descriptions stay on the server. The root shows all returned categories; `--limit` controls provider/tool page size (default 20, maximum 100). Follow `More` to continue a page. Root `--json` exposes categories at `data.items`; provider/tool JSON keeps the Scrape envelope at `data.alexandria[0].data`. Both include request IDs and navigation where available.
-
-Provider IDs take precedence over category IDs; use `--category` to select a category explicitly. Display names such as `retail`, `developer`, and `public-records` also resolve to their catalog category IDs. Follow a provider with a complete capability ID, such as `calendar/ratings`, to inspect its contract. Use `firecrawl search --sources alexandria` to find tools by task, or `firecrawl find-tools` for URL lookup and raw catalog selectors.
-
 ### Setup Skills, Workflows, and MCP
 
 If you are using an AI coding agent like Claude Code, you can also install skill groups manually — one command per family:
