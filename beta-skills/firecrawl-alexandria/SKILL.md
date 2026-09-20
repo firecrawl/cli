@@ -1,6 +1,6 @@
 ---
 name: firecrawl-alexandria
-description: Find an efficient path to structured data with Firecrawl's ready-made website workflows, API providers, and specialized indexes. Use for records, listings, financial data, research, or public records when tools can retrieve deeper data beyond a web page. Discover with search, inspect selected contracts, and execute through scrape.
+description: Find a direct path to structured data through ready-made workflows, data APIs, and indexes. Use for structured records, filterable listings, transcripts, or datasets. Discover with search, inspect selected contracts, and execute through scrape.
 ---
 
 # Alexandria: a direct path to structured data
