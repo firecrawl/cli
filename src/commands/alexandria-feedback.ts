@@ -24,23 +24,71 @@ function website(value: string): string {
   }
 }
 
-function feedbackArray(value: string): Record<string, unknown>[] {
+const providerIssues = [
+  'missing_provider',
+  'insufficient_coverage',
+  'provider_unavailable',
+  'other',
+];
+const capabilityIssues = [
+  'new_capability_request',
+  'insufficient_functionality',
+  'incorrect_result',
+  'execution_error',
+  'other',
+];
+
+export function parseAlexandriaFeedbackArray(
+  value: string,
+  capability = false
+): Record<string, unknown>[] {
+  let entries: unknown;
   try {
-    const entries = JSON.parse(value);
-    if (
-      !Array.isArray(entries) ||
-      entries.length > 20 ||
-      entries.some(
-        (entry) => !entry || typeof entry !== 'object' || Array.isArray(entry)
-      )
-    )
-      throw new Error();
-    return entries;
+    entries = JSON.parse(value);
   } catch {
+    throw new InvalidArgumentError('Feedback must be valid JSON.');
+  }
+  if (!Array.isArray(entries) || entries.length > 20) {
     throw new InvalidArgumentError(
       'Provide a JSON array of up to 20 feedback objects.'
     );
   }
+  return entries.map((entry, index) => {
+    const fail = (message: string): never => {
+      throw new InvalidArgumentError(`Feedback entry ${index + 1}: ${message}`);
+    };
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry))
+      fail('must be an object.');
+    const allowed = capability
+      ? ['name', 'provider', 'issue', 'why', 'requestedFunctionality']
+      : ['name', 'issue', 'why'];
+    if (Object.keys(entry).some((key) => !allowed.includes(key)))
+      fail('contains an unknown field.');
+    const result: Record<string, unknown> = {};
+    const text = (field: string, max: number) => {
+      if (
+        typeof entry[field] !== 'string' ||
+        !entry[field].trim() ||
+        entry[field].trim().length > max
+      )
+        fail(`${field} must contain 1–${max} characters.`);
+      result[field] = entry[field].trim();
+    };
+    text('name', 200);
+    text('why', 2000);
+    if (!(capability ? capabilityIssues : providerIssues).includes(entry.issue))
+      fail('unsupported issue code.');
+    result.issue = entry.issue;
+    if (capability) {
+      text('provider', 200);
+      if (
+        entry.issue === 'new_capability_request' ||
+        entry.requestedFunctionality !== undefined
+      )
+        text('requestedFunctionality', 2000);
+    }
+    return result;
+  });
 }
 
 export function createAlexandriaFeedbackCommand(): Command {
@@ -63,12 +111,12 @@ export function createAlexandriaFeedbackCommand(): Command {
     .option(
       '--provider-feedback <json>',
       'Array of {name, issue, why}; issues: missing_provider, insufficient_coverage, provider_unavailable, other',
-      feedbackArray
+      (value) => parseAlexandriaFeedbackArray(value)
     )
     .option(
       '--capability-feedback <json>',
       'Array of {name, provider, issue, why, requestedFunctionality?}; issues: new_capability_request (requires requestedFunctionality), insufficient_functionality, incorrect_result, execution_error, other',
-      feedbackArray
+      (value) => parseAlexandriaFeedbackArray(value, true)
     )
     .option('-k, --api-key <key>', 'Firecrawl API key')
     .option('--api-url <url>', 'API base URL')

@@ -51,7 +51,11 @@ beforeEach(() => {
   };
 });
 
-async function cli(args: string[], key = 'fc-test') {
+async function cli(
+  args: string[],
+  key = 'fc-test',
+  extraEnv: Record<string, string> = {}
+) {
   try {
     return {
       code: 0,
@@ -64,6 +68,7 @@ async function cli(args: string[], key = 'fc-test') {
           FIRECRAWL_API_KEY: key,
           FIRECRAWL_API_URL: baseUrl,
           FIRECRAWL_NO_UPDATE_CHECK: '1',
+          ...extraEnv,
         },
       })),
     };
@@ -1141,4 +1146,108 @@ it('rejects missing session requirements before sending feedback', async () => {
   const result = await cli(['alexandria', 'feedback', '--rating', 'good']);
   expect(result.code).not.toBe(0);
   expect(requests).toHaveLength(0);
+});
+
+const sessionFeedbackArgs = [
+  'alexandria',
+  'feedback',
+  '--rating',
+  'partial',
+  '--url',
+  'https://example.com',
+  '--requested-functionality',
+  'Get attachments',
+  '--rationale',
+  'Missing documents',
+];
+
+it('honors the child feedback API key before root authentication', async () => {
+  const result = await cli(
+    [
+      ...sessionFeedbackArgs,
+      '--api-key',
+      'fc-child-key',
+      '--api-url',
+      'https://api.firecrawl.dev',
+    ],
+    '',
+    { FIRECRAWL_NO_ENDPOINT_FEEDBACK: '1' }
+  );
+  expect(result.code).toBe(0);
+  expect(requests).toHaveLength(0);
+  expect(result.stdout + result.stderr).not.toMatch(
+    /not authenticated|log in|login required/i
+  );
+});
+
+it.each([
+  ['--provider-feedback', [{}]],
+  [
+    '--provider-feedback',
+    [{ name: 'example', issue: 'unknown', why: 'Missing records' }],
+  ],
+  ['--provider-feedback', [{ name: 'example', issue: 'other', why: '   ' }]],
+  [
+    '--capability-feedback',
+    [
+      {
+        name: 'attachments',
+        provider: 'example',
+        issue: 'new_capability_request',
+        why: 'Need documents',
+      },
+    ],
+  ],
+  [
+    '--capability-feedback',
+    [{ name: 'attachments', issue: 'execution_error', why: 'Timeout' }],
+  ],
+])('rejects malformed %s before posting', async (flag, entries) => {
+  const result = await cli([
+    ...sessionFeedbackArgs,
+    String(flag),
+    JSON.stringify(entries),
+  ]);
+  expect(result.code).not.toBe(0);
+  expect(requests).toHaveLength(0);
+});
+
+it('normalizes and sends valid provider and capability feedback', async () => {
+  response = {
+    success: true,
+    feedbackId: 'feedback-valid',
+    creditsRefunded: 0,
+  };
+  const provider = [
+    {
+      name: ' example ',
+      issue: 'insufficient_coverage',
+      why: ' Missing documents ',
+    },
+  ];
+  const capability = [
+    {
+      name: 'attachments',
+      provider: 'example',
+      issue: 'new_capability_request',
+      why: 'Need documents',
+      requestedFunctionality: ' Download attachments ',
+    },
+  ];
+  const result = await cli([
+    ...sessionFeedbackArgs,
+    '--provider-feedback',
+    JSON.stringify(provider),
+    '--capability-feedback',
+    JSON.stringify(capability),
+  ]);
+  expect(result.code).toBe(0);
+  expect(requests[0].body.providerFeedback[0]).toEqual({
+    name: 'example',
+    issue: 'insufficient_coverage',
+    why: 'Missing documents',
+  });
+  expect(requests[0].body.capabilityFeedback[0].requestedFunctionality).toBe(
+    'Download attachments'
+  );
 });

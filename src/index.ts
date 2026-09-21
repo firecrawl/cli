@@ -326,11 +326,11 @@ program
   .option('--status', 'Show version, auth status, concurrency, and credits')
   .allowUnknownOption() // Allow unknown options when URL is passed directly
   .hook('preAction', async (thisCommand, actionCommand) => {
-    // Update global config if API key or URL is provided via global option
+    // Command-level credentials take precedence over root options.
     const globalOptions = thisCommand.opts();
     const commandOptions = actionCommand.opts();
-    if (globalOptions.apiKey) {
-      updateConfig({ apiKey: globalOptions.apiKey });
+    if (commandOptions.apiKey || globalOptions.apiKey) {
+      updateConfig({ apiKey: commandOptions.apiKey || globalOptions.apiKey });
     }
     if (globalOptions.apiUrl) {
       updateConfig({ apiUrl: globalOptions.apiUrl });
