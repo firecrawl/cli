@@ -71,7 +71,6 @@
   },
   "files": [
     "dist",
-    "skills",
     "README.md"
   ],
   "packageManager": "pnpm@10.12.1",

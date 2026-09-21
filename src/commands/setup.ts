@@ -305,11 +305,11 @@ export async function handleSetupCommand(
     case 'alexandria': {
       if (options.nativeSkills || options.project) {
         throw new Error(
-          'Alexandria skill setup requires npm and global scope.'
+          'Alexandria beta skill setup requires npm and global scope.'
         );
       }
       const args = buildSkillsInstallArgs({
-        repo: path.resolve(__dirname, '../../skills'),
+        repo: path.resolve(__dirname, '../../beta-skills'),
         skills: ['firecrawl-alexandria', 'firecrawl-agent'],
         agent: options.agent,
         includeNpxYes: true,
