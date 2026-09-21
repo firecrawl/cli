@@ -1058,3 +1058,16 @@ After confirmed success, rerun the original provider command; its normal credits
 Alexandria execution JSON includes an additive `receipt`: `creditsUsed` is actual reported usage (missing means unknown), `requestId` is the client idempotency identity, and `operationId`/`operationType` identify the server scrape. Existing response fields remain available. IDs, reported credits, and available retry delays print to stderr.
 
 Use the same request ID to recover pending or uncertain execution. Completed results, including failures, replay under the same ID; a deliberate new execution needs a new ID and may charge again. Never automatically rotate an uncertain ID. Structured failures preserve available status, code, action and retry metadata.
+
+### Alexandria session feedback
+
+Report the outcome of a session, missing provider coverage, or capability issues:
+
+```bash
+firecrawl alexandria feedback --rating partial \
+  --url https://example.com \
+  --requested-functionality "Find records and download their attachments" \
+  --rationale "Found summaries but could not retrieve attachments" --json
+```
+
+No job ID is required. Alexandria session feedback has no job-age deadline and does not refund credits. Optional `--provider-feedback` and `--capability-feedback` accept JSON arrays; see `firecrawl alexandria feedback --help` for their fields and issue codes. Existing `feedback` and `search-feedback` commands retain their job-specific behavior. Endpoint feedback opt-out environment variables also apply to this command.

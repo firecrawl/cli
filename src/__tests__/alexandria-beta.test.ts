@@ -1105,3 +1105,40 @@ it('forwards URL scrape discovery detail and rejects invalid combinations locall
     expect((await cli(args)).code).not.toBe(0);
   expect(requests).toHaveLength(count);
 });
+
+it('submits Alexandria session feedback without a job ID', async () => {
+  response = { success: true, feedbackId: 'feedback-1', creditsRefunded: 0 };
+  const result = await cli([
+    'alexandria',
+    'feedback',
+    '--rating',
+    'partial',
+    '--url',
+    'https://example.com',
+    '--requested-functionality',
+    'Download attachments',
+    '--rationale',
+    'Only summaries available',
+    '--json',
+  ]);
+  expect(result.code).toBe(0);
+  expect(JSON.parse(result.stdout).feedbackId).toBe('feedback-1');
+  expect(requests[0].url).toBe('/v2/feedback');
+  expect(requests[0].body).toEqual({
+    endpoint: 'alexandria',
+    rating: 'partial',
+    origin: 'cli',
+    integration: 'cli',
+    requestedWebsite: {
+      url: 'https://example.com',
+      requestedFunctionality: 'Download attachments',
+    },
+    rationale: 'Only summaries available',
+  });
+});
+
+it('rejects missing session requirements before sending feedback', async () => {
+  const result = await cli(['alexandria', 'feedback', '--rating', 'good']);
+  expect(result.code).not.toBe(0);
+  expect(requests).toHaveLength(0);
+});

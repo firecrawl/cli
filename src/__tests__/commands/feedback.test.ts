@@ -39,6 +39,53 @@ describe('executeEndpointFeedback', () => {
     delete process.env.FIRECRAWL_DISABLE_ENDPOINT_FEEDBACK;
   });
 
+  it('posts Alexandria session feedback without job fields or legacy metadata', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        feedbackId: 'session-feedback',
+        creditsRefunded: 0,
+      }),
+    });
+    const requestedWebsite = {
+      url: 'https://example.com',
+      requestedFunctionality: 'Download attachments',
+    };
+    const capabilityFeedback = [
+      {
+        name: 'attachments',
+        provider: 'example',
+        issue: 'new_capability_request',
+        why: 'Missing documents',
+        requestedFunctionality: 'Return attachment URLs',
+      },
+    ];
+    const result = await executeEndpointFeedback({
+      endpoint: 'alexandria',
+      rating: 'partial',
+      requestedWebsite,
+      rationale: 'Only summaries available',
+      capabilityFeedback,
+      jobId: 'must-not-be-sent',
+      url: 'https://legacy.example',
+      metadata: { legacy: true },
+    });
+    expect(result.success).toBe(true);
+    const [url, request] = mockFetch.mock.calls[0];
+    expect(url).toBe('https://api.firecrawl.dev/v2/feedback');
+    expect(JSON.parse(request.body)).toEqual({
+      endpoint: 'alexandria',
+      rating: 'partial',
+      origin: 'cli',
+      integration: 'cli',
+      requestedWebsite,
+      rationale: 'Only summaries available',
+      capabilityFeedback,
+    });
+  });
+
   it('posts generic endpoint feedback to /v2/feedback', async () => {
     mockFetch.mockResolvedValue({
       ok: true,

@@ -57,3 +57,7 @@ firecrawl agent "<job-id>" --cancel
 - [firecrawl-interact](../firecrawl-interact/SKILL.md) — scrape + interact for manual page interaction (more control)
 - [firecrawl-crawl](../firecrawl-crawl/SKILL.md) — bulk extraction without AI
 - [firecrawl-build-scrape](https://github.com/firecrawl/skills/tree/main/skills/build/firecrawl-build-scrape) — building structured extraction into an app instead of running it here
+
+## Alexandria session feedback
+
+To report an Alexandria session outcome or a provider/capability gap, use `firecrawl alexandria feedback --rating good|partial|bad --url <website> --requested-functionality '<what was needed>' --rationale '<what happened>' --json`. Use observed results in the rationale. No job ID is needed; this session feedback has no job-age deadline and no credit refund. Optional `--provider-feedback` and `--capability-feedback` JSON arrays describe specific gaps; inspect `firecrawl alexandria feedback --help` for their fields.
