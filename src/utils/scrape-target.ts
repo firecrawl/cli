@@ -53,7 +53,7 @@ function ambiguous(value: string): never {
   );
 }
 
-/** Resolve intent locally; Exchange validates provider and capability existence. */
+/** Resolve intent locally; Alexandria validates provider and capability existence. */
 export function resolveScrapeTarget(
   args: string[],
   options: ScrapeTargetOptions

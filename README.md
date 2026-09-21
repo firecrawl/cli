@@ -1007,25 +1007,25 @@ firecrawl scrape https://example.com
 
 URLs (including domains, IP addresses and localhost) continue to scrape websites. Tool addresses go directly to Alexandria, which validates the provider and capability; they never fall back to URL scraping. There is no extra catalog lookup. Bare names such as `firecrawl scrape amazon` fail locally with a suggested website URL and directions to `firecrawl list`. Suggestions are not verified or executed. Mixing URLs and tools in one command is rejected.
 
-### Alexandria provider terms (beta)
+### Alexandria provider terms
 
 When a provider returns `THIRD_PARTY_DATA_TERMS_REQUIRED`, review its linked terms.
 Read the current provider agreement and metadata with:
 
 ```bash
-npx firecrawl-cli@alexandria alexandria terms show benzinga --pretty
+npx firecrawl-cli@latest alexandria terms show benzinga --pretty
 ```
 
 After reviewing it, explicitly accept the exact version and digest for the organization
 associated with your Firecrawl API key:
 
 ```bash
-npx firecrawl-cli@alexandria alexandria terms accept benzinga \
+npx firecrawl-cli@latest alexandria terms accept benzinga \
   --terms-version '<reviewed-version>' --digest '<reviewed-sha256>' --confirm
 ```
 
-This posts to `/exchange/provider-terms/accept`. No automatic acceptance or retry
-occurs. A `409 terms_changed` requires reviewing the new agreement before retrying.
+This records acceptance of the reviewed Alexandria provider terms. No automatic
+acceptance or retry occurs. A `409 terms_changed` requires reviewing the new agreement before retrying.
 Agents must present the returned terms and provider links, ask the user for explicit
 approval, and wait before accepting. If review is refused or a provider link is
 unavailable, show the error and direct an organization admin to
