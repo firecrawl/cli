@@ -415,7 +415,12 @@ it('documents the default discovery flow and respects explicit web-only search',
   const scrapeHelp = await cli(['scrape', '--help']);
   expect(scrapeHelp.stdout).toContain('--alexandria');
   const findHelp = await cli(['find-tools', '--help']);
-  expect(findHelp.stdout).toContain('meta tool');
+  expect(findHelp.code).toBe(0);
+  const findHelpText = findHelp.stdout.replace(/\s+/g, ' ');
+  expect(findHelpText).toContain(
+    'Match URLs or use --options for semantic queries'
+  );
+  expect(findHelpText).toContain('discovery does not execute providers');
   const agentHelp = await cli(['agent', '--help']);
   expect(agentHelp.stdout).toContain('--thread <threadId>');
   expect(agentHelp.stdout).toContain('--mode <mode>');
