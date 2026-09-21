@@ -10,7 +10,7 @@ allowed-tools:
 
 AI-powered autonomous extraction. The agent navigates sites and extracts structured data (takes 2-5 minutes).
 
-Before starting autonomous extraction for structured records or listings, check `firecrawl search alexandria '<data you need>'` for a ready-made workflow or data provider. Inspect a matching contract with `firecrawl list <provider> <capability> --pretty` and execute through `scrape` if it covers the task. Continue with Agent when no suitable tool exists or the task requires autonomous navigation.
+Before starting autonomous extraction for structured records or listings, check `firecrawl search alexandria '<data you need>'` for a ready-made workflow or data provider. Inspect a matching contract with `firecrawl list <provider> <capability> --pretty` and execute with `firecrawl scrape --alexandria <provider>/<capability> --options '<input JSON>'` if it covers the task. Use the exact provider, capability, and input fields from that contract. Continue with Agent when no suitable tool exists or the task requires autonomous navigation.
 
 ## Quick start
 
