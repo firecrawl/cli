@@ -1,8 +1,8 @@
 {
   "name": "firecrawl-cli",
-  "version": "1.23.4-alexandria-beta.23",
+  "version": "1.24.3",
   "publishConfig": {
-    "tag": "alexandria"
+    "tag": "latest"
   },
   "description": "Command-line interface for Firecrawl. Scrape, crawl, and extract data from any website, and search a ~43M-abstract research paper index (PubMed, bioRxiv, medRxiv, arXiv), directly from your terminal.",
   "main": "dist/index.js",
@@ -71,7 +71,6 @@
   },
   "files": [
     "dist",
-    "beta-skills",
     "README.md"
   ],
   "packageManager": "pnpm@10.12.1",

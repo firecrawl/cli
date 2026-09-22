@@ -24,6 +24,7 @@ export interface ScrapeLocation {
 
 export interface ScrapeOptions {
   domainTools?: boolean;
+  toolDetail?: 'compact' | 'summary' | 'full';
   /** URL to scrape */
   url: string;
   /** Output format(s) - single format or array of formats */

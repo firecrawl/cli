@@ -1006,25 +1006,25 @@ firecrawl scrape https://example.com
 
 URLs (including domains, IP addresses and localhost) continue to scrape websites. Tool addresses go directly to Alexandria, which validates the provider and capability; they never fall back to URL scraping. There is no extra catalog lookup. Bare names such as `firecrawl scrape amazon` fail locally with a suggested website URL and directions to `firecrawl list`. Suggestions are not verified or executed. Mixing URLs and tools in one command is rejected.
 
-### Alexandria provider terms (beta)
+### Alexandria provider terms
 
 When a provider returns `THIRD_PARTY_DATA_TERMS_REQUIRED`, review its linked terms.
 Read the current provider agreement and metadata with:
 
 ```bash
-npx firecrawl-cli@alexandria alexandria terms show benzinga --pretty
+npx firecrawl-cli@latest alexandria terms show benzinga --pretty
 ```
 
 After reviewing it, explicitly accept the exact version and digest for the organization
 associated with your Firecrawl API key:
 
 ```bash
-npx firecrawl-cli@alexandria alexandria terms accept benzinga \
+npx firecrawl-cli@latest alexandria terms accept benzinga \
   --terms-version '<reviewed-version>' --digest '<reviewed-sha256>' --confirm
 ```
 
-This posts to `/exchange/provider-terms/accept`. No automatic acceptance or retry
-occurs. A `409 terms_changed` requires reviewing the new agreement before retrying.
+This records acceptance of the reviewed Alexandria provider terms. No automatic
+acceptance or retry occurs. A `409 terms_changed` requires reviewing the new agreement before retrying.
 Agents must present the returned terms and provider links, ask the user for explicit
 approval, and wait before accepting. If review is refused or a provider link is
 unavailable, show the error and direct an organization admin to
@@ -1038,3 +1038,16 @@ After confirmed success, rerun the original provider command; its normal credits
 Alexandria execution JSON includes an additive `receipt`: `creditsUsed` is actual reported usage (missing means unknown), `requestId` is the client idempotency identity, and `operationId`/`operationType` identify the server scrape. Existing response fields remain available. IDs, reported credits, and available retry delays print to stderr.
 
 Use the same request ID to recover pending or uncertain execution. Completed results, including failures, replay under the same ID; a deliberate new execution needs a new ID and may charge again. Never automatically rotate an uncertain ID. Structured failures preserve available status, code, action and retry metadata.
+
+### Alexandria session feedback
+
+Report the outcome of a session, missing provider coverage, or capability issues:
+
+```bash
+firecrawl alexandria feedback --rating partial \
+  --url https://example.com \
+  --requested-functionality "Find records and download their attachments" \
+  --rationale "Found summaries but could not retrieve attachments" --json
+```
+
+No job ID is required. Alexandria session feedback has no job-age deadline and does not refund credits. Optional `--provider-feedback` and `--capability-feedback` accept JSON arrays; see `firecrawl alexandria feedback --help` for their fields and issue codes. Capability issue codes are `new_capability_request` (requires `requestedFunctionality`), `missing_capability` (the provider exists but lacks this capability), `insufficient_functionality`, `incorrect_result`, `execution_error`, and `other`. Existing `feedback` and `search-feedback` commands retain their job-specific behavior. Endpoint feedback opt-out environment variables also apply to this command.

@@ -147,6 +147,8 @@ export async function executeScrape(
   const requestStartTime = Date.now();
 
   try {
+    if (options.toolDetail !== undefined)
+      scrapeParams.toolDetail = options.toolDetail;
     if (options.domainTools) {
       requireAlexandriaKey(options.apiKey);
       scrapeParams.domainTools = true;

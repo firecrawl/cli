@@ -326,11 +326,11 @@ program
   .option('--status', 'Show version, auth status, concurrency, and credits')
   .allowUnknownOption() // Allow unknown options when URL is passed directly
   .hook('preAction', async (thisCommand, actionCommand) => {
-    // Update global config if API key or URL is provided via global option
+    // Command-level credentials take precedence over root options.
     const globalOptions = thisCommand.opts();
     const commandOptions = actionCommand.opts();
-    if (globalOptions.apiKey) {
-      updateConfig({ apiKey: globalOptions.apiKey });
+    if (commandOptions.apiKey || globalOptions.apiKey) {
+      updateConfig({ apiKey: commandOptions.apiKey || globalOptions.apiKey });
     }
     if (globalOptions.apiUrl) {
       updateConfig({ apiUrl: globalOptions.apiUrl });
@@ -1059,6 +1059,7 @@ function createSearchCommand(): Command {
 
       const searchOptions = {
         query,
+        toolDetail: options.toolDetail,
         domainTools:
           options.domainTools ??
           (!alexandriaOnly && sources.includes('alexandria')),
@@ -1084,6 +1085,12 @@ function createSearchCommand(): Command {
       await handleSearchCommand(searchOptions);
     });
 
+  searchCmd.addOption(
+    new Option(
+      '--tool-detail <detail>',
+      'Tool detail: compact identities/descriptions (default), summary metadata, full contracts'
+    ).choices(['compact', 'summary', 'full'])
+  );
   searchCmd.option(
     '--domain-tools',
     'Include tools for domains in web results (on by default with Alexandria)'

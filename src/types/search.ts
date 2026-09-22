@@ -9,6 +9,7 @@ export type SearchCategory = 'research' | 'pdf' | 'developer';
 
 export interface SearchOptions {
   domainTools?: boolean;
+  toolDetail?: 'compact' | 'summary' | 'full';
   /** Search query (required) */
   query: string;
   /** API key for Firecrawl */

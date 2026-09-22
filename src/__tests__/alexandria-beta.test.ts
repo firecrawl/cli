@@ -51,7 +51,11 @@ beforeEach(() => {
   };
 });
 
-async function cli(args: string[], key = 'fc-test') {
+async function cli(
+  args: string[],
+  key = 'fc-test',
+  extraEnv: Record<string, string> = {}
+) {
   try {
     return {
       code: 0,
@@ -64,6 +68,7 @@ async function cli(args: string[], key = 'fc-test') {
           FIRECRAWL_API_KEY: key,
           FIRECRAWL_API_URL: baseUrl,
           FIRECRAWL_NO_UPDATE_CHECK: '1',
+          ...extraEnv,
         },
       })),
     };
@@ -415,7 +420,12 @@ it('documents the default discovery flow and respects explicit web-only search',
   const scrapeHelp = await cli(['scrape', '--help']);
   expect(scrapeHelp.stdout).toContain('--alexandria');
   const findHelp = await cli(['find-tools', '--help']);
-  expect(findHelp.stdout).toContain('meta tool');
+  expect(findHelp.code).toBe(0);
+  const findHelpText = findHelp.stdout.replace(/\s+/g, ' ');
+  expect(findHelpText).toContain(
+    'Match URLs or use --options for semantic queries'
+  );
+  expect(findHelpText).toContain('discovery does not execute providers');
   const agentHelp = await cli(['agent', '--help']);
   expect(agentHelp.stdout).toContain('--thread <threadId>');
   expect(agentHelp.stdout).toContain('--mode <mode>');
@@ -461,7 +471,7 @@ it('preserves mixed search results, tools and billing metadata', async () => {
   expect(readable.stdout).toContain('=== Alexandria Tools ===');
   expect(readable.stdout).toContain('series/observations');
   expect(readable.stdout).toContain(
-    'Inspect: npx firecrawl-cli@alexandria list fred/series/observations --json'
+    'Inspect: firecrawl list <provider> <capability> --pretty'
   );
 });
 
@@ -655,7 +665,12 @@ it('presents tools compactly after web results while JSON preserves full contrac
       tools: [tool],
     },
   };
-  const readable = await cli(['search', 'GDP growth']);
+  const readable = await cli([
+    'search',
+    'GDP growth',
+    '--tool-detail',
+    'summary',
+  ]);
   expect(readable.stdout.indexOf('GDP report')).toBeLessThan(
     readable.stdout.indexOf('=== Alexandria Tools ===')
   );
@@ -664,6 +679,24 @@ it('presents tools compactly after web results while JSON preserves full contrac
   expect(readable.stdout).not.toContain('EXAMPLE_PAYLOAD');
   const json = await cli(['search', 'GDP growth', '--json']);
   expect(JSON.parse(json.stdout).data.tools).toEqual([tool]);
+  response.data.tools = [
+    {
+      provider: tool.provider,
+      capability: tool.capability,
+      description: tool.description,
+      creditsCost: tool.creditsCost,
+      perRecord: tool.perRecord,
+    },
+  ];
+  const compact = await cli(['search', 'GDP growth']);
+  expect(compact.stdout).toContain('fred/series/observations');
+  expect(compact.stdout).toContain(tool.description);
+  expect(compact.stdout).toContain(
+    'Inspect: firecrawl list <provider> <capability> --pretty'
+  );
+  expect(compact.stdout).not.toContain('Cost:');
+  expect(requests.at(-1)?.body.toolDetail).toBe('compact');
+  expect(compact.stdout).toContain(`${tool.description}\n\nInspect:`);
   expect(requests.every((request) => request.url === '/v2/search')).toBe(true);
 });
 
@@ -1016,4 +1049,240 @@ it('falls back to category browsing after an unknown provider, but preserves oth
   });
   expect((await cli(['list', 'shopping', '--json'])).code).toBe(1);
   expect(requests).toHaveLength(1);
+});
+
+it('forwards explicit discovery detail and rejects unknown modes before requesting', async () => {
+  response = { success: true, data: { web: [], tools: [] } };
+  for (const detail of ['compact', 'summary', 'full']) {
+    const result = await cli([
+      'search',
+      'records',
+      '--tool-detail',
+      detail,
+      '--json',
+    ]);
+    expect(result.code).toBe(0);
+    expect(requests.at(-1)?.body.toolDetail).toBe(detail);
+  }
+  const count = requests.length;
+  expect(
+    (await cli(['search', 'records', '--tool-detail', 'invalid'])).code
+  ).not.toBe(0);
+  expect(requests).toHaveLength(count);
+});
+
+it('forwards URL scrape discovery detail and rejects invalid combinations locally', async () => {
+  response = { success: true, data: { markdown: 'Example', tools: [] } };
+  for (const detail of ['compact', 'summary', 'full']) {
+    const result = await cli([
+      'scrape',
+      'https://example.com',
+      '--domain-tools',
+      '--tool-detail',
+      detail,
+      '--json',
+    ]);
+    expect(result.code).toBe(0);
+    expect(requests.at(-1)?.body).toMatchObject({
+      url: 'https://example.com',
+      domainTools: true,
+      toolDetail: detail,
+    });
+  }
+  const count = requests.length;
+  for (const args of [
+    [
+      'scrape',
+      'https://example.com',
+      '--domain-tools',
+      '--tool-detail',
+      'invalid',
+    ],
+    [
+      'scrape',
+      '--alexandria',
+      'sample/records/search',
+      '--tool-detail',
+      'full',
+    ],
+    ['scrape', 'sample/records/search', '--tool-detail', 'summary'],
+  ])
+    expect((await cli(args)).code).not.toBe(0);
+  expect(requests).toHaveLength(count);
+});
+
+it('submits Alexandria session feedback without a job ID', async () => {
+  response = { success: true, feedbackId: 'feedback-1', creditsRefunded: 0 };
+  const result = await cli([
+    'alexandria',
+    'feedback',
+    '--rating',
+    'partial',
+    '--url',
+    'https://example.com',
+    '--requested-functionality',
+    'Download attachments',
+    '--rationale',
+    'Only summaries available',
+    '--json',
+  ]);
+  expect(result.code).toBe(0);
+  expect(JSON.parse(result.stdout).feedbackId).toBe('feedback-1');
+  expect(requests[0].url).toBe('/v2/feedback');
+  expect(requests[0].body).toEqual({
+    endpoint: 'alexandria',
+    rating: 'partial',
+    origin: 'cli',
+    integration: 'cli',
+    requestedWebsite: {
+      url: 'https://example.com',
+      requestedFunctionality: 'Download attachments',
+    },
+    rationale: 'Only summaries available',
+  });
+});
+
+it('rejects missing session requirements before sending feedback', async () => {
+  const result = await cli(['alexandria', 'feedback', '--rating', 'good']);
+  expect(result.code).not.toBe(0);
+  expect(requests).toHaveLength(0);
+});
+
+const sessionFeedbackArgs = [
+  'alexandria',
+  'feedback',
+  '--rating',
+  'partial',
+  '--url',
+  'https://example.com',
+  '--requested-functionality',
+  'Get attachments',
+  '--rationale',
+  'Missing documents',
+];
+
+it('honors the child feedback API key before root authentication', async () => {
+  const result = await cli(
+    [
+      ...sessionFeedbackArgs,
+      '--api-key',
+      'fc-child-key',
+      '--api-url',
+      'https://api.firecrawl.dev',
+    ],
+    '',
+    { FIRECRAWL_NO_ENDPOINT_FEEDBACK: '1' }
+  );
+  expect(result.code).toBe(0);
+  expect(requests).toHaveLength(0);
+  expect(result.stdout + result.stderr).not.toMatch(
+    /not authenticated|log in|login required/i
+  );
+});
+
+it.each([
+  ['--provider-feedback', [{}]],
+  [
+    '--provider-feedback',
+    [{ name: 'example', issue: 'unknown', why: 'Missing records' }],
+  ],
+  ['--provider-feedback', [{ name: 'example', issue: 'other', why: '   ' }]],
+  [
+    '--capability-feedback',
+    [
+      {
+        name: 'attachments',
+        provider: 'example',
+        issue: 'new_capability_request',
+        why: 'Need documents',
+      },
+    ],
+  ],
+  [
+    '--capability-feedback',
+    [{ name: 'attachments', issue: 'execution_error', why: 'Timeout' }],
+  ],
+  [
+    '--capability-feedback',
+    [
+      {
+        name: 'attachments',
+        provider: 'example',
+        issue: 'unknown_issue',
+        why: 'Not a real code',
+      },
+    ],
+  ],
+])('rejects malformed %s before posting', async (flag, entries) => {
+  const result = await cli([
+    ...sessionFeedbackArgs,
+    String(flag),
+    JSON.stringify(entries),
+  ]);
+  expect(result.code).not.toBe(0);
+  expect(requests).toHaveLength(0);
+});
+
+it('normalizes and sends valid provider and capability feedback', async () => {
+  response = {
+    success: true,
+    feedbackId: 'feedback-valid',
+    creditsRefunded: 0,
+  };
+  const provider = [
+    {
+      name: ' example ',
+      issue: 'insufficient_coverage',
+      why: ' Missing documents ',
+    },
+  ];
+  const capability = [
+    {
+      name: 'attachments',
+      provider: 'example',
+      issue: 'new_capability_request',
+      why: 'Need documents',
+      requestedFunctionality: ' Download attachments ',
+    },
+  ];
+  const result = await cli([
+    ...sessionFeedbackArgs,
+    '--provider-feedback',
+    JSON.stringify(provider),
+    '--capability-feedback',
+    JSON.stringify(capability),
+  ]);
+  expect(result.code).toBe(0);
+  expect(requests[0].body.providerFeedback[0]).toEqual({
+    name: 'example',
+    issue: 'insufficient_coverage',
+    why: 'Missing documents',
+  });
+  expect(requests[0].body.capabilityFeedback[0].requestedFunctionality).toBe(
+    'Download attachments'
+  );
+});
+
+it('sends missing_capability feedback without requestedFunctionality', async () => {
+  response = {
+    success: true,
+    feedbackId: 'feedback-missing-capability',
+    creditsRefunded: 0,
+  };
+  const capability = [
+    {
+      name: 'attachments',
+      provider: 'example',
+      issue: 'missing_capability',
+      why: 'Provider has no attachment endpoint',
+    },
+  ];
+  const result = await cli([
+    ...sessionFeedbackArgs,
+    '--capability-feedback',
+    JSON.stringify(capability),
+  ]);
+  expect(result.code).toBe(0);
+  expect(requests).toHaveLength(1);
+  expect(requests[0].body.capabilityFeedback).toEqual(capability);
 });

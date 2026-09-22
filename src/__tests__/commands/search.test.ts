@@ -62,6 +62,21 @@ describe('executeSearch', () => {
   });
 
   describe('API call generation', () => {
+    it.each(['compact', 'summary', 'full'] as const)(
+      'forwards %s tool detail',
+      async (toolDetail) => {
+        mockHttpPost.mockResolvedValue(mockSearchResponse({ tools: [] }));
+        await executeSearch({
+          query: 'records',
+          sources: ['alexandria'],
+          toolDetail,
+        });
+        expect(mockHttpPost).toHaveBeenCalledWith(
+          '/v2/search',
+          expect.objectContaining({ toolDetail })
+        );
+      }
+    );
     it('should call /v2/search with correct query and default options', async () => {
       mockHttpPost.mockResolvedValue(
         mockSearchResponse({
@@ -84,6 +99,7 @@ describe('executeSearch', () => {
         query: 'test query',
         limit: 5,
         integration: 'cli',
+        toolDetail: 'compact',
       });
     });
 
@@ -420,6 +436,7 @@ describe('executeSearch', () => {
         query: 'comprehensive test',
         limit: 20,
         integration: 'cli',
+        toolDetail: 'compact',
         sources: [{ type: 'web' }, { type: 'news' }],
         categories: [{ type: 'developer' }],
         tbs: 'qdr:w',

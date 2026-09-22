@@ -1,3 +1,4 @@
+import { createAlexandriaFeedbackCommand } from './alexandria-feedback';
 import { createTermsCommand } from './terms';
 import { Command, InvalidArgumentError } from 'commander';
 import { randomUUID } from 'node:crypto';
@@ -531,5 +532,6 @@ export function createAlexandriaCommand(): Command {
     )
     .addCommand(createListCommand())
     .addCommand(createTermsCommand())
+    .addCommand(createAlexandriaFeedbackCommand())
     .addCommand(browse, { isDefault: true, hidden: true });
 }

@@ -8,6 +8,7 @@ type ScrapeTargetOptions = {
   options?: string[];
   requestId?: string;
   domainTools?: boolean;
+  toolDetail?: 'compact' | 'summary' | 'full';
 };
 
 function isPositionalFormat(value: string): boolean {
@@ -52,7 +53,7 @@ function ambiguous(value: string): never {
   );
 }
 
-/** Resolve intent locally; Exchange validates provider and capability existence. */
+/** Resolve intent locally; Alexandria validates provider and capability existence. */
 export function resolveScrapeTarget(
   args: string[],
   options: ScrapeTargetOptions
@@ -77,7 +78,12 @@ export function resolveScrapeTarget(
     throw new Error('Use positional tool addresses or --alexandria, not both.');
   const addresses = options.alexandria ?? tools;
   if (addresses.length) {
-    if (urls.length || options.domainTools || positionalFormats.length)
+    if (
+      urls.length ||
+      options.domainTools ||
+      options.toolDetail !== undefined ||
+      positionalFormats.length
+    )
       throw new Error(
         'Provider execution cannot be combined with URL scraping or positional output formats.'
       );

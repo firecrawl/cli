@@ -194,7 +194,7 @@ export function parseFindToolsRequest(raw: string): Call {
 export function createFindToolsCommand(): Command {
   return new Command('find-tools')
     .description(
-      'Discover tool sets and contracts through the firecrawl/find-tools meta tool on Scrape; never executes discovered tools'
+      'Find workflows, data APIs, and indexes for structured records and listings. Match URLs or use --options for semantic queries; discovery does not execute providers'
     )
     .argument('[urls...]', 'Known HTTP(S) URLs to find tools for')
     .option(
@@ -262,5 +262,11 @@ export function addAlexandriaScrapeOptions(command: Command): void {
         '--domain-tools',
         'Discover related tools alongside URL content; does not execute them'
       )
+    )
+    .addOption(
+      new Option(
+        '--tool-detail <detail>',
+        'Tool detail: compact identities/descriptions, summary metadata (default), full contracts'
+      ).choices(['compact', 'summary', 'full'])
     );
 }
