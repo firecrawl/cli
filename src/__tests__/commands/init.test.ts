@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execSync } from 'child_process';
+import * as skillsNative from '../../commands/skills-native';
 import { handleInitCommand } from '../../commands/init';
 import { CLI_SKILLS, WORKFLOW_SKILLS } from '../../commands/skills-install';
 
@@ -17,6 +18,14 @@ const { installMcpMock, getApiKeyMock, confirmMock, checkboxMock } = vi.hoisted(
 
 vi.mock('child_process', () => ({
   execSync: vi.fn(),
+}));
+
+vi.mock('../../commands/skills-native', () => ({
+  detectInstalledAgentNames: vi.fn(() => []),
+  hasNpx: vi.fn(() => true),
+  installSkillsNative: vi.fn(async () => {
+    throw new Error('Native install unavailable in this test');
+  }),
 }));
 
 vi.mock('../../commands/setup', () => ({
@@ -86,6 +95,39 @@ describe('handleInitCommand', () => {
     expect(execSync).toHaveBeenCalledWith(
       `npx -y skills add firecrawl/skills --full-depth --global --yes --agent cursor ${workflowSkillFlags}`,
       expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'] })
+    );
+  });
+
+  it('summarizes interactive skills success even when npx output has no count', async () => {
+    confirmMock
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false);
+    checkboxMock.mockResolvedValueOnce(['skills']);
+    vi.mocked(execSync).mockReturnValueOnce(Buffer.from('Done'));
+    await handleInitCommand({ skipInstall: true, skipAuth: true });
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining('Skills installed')
+    );
+  });
+
+  it('summarizes native interactive installation independently of its count', async () => {
+    confirmMock
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false);
+    checkboxMock.mockResolvedValueOnce(['skills']);
+    vi.mocked(skillsNative.installSkillsNative).mockResolvedValueOnce({
+      skillCount: 14,
+      linkedAgents: ['cursor'],
+    } as Awaited<ReturnType<typeof skillsNative.installSkillsNative>>);
+    await handleInitCommand({
+      skipInstall: true,
+      skipAuth: true,
+      agent: 'cursor',
+    });
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining('14 skills')
     );
   });
 
@@ -170,6 +212,40 @@ describe('init global installation', () => {
     expect(console.log).not.toHaveBeenCalledWith(
       expect.stringContaining('Skills installed')
     );
+  });
+
+  it('preserves npm configuration during preflight, install, and bin discovery', async () => {
+    vi.stubEnv('npm_config_user_agent', 'npm/10.9.0');
+    vi.stubEnv('npm_config_prefix', '/tmp/custom-prefix');
+    vi.stubEnv('npm_config_registry', 'https://registry.example.com');
+    vi.stubEnv('npm_config__auth', 'test-only-auth');
+    vi.mocked(execSync).mockImplementation((command) => {
+      if (
+        String(command).includes('firecrawl') &&
+        !String(command).includes('install')
+      )
+        throw new Error('not on PATH');
+      return Buffer.from(
+        command === 'npm --version' ? '10.9.0' : '/tmp/custom-prefix'
+      );
+    });
+    await handleInitCommand({ all: true, skipAuth: true, skipSkills: true });
+    for (const command of [
+      'npm --version',
+      'npm install -g firecrawl-cli',
+      'npm prefix -g',
+    ]) {
+      expect(execSync).toHaveBeenCalledWith(
+        command,
+        expect.objectContaining({
+          env: expect.objectContaining({
+            npm_config_prefix: '/tmp/custom-prefix',
+            npm_config_registry: 'https://registry.example.com',
+            npm_config__auth: 'test-only-auth',
+          }),
+        })
+      );
+    }
   });
 
   it('rejects obsolete npm before installation and exits unsuccessfully', async () => {

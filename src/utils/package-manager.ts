@@ -2,16 +2,17 @@ export type PackageManager = 'npm' | 'pnpm' | 'bun';
 
 export function detectPackageManager(
   env: NodeJS.ProcessEnv = process.env,
-  argv: string[] = process.argv
+  argv: string[] = process.argv,
+  versions: Partial<NodeJS.ProcessVersions> = process.versions
 ): PackageManager {
-  // Runner cache paths identify bunx/pnpm dlx even without lifecycle metadata.
+  // Install and runner paths identify the manager without lifecycle metadata.
   const entry = (argv[1] ?? '').replaceAll('\\', '/');
   if (/bunx[-/]|\/\.bun\//.test(entry)) return 'bun';
-  if (/\/pnpm\/dlx\/|\/\.cache\/pnpm\/dlx\//.test(entry)) return 'pnpm';
+  if (/\/pnpm\/(dlx|global)\//.test(entry)) return 'pnpm';
   const hint = `${env.npm_config_user_agent ?? ''} ${env.npm_execpath ?? ''}`;
   if (/\bpnpm\b/i.test(hint)) return 'pnpm';
   if (/\bbun\b/i.test(hint)) return 'bun';
-  if (process.versions.bun) return 'bun';
+  if (versions.bun) return 'bun';
   return 'npm';
 }
 

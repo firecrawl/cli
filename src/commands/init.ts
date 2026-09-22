@@ -369,7 +369,7 @@ function globalBinDir(manager: PackageManager): string | null {
   try {
     const prefix = execSync(PACKAGE_MANAGERS[manager].bin, {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: cleanNpmEnv(),
+      env: process.env,
     })
       .toString()
       .trim();
@@ -453,7 +453,7 @@ function installGlobalCli(): boolean {
   try {
     const version = execSync(`${manager} --version`, {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: cleanNpmEnv(),
+      env: process.env,
       timeout: 10_000,
     })
       .toString()
@@ -469,7 +469,7 @@ function installGlobalCli(): boolean {
         `Unsupported ${manager} version ${version}. Update ${manager} and check your PATH before retrying.`
       );
     }
-    execSync(commands.install, { stdio: 'inherit', env: cleanNpmEnv() });
+    execSync(commands.install, { stdio: 'inherit', env: process.env });
     console.log(`${green}✓${reset} CLI installed globally\n`);
     warnIfCliNotOnPath(manager);
     return true;
@@ -562,7 +562,9 @@ export async function stepAuth(options: InitOptions): Promise<boolean> {
   }
 }
 
-async function stepIntegrations(options: InitOptions): Promise<number | null> {
+async function stepIntegrations(
+  options: InitOptions
+): Promise<{ skillCount: number | null; skillsInstalled: boolean }> {
   const { checkbox, confirm } = await import('@inquirer/prompts');
 
   const wantIntegrations = await confirm({
@@ -570,7 +572,7 @@ async function stepIntegrations(options: InitOptions): Promise<number | null> {
     default: true,
   });
 
-  if (!wantIntegrations) return null;
+  if (!wantIntegrations) return { skillCount: null, skillsInstalled: false };
 
   const integrations = await checkbox<string>({
     message: 'Which integrations?',
@@ -598,7 +600,7 @@ async function stepIntegrations(options: InitOptions): Promise<number | null> {
 
   if (integrations.length === 0) {
     console.log(`  ${dim}No integrations selected.${reset}\n`);
-    return null;
+    return { skillCount: null, skillsInstalled: false };
   }
 
   // If skills/workflows are being installed, let the user route them to a
@@ -614,6 +616,7 @@ async function stepIntegrations(options: InitOptions): Promise<number | null> {
         : null;
 
   let totalSkills: number | null = null;
+  let skillsInstalled = false;
   for (const integration of integrations) {
     switch (integration) {
       case 'skills': {
@@ -624,6 +627,7 @@ async function stepIntegrations(options: InitOptions): Promise<number | null> {
             options,
             targetAgents
           );
+          skillsInstalled = true;
           if (count != null) totalSkills = (totalSkills ?? 0) + count;
         } catch {
           console.error(
@@ -653,6 +657,7 @@ async function stepIntegrations(options: InitOptions): Promise<number | null> {
             options,
             targetAgents
           );
+          skillsInstalled = true;
           if (count != null) totalSkills = (totalSkills ?? 0) + count;
         } catch {
           console.error(
@@ -703,7 +708,7 @@ async function stepIntegrations(options: InitOptions): Promise<number | null> {
       }
     }
   }
-  return totalSkills;
+  return { skillCount: totalSkills, skillsInstalled };
 }
 
 /**
@@ -1009,8 +1014,9 @@ export async function handleInitCommand(
 
   // Step 3: Integrations (skills, MCP, env)
   let skillCount: number | null = null;
+  let skillsInstalled = false;
   if (!options.skipSkills) {
-    skillCount = await stepIntegrations(options);
+    ({ skillCount, skillsInstalled } = await stepIntegrations(options));
   }
 
   // Step 4: Template
@@ -1022,7 +1028,7 @@ export async function handleInitCommand(
   printNextSteps(
     skillCount,
     true,
-    skillCount != null,
+    skillsInstalled,
     installFailed ? PACKAGE_MANAGERS[detectPackageManager()].run : 'firecrawl'
   );
   if (installFailed) {

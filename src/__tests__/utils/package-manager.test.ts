@@ -10,7 +10,7 @@ describe('package manager detection', () => {
     [{ npm_execpath: '/home/user/.bun/bin/bun' }, 'bun'],
     [{}, 'npm'],
   ] as const)('detects %j as %s', (env, expected) => {
-    expect(detectPackageManager(env, ['node', '/app/firecrawl'])).toBe(
+    expect(detectPackageManager(env, ['node', '/app/firecrawl'], {})).toBe(
       expected
     );
   });
@@ -24,8 +24,16 @@ describe('package manager detection', () => {
       '/home/user/.cache/pnpm/dlx/123/node_modules/firecrawl-cli/dist/index.js',
       'pnpm',
     ],
+    [
+      '/home/user/.local/share/pnpm/global/5/node_modules/firecrawl-cli/dist/index.js',
+      'pnpm',
+    ],
+    [
+      'C:\\Users\\user\\AppData\\Local\\pnpm\\global\\5\\node_modules\\firecrawl-cli\\dist\\index.js',
+      'pnpm',
+    ],
   ])(
-    'prefers runner cache path %s over inherited npm metadata',
+    'prefers install or runner path %s over inherited npm metadata',
     (entry, expected) => {
       expect(
         detectPackageManager({ npm_config_user_agent: 'npm/2.15.12' }, [
@@ -35,4 +43,10 @@ describe('package manager detection', () => {
       ).toBe(expected);
     }
   );
+
+  it('detects a direct Bun invocation without package manager metadata', () => {
+    expect(
+      detectPackageManager({}, ['bun', '/app/dist/index.js'], { bun: '1.3.0' })
+    ).toBe('bun');
+  });
 });
