@@ -33,7 +33,6 @@ export function parseToolOptions(raw = '{}'): Record<string, unknown> {
 }
 
 const FIND_TOOLS_LIST_SELECTORS = [
-  'urls',
   'providers',
   'categories',
   'groups',
@@ -41,7 +40,10 @@ const FIND_TOOLS_LIST_SELECTORS = [
   'expand',
 ];
 
-/** Find Tools list selectors take arrays; also accept the comma-separated form. */
+/**
+ * Find Tools list selectors take arrays; also accept the comma-separated form.
+ * `urls` is never comma-split (a comma is legal inside a URL); a single string is wrapped.
+ */
 export function normalizeFindToolsOptions(
   options: Record<string, unknown>
 ): Record<string, unknown> {
@@ -54,6 +56,7 @@ export function normalizeFindToolsOptions(
         .map((part) => part.trim())
         .filter(Boolean);
   }
+  if (typeof next.urls === 'string') next.urls = [next.urls.trim()];
   return next;
 }
 
@@ -71,6 +74,7 @@ function parseAddress(address: string): AlexandriaCall {
       throw new Error(ADDRESS_HINT);
     }
     if (
+      !value ||
       typeof value !== 'object' ||
       Array.isArray(value) ||
       typeof value.provider !== 'string' ||
@@ -93,11 +97,11 @@ function parseAddress(address: string): AlexandriaCall {
     };
   }
   const slash = trimmed.indexOf('/');
-  if (slash < 1 || slash === trimmed.length - 1) throw new Error(ADDRESS_HINT);
-  return {
-    provider: trimmed.slice(0, slash),
-    capability: trimmed.slice(slash + 1),
-  };
+  if (slash < 0) throw new Error(ADDRESS_HINT);
+  const provider = trimmed.slice(0, slash).trim();
+  const capability = trimmed.slice(slash + 1).trim();
+  if (!provider || !capability) throw new Error(ADDRESS_HINT);
+  return { provider, capability };
 }
 
 export function buildCalls(addresses: string[], values: string[] = []): Call[] {
@@ -261,7 +265,9 @@ export function parseFindToolsRequest(raw: string): Call {
   return {
     provider: 'firecrawl',
     capability: 'find-tools',
-    options: parseToolOptions(JSON.stringify(next.options)),
+    options: normalizeFindToolsOptions(
+      parseToolOptions(JSON.stringify(next.options))
+    ),
   };
 }
 
@@ -273,7 +279,7 @@ export function createFindToolsCommand(): Command {
     .argument('[urls...]', 'Known HTTP(S) URLs to find tools for')
     .option(
       '--options <json>',
-      'Discovery options: query, urls, providers, categories, groups, capabilities; level: providers|groups|tools; limit: 1-100; expand: ["options","response","examples"] (a comma-separated string is also accepted for list selectors). Use provider and capability IDs returned by discovery.'
+      'Discovery options: query, urls, providers, categories, groups, capabilities; level: providers|groups|tools; limit: 1-100; expand: ["options","response","examples"] (a comma-separated string is also accepted for list selectors other than urls). Use provider and capability IDs returned by discovery.'
     )
     .option(
       '--request <json>',

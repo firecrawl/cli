@@ -825,6 +825,73 @@ it('accepts the comma-separated expand form documented in find-tools --help', as
     });
 });
 
+it('never comma-splits urls, which may legally contain commas', async () => {
+  const url = 'https://example.com/items,23?ids=1,2';
+  expect(
+    (
+      await cli([
+        'find-tools',
+        '--options',
+        JSON.stringify({ urls: url, providers: 'fred,benzinga' }),
+      ])
+    ).code
+  ).toBe(0);
+  expect(
+    (
+      await cli([
+        'find-tools',
+        '--request',
+        JSON.stringify({
+          provider: 'firecrawl',
+          capability: 'find-tools',
+          options: { urls: url, providers: 'fred,benzinga' },
+        }),
+      ])
+    ).code
+  ).toBe(0);
+  expect(
+    (
+      await cli([
+        'scrape',
+        '--alexandria',
+        'firecrawl/find-tools',
+        '--options',
+        JSON.stringify({ urls: [url], providers: 'fred,benzinga' }),
+      ])
+    ).code
+  ).toBe(0);
+  expect(requests).toHaveLength(3);
+  for (const request of requests)
+    expect(request.body.alexandria[0].options).toEqual({
+      urls: [url],
+      providers: ['fred', 'benzinga'],
+    });
+});
+
+it('trims whitespace around the slash in bare addresses and rejects empty parts', async () => {
+  const padded = await cli([
+    'scrape',
+    '--alexandria',
+    ' benzinga / news/search ',
+    '--options',
+    '{"pageSize":1}',
+  ]);
+  expect(padded.code).toBe(0);
+  expect(requests[0].body.alexandria).toEqual([
+    {
+      provider: 'benzinga',
+      capability: 'news/search',
+      options: { pageSize: 1 },
+    },
+  ]);
+  for (const address of ['benzinga/ ', ' /news', '/', 'benzinga/']) {
+    const result = await cli(['scrape', '--alexandria', address]);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('provider/capability');
+  }
+  expect(requests).toHaveLength(1);
+});
+
 it('discovers a known URL and follows its returned meta-tool request without executing providers', async () => {
   const next = {
     provider: 'firecrawl',
