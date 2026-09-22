@@ -724,6 +724,107 @@ it('find-tools and explicit meta-tool execution use the same Scrape request', as
   expect(requests[0].url).toBe('/v2/scrape');
 });
 
+it('accepts the HTTP contract object form for --alexandria and rejects malformed addresses locally', async () => {
+  const object = await cli([
+    'scrape',
+    '--alexandria',
+    '{"provider":"benzinga","capability":"news/search","options":{"pageSize":1}}',
+    '--request-id',
+    'object-1',
+  ]);
+  expect(object.code).toBe(0);
+  const bare = await cli([
+    'scrape',
+    '--alexandria',
+    'benzinga/news/search',
+    '--options',
+    '{"pageSize":1}',
+    '--request-id',
+    'object-1',
+  ]);
+  expect(bare.code).toBe(0);
+  expect(requests).toHaveLength(2);
+  expect(requests[0]).toEqual(requests[1]);
+  expect(requests[0].body.alexandria).toEqual([
+    {
+      provider: 'benzinga',
+      capability: 'news/search',
+      options: { pageSize: 1 },
+    },
+  ]);
+  const separate = await cli([
+    'scrape',
+    '--alexandria',
+    '{"provider":"benzinga","capability":"news/search"}',
+    '--options',
+    '{"pageSize":2}',
+  ]);
+  expect(separate.code).toBe(0);
+  expect(requests[2].body.alexandria[0].options).toEqual({ pageSize: 2 });
+  for (const address of [
+    '{"provider":"benzinga"}',
+    '{"provider":"benzinga","capability":"news/search","extra":1}',
+    '{not json',
+    'benzinga',
+  ]) {
+    const result = await cli(['scrape', '--alexandria', address]);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('provider/capability');
+  }
+  const both = await cli([
+    'scrape',
+    '--alexandria',
+    '{"provider":"benzinga","capability":"news/search","options":{}}',
+    '--options',
+    '{}',
+  ]);
+  expect(both.code).toBe(1);
+  expect(both.stderr).toContain('not both');
+  expect(requests).toHaveLength(3);
+});
+
+it('accepts the comma-separated expand form documented in find-tools --help', async () => {
+  const help = await cli(['find-tools', '--help']);
+  expect(help.stdout.replace(/\s+/g, ' ')).toContain(
+    'expand: ["options","response","examples"]'
+  );
+  expect(
+    (
+      await cli([
+        'find-tools',
+        '--options',
+        '{"providers":"fred","expand":"options, response,examples"}',
+      ])
+    ).code
+  ).toBe(0);
+  expect(
+    (
+      await cli([
+        'find-tools',
+        '--options',
+        '{"providers":["fred"],"expand":["options","response","examples"]}',
+      ])
+    ).code
+  ).toBe(0);
+  expect(
+    (
+      await cli([
+        'scrape',
+        '--alexandria',
+        'firecrawl/find-tools',
+        '--options',
+        '{"providers":"fred","expand":"options,response,examples"}',
+      ])
+    ).code
+  ).toBe(0);
+  expect(requests).toHaveLength(3);
+  for (const request of requests)
+    expect(request.body.alexandria[0].options).toEqual({
+      providers: ['fred'],
+      expand: ['options', 'response', 'examples'],
+    });
+});
+
 it('discovers a known URL and follows its returned meta-tool request without executing providers', async () => {
   const next = {
     provider: 'firecrawl',
