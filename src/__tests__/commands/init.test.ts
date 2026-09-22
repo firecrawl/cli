@@ -37,6 +37,7 @@ vi.mock('@inquirer/prompts', () => ({
 describe('handleInitCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.exitCode = 0;
     getApiKeyMock.mockReturnValue(undefined);
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -44,6 +45,8 @@ describe('handleInitCommand', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    process.exitCode = 0;
   });
 
   it('installs CLI and workflow skills from the catalog globally across all detected agents in non-interactive mode', async () => {
@@ -135,4 +138,90 @@ describe('handleInitCommand', () => {
       'fc-stored-key'
     );
   });
+});
+
+describe('init global installation', () => {
+  beforeEach(() => {
+    vi.mocked(execSync).mockReset();
+    process.exitCode = 0;
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubEnv('npm_execpath', '');
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    process.exitCode = 0;
+  });
+
+  it.each([
+    ['npm', '10.9.0', 'npm install -g firecrawl-cli'],
+    ['pnpm', '10.12.1', 'pnpm add -g firecrawl-cli'],
+    ['bun', '1.3.0', 'bun add -g firecrawl-cli'],
+  ])('uses %s for global installation', async (manager, version, command) => {
+    vi.stubEnv('npm_config_user_agent', `${manager}/${version}`);
+    vi.mocked(execSync).mockReturnValue(Buffer.from(version));
+    await handleInitCommand({ all: true, skipAuth: true, skipSkills: true });
+    expect(execSync).toHaveBeenCalledWith(
+      command,
+      expect.objectContaining({ stdio: 'inherit' })
+    );
+    expect(process.exitCode).toBe(0);
+    expect(console.log).not.toHaveBeenCalledWith(
+      expect.stringContaining('Skills installed')
+    );
+  });
+
+  it('rejects obsolete npm before installation and exits unsuccessfully', async () => {
+    vi.stubEnv('npm_config_user_agent', 'npm/2.15.12');
+    vi.mocked(execSync).mockReturnValue(Buffer.from('2.15.12'));
+    await handleInitCommand({ all: true, skipAuth: true, skipSkills: true });
+    expect(execSync).not.toHaveBeenCalledWith(
+      'npm install -g firecrawl-cli',
+      expect.anything()
+    );
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining('Unsupported npm version 2.15.12')
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
+  it.each([
+    ['npm', 'npx firecrawl-cli'],
+    ['pnpm', 'pnpm dlx firecrawl-cli'],
+    ['bun', 'bunx firecrawl-cli'],
+  ])(
+    'reports a failed %s install and preserves successful skills',
+    async (manager, runner) => {
+      vi.stubEnv('npm_config_user_agent', `${manager}/10.0.0`);
+      vi.mocked(execSync).mockImplementation((command) => {
+        if (String(command).includes(' -g firecrawl-cli'))
+          throw new Error('install failed');
+        return Buffer.from(
+          String(command).endsWith('--version')
+            ? '10.0.0'
+            : 'Installed 14 skills'
+        );
+      });
+      await handleInitCommand({ all: true, skipAuth: true });
+      expect(process.exitCode).toBe(1);
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining(`${runner} <command>`)
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('28 skills')
+      );
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Setup incomplete: global CLI installation failed'
+        )
+      );
+      expect(console.error).not.toHaveBeenCalledWith(
+        expect.stringContaining('sudo')
+      );
+      expect(console.log).not.toHaveBeenCalledWith(
+        expect.stringContaining('running via npx')
+      );
+    }
+  );
 });
