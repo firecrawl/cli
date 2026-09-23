@@ -52,7 +52,7 @@ If no returned tool covers the country/market/segment or required inputs, contin
 
 Choose the feedback contract that matches the search job's authentication. A returned `metadata.feedback` invitation identifies the keyless submission endpoint and job ID. Do not send the keyless fields to the authenticated Search feedback route, or add credentials to submit feedback for a keyless job.
 
-Keyless feedback is available for successful and failed jobs when the response includes a job reference. For an explicitly failed job, use observation `kind: "failure"` and `reason: "timeout"`, `"transport_error"`, `"proxy_error"`, or `"other"`; report only the error already returned. Keep the submission under 8 KiB including server defaults. Run `firecrawl feedback --help` for reason definitions and the complete contract. The server invitation states the daily allowance, shared per caller IP.
+Keyless feedback is available for successful and failed jobs when the response includes a job reference. For an explicitly failed job, use observation `kind: "failure"` and `reason: "timeout"`, `"transport_error"`, `"proxy_error"`, or `"other"`; report only the error already returned. Keep the submission under 8 KiB including server defaults. Run `firecrawl feedback --help` for reason definitions and the complete contract.
 
 ### Keyless Search
 
@@ -65,7 +65,7 @@ Use `firecrawl feedback search <jobId>` with `--rating`, `--task`, `--assessment
 
 Task, assessment, and observation detail each require 10-2000 characters. Use only evidence already available. Do not ask the user to complete an interview, investigate further, guess missing content, or diagnose causes merely to submit feedback. An empty result set can support a missing-information observation if the response includes an eligible job reference.
 
-One new submission is accepted per keyless identity per UTC day across Search, Scrape, Parse, API, MCP, and CLI. Job references expire after 24 hours. Feedback does not consume or restore operation allowance. Do not submit after every search or retry a daily-limit rejection in a loop. Client feedback flags do not suppress keyless invitations or submissions. Submitting feedback remains optional.
+Each job accepts one submission, and retrying returns the original feedback ID. Job references expire after 24 hours. Feedback does not consume or restore operation allowance. Submit only when you already have specific evidence, and do not retry a rate-limit rejection in a loop. Client feedback flags do not suppress keyless invitations or submissions. Submitting feedback remains optional.
 
 Run `firecrawl feedback --help` for the full evidence contract. Old instructions using `firecrawl search-feedback` require authentication and do not work for keyless jobs.
 

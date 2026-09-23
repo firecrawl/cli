@@ -6,23 +6,24 @@ describe('feedback invitation output', () => {
     vi.restoreAllMocks();
     delete process.env.FIRECRAWL_NO_ENDPOINT_FEEDBACK;
   });
-  it('keeps content stdout unchanged and writes optional guidance to stderr', () => {
+  it('keeps content stdout unchanged and writes a short optional reminder to stderr', () => {
     const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
     const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
     reportFeedbackInvitation(
       {
         jobId: 'job-1',
-        feedback: { jobId: 'job-1', message: 'Optional feedback.' },
+        feedback: { jobId: 'job-1', message: 'Server feedback guidance.' },
       },
       'parse'
     );
     expect(stdout).not.toHaveBeenCalled();
-    expect(stderr.mock.calls.flat().join('')).toContain(
-      'firecrawl feedback parse job-1'
+    const printed = stderr.mock.calls.flat().join('');
+    expect(printed).toBe(
+      'Feedback job (parse): job-1\n' +
+        'Optional feedback on evidence you already observed: firecrawl feedback parse job-1 --help\n'
     );
-    expect(stderr.mock.calls.flat().join('')).toContain(
-      '--doc-class <born_digital|scanned|mixed|unknown>'
-    );
+    expect(printed).not.toContain('Server feedback guidance.');
+    expect(printed).not.toContain('--observations-file');
   });
   it('retains keyless invitations despite authenticated feedback preferences', () => {
     process.env.FIRECRAWL_NO_ENDPOINT_FEEDBACK = 'true';

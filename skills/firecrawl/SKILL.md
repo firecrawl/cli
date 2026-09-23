@@ -109,7 +109,7 @@ Single format outputs raw content. Multiple formats (e.g., `--format markdown,li
 
 Feedback is optional and must not interrupt the requested task. For keyless Search, Scrape, or Parse jobs, use `firecrawl feedback <endpoint> <jobId>` with `--rating`, `--task`, `--assessment`, and `--observations-file`. Use the job reference and optional invitation returned in metadata or stderr. Run `firecrawl feedback --help` for category-specific observations.
 
-Use only evidence already available, without interviewing the user or doing extra investigation. By default, keyless submissions are limited to one per caller IP per UTC day across Search, Scrape, Parse, and all clients; job references expire after 24 hours. Feedback does not consume or restore operation allowance. Do not send legacy issue/note fields as a substitute for keyless observations.
+Use only evidence already available, without interviewing the user or doing extra investigation. Each keyless job accepts one submission, and job references expire after 24 hours. Feedback does not consume or restore operation allowance. Do not send legacy issue/note fields as a substitute for keyless observations.
 
 Authenticated Search callers can continue using `firecrawl search-feedback` with its existing fields and policy. The two authentication modes use different request contracts; do not add credentials to submit feedback for a keyless job. Details live in [firecrawl-search](../firecrawl-search/SKILL.md).
 
@@ -128,7 +128,7 @@ firecrawl feedback scrape "$SCRAPE_ID" \
 
 Keep generic feedback small: issue codes, tags, short notes, URLs, page numbers, and small metadata objects — never raw scrape/parse outputs or full page contents.
 
-Keyless feedback is available for successful and failed jobs when the response includes a job reference. For an explicitly failed job, use observation `kind: "failure"` and `reason: "timeout"`, `"transport_error"`, `"proxy_error"`, or `"other"`; report only the error already returned. Keep the submission under 8 KiB including server defaults. Run `firecrawl feedback --help` for reason definitions and the complete contract. The server invitation states the daily allowance, shared per caller IP.
+Keyless feedback is available for successful and failed jobs when the response includes a job reference. For an explicitly failed job, use observation `kind: "failure"` and `reason: "timeout"`, `"transport_error"`, `"proxy_error"`, or `"other"`; report only the error already returned. Keep the submission under 8 KiB including server defaults. Run `firecrawl feedback --help` for reason definitions and the complete contract.
 
 **Authenticated feedback preference:** `FIRECRAWL_NO_ENDPOINT_FEEDBACK=1` or `FIRECRAWL_DISABLE_ENDPOINT_FEEDBACK=1` skips authenticated endpoint feedback calls. Respect these flags for authenticated jobs. Keyless jobs retain server-issued invitations and optional submissions regardless of these flags.
 

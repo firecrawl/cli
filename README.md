@@ -492,8 +492,8 @@ provided through `--observations` or `--observations-file`. Keyless Parse also r
 reference and evidence already available; no user interview or additional
 investigation is required. Run `firecrawl feedback --help` for category fields.
 
-Keyless feedback accepts one new submission per identity per UTC day across
-Search, Scrape, Parse, and all clients. References expire after 24 hours.
+Each keyless job accepts one submission; retrying returns the original feedback
+ID. References expire after 24 hours.
 Submitting feedback does not consume or restore operation allowance. Invitations
 and references appear in metadata or stderr, preserving ordinary stdout.
 
@@ -524,7 +524,7 @@ Scrape and Parse observations other than failure: format must be a format type t
 
 Failed Search, Scrape, or Parse jobs: use kind failure with reason timeout, transport_error, proxy_error, or other. Accepted only for a failed job. Include detail and basis; do not supply position, source, format, location, or page. Parse still requires docClass (unknown is allowed).
 
-The stored keyless submission must fit within 8 KiB (8192 UTF-8 bytes), including server defaults and verification flags. By default, one accepted submission per caller IP per UTC day is shared across Search, Scrape, Parse, and all clients; the server invitation states the deployment allowance. Attempts, including rejected requests, are limited to 30 per minute. Submit within 24 hours from the same caller IP. Contract and example: https://docs.firecrawl.dev/api-reference/endpoint/feedback.
+The stored keyless submission must fit within 8 KiB (8192 UTF-8 bytes), including server defaults and verification flags. Each job accepts one submission, and retrying returns the original feedback ID. Submission attempts are rate limited. Submit within 24 hours from the same caller IP. Contract and example: https://docs.firecrawl.dev/api-reference/endpoint/feedback.
 
 If the saved Search response is unavailable, otherwise valid observations are accepted and stored with metadata.unverified: true because their positions could not be checked. Job ownership and requested sources are still checked. Available results must contain every referenced position.
 

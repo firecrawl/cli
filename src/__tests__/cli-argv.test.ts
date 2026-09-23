@@ -25,10 +25,11 @@ describe('CLI argv parsing', () => {
         '--observations-file',
         'one-based position',
         'source_comparison',
-        'UTC day',
+        'one submission',
       ]) {
         expect(result.stdout).toContain(field);
       }
+      expect(result.stdout).not.toContain('UTC day');
     }
   );
 

@@ -42,7 +42,6 @@ export interface EndpointFeedbackOptions {
 }
 
 export type EndpointFeedbackErrorCode =
-  | 'DAILY_LIMIT_REACHED'
   | 'FEEDBACK_UNAVAILABLE'
   | 'JOB_NOT_FOUND'
   | 'SEARCH_NOT_FOUND'

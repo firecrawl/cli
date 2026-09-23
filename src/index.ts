@@ -1475,7 +1475,7 @@ function createSearchFeedbackCommand(): Command {
 function createFeedbackCommand(): Command {
   const cmd = new Command('feedback')
     .description(
-      'Send optional evidence about a job. Keyless Search, Scrape, and Parse accept one submission per identity per UTC day across all three categories without consuming operation quota.'
+      'Send optional evidence about a job. Keyless Search, Scrape, and Parse jobs each accept one submission without consuming operation quota.'
     )
     .argument('<endpoint>', 'Endpoint: search | scrape | parse | map')
     .argument('<jobId>', 'The job id returned by the endpoint')
@@ -1586,7 +1586,7 @@ function createFeedbackCommand(): Command {
         '- transport_error: The operation explicitly reported a network, connection, or TLS failure.\n' +
         '- proxy_error: The operation explicitly reported a proxy failure.\n' +
         '- other: Another operation failure was reported; describe the returned error without guessing its cause.\n' +
-        'Use only evidence already available. The stored keyless submission must fit within 8 KiB (8192 UTF-8 bytes), including server defaults and verification flags. By default, one accepted submission per caller IP per UTC day is shared across Search, Scrape, Parse, and all clients; the server invitation states the deployment allowance. Attempts, including rejected requests, are limited to 30 per minute. Submit within 24 hours from the same caller IP. Contract and example: https://docs.firecrawl.dev/api-reference/endpoint/feedback.'
+        'Use only evidence already available. The stored keyless submission must fit within 8 KiB (8192 UTF-8 bytes), including server defaults and verification flags. Each job accepts one submission, and retrying returns the original feedback ID. Submission attempts are rate limited. Submit within 24 hours from the same caller IP. Contract and example: https://docs.firecrawl.dev/api-reference/endpoint/feedback.'
     )
     .action(async (endpointArg: string, jobId: string, options: any) => {
       let endpoint;
