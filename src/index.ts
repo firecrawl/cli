@@ -9,7 +9,6 @@ import { Command, Option } from 'commander';
 import { addFormatsAlias } from './utils/format-option';
 import {
   addAlexandriaScrapeOptions,
-  buildCalls,
   createFindToolsCommand,
   handleAlexandria,
 } from './commands/alexandria';
@@ -71,6 +70,7 @@ import { handleEnvPullCommand } from './commands/env';
 import { handleStatusCommand } from './commands/status';
 import { handleDoctorCommand } from './commands/doctor';
 import { isUrl, normalizeUrl } from './utils/url';
+import { resolveScrapeTarget } from './utils/scrape-target';
 import { parseMaxPages, parseScrapeOptions } from './utils/options';
 import { isJobId } from './utils/job';
 import { ensureAuthenticated, printBanner } from './utils/auth';
@@ -325,11 +325,11 @@ program
   .option('--status', 'Show version, auth status, concurrency, and credits')
   .allowUnknownOption() // Allow unknown options when URL is passed directly
   .hook('preAction', async (thisCommand, actionCommand) => {
-    // Update global config if API key or URL is provided via global option
+    // Command-level credentials take precedence over root options.
     const globalOptions = thisCommand.opts();
     const commandOptions = actionCommand.opts();
-    if (globalOptions.apiKey) {
-      updateConfig({ apiKey: globalOptions.apiKey });
+    if (commandOptions.apiKey || globalOptions.apiKey) {
+      updateConfig({ apiKey: commandOptions.apiKey || globalOptions.apiKey });
     }
     if (globalOptions.apiUrl) {
       updateConfig({ apiUrl: globalOptions.apiUrl });
@@ -337,6 +337,8 @@ program
 
     // Check if this command requires authentication
     const commandName = actionCommand.name();
+    if (commandName === 'scrape')
+      resolveScrapeTarget(actionCommand.args, commandOptions);
     if (AUTH_REQUIRED_COMMANDS.includes(commandName)) {
       // Skip auth for custom API URLs (e.g., local development)
       // Check both global and command-level options
@@ -355,9 +357,9 @@ program
 function createScrapeCommand(): Command {
   const scrapeCmd = new Command('scrape')
     .description(
-      'Scrape one or more URLs. Multiple URLs are scraped concurrently and saved to .firecrawl/'
+      'Scrape URLs or execute Alexandria provider/capability tools. Multiple URLs are saved to .firecrawl/'
     )
-    .argument('[urls...]', 'URL(s) to scrape')
+    .argument('[urls...]', 'URL(s) or provider/capability tool address(es)')
     .option(
       '-u, --url <url>',
       'URL to scrape (alternative to positional argument)'
@@ -435,47 +437,15 @@ function createScrapeCommand(): Command {
 
     .addHelpText(
       'after',
-      '\nOptional keyless feedback: firecrawl feedback <search|scrape|parse> <jobId> --rating <rating> --task <task> --assessment <assessment> --observations-file <path>. Use only evidence already available. Invitations and job references appear in metadata or stderr. Feedback does not consume operation quota.'
+      '\nKeyless feedback, requested in exchange for free keyless use: firecrawl feedback <search|scrape|parse> <jobId> --rating <rating> --task <task> --assessment <assessment> --observations-file <path>. Use only evidence already available. Invitations and job references appear in metadata or stderr. Feedback does not consume operation quota.'
     )
     .action(async (positionalArgs, options) => {
-      // Collect URLs from positional args and --url option
-      let urls: string[] = [];
-
-      if (positionalArgs && positionalArgs.length > 0) {
-        for (const arg of positionalArgs) {
-          if (isUrl(arg)) {
-            urls.push(normalizeUrl(arg));
-          }
-        }
-      }
-
-      if (options.url) {
-        urls.push(normalizeUrl(options.url));
-      }
-
-      // Remove duplicates
-      urls = [...new Set(urls)];
-
-      if (options.alexandria) {
-        if (urls.length || options.domainTools)
-          throw new Error(
-            'Provider execution cannot be combined with URL scraping.'
-          );
-        await handleAlexandria(
-          buildCalls(options.alexandria, options.options),
-          options
-        );
+      const target = resolveScrapeTarget(positionalArgs ?? [], options);
+      if (target.kind === 'alexandria') {
+        await handleAlexandria(target.calls, options);
         return;
       }
-      if (options.options || options.requestId)
-        throw new Error('--options and --request-id require --alexandria.');
-
-      if (urls.length === 0) {
-        console.error(
-          'Error: URL is required. Provide it as argument or use --url option.'
-        );
-        process.exit(1);
-      }
+      const { urls, positionalFormats } = target;
 
       let schema: Record<string, unknown> | undefined;
       let actions: Record<string, unknown>[] | undefined;
@@ -507,9 +477,6 @@ function createScrapeCommand(): Command {
 
       // Determine format
       let format: string;
-      const positionalFormats = (positionalArgs || []).filter(
-        (arg: string) => !isUrl(arg)
-      );
       if (positionalFormats.length > 0) {
         format = positionalFormats.join(',');
       } else if (options.html) {
@@ -541,6 +508,19 @@ function createScrapeCommand(): Command {
       }
     });
 
+  scrapeCmd.addHelpText(
+    'after',
+    `
+Examples:
+  firecrawl scrape https://example.com
+  firecrawl scrape example.com markdown
+  firecrawl scrape benzinga/news/search --options '{"pageSize":10}'
+  firecrawl scrape --alexandria benzinga/news/search --options '{"pageSize":10}'
+
+Bare names such as "amazon" show guidance without a lookup or execution.
+Tool addresses are validated by Alexandria; unknown tools never fall back to URL scraping.
+`
+  );
   addAlexandriaScrapeOptions(scrapeCmd);
   return addFormatsAlias(scrapeCmd);
 }
@@ -903,7 +883,7 @@ Max upload size: 50 MB
     )
     .addHelpText(
       'after',
-      '\nOptional keyless feedback: firecrawl feedback <search|scrape|parse> <jobId> --rating <rating> --task <task> --assessment <assessment> --observations-file <path>. Use only evidence already available. Invitations and job references appear in metadata or stderr. Feedback does not consume operation quota.'
+      '\nKeyless feedback, requested in exchange for free keyless use: firecrawl feedback <search|scrape|parse> <jobId> --rating <rating> --task <task> --assessment <assessment> --observations-file <path>. Use only evidence already available. Invitations and job references appear in metadata or stderr. Feedback does not consume operation quota.'
     )
     .action(async (file: string, options) => {
       let format: string | undefined;
@@ -946,8 +926,11 @@ Max upload size: 50 MB
  */
 function createSearchCommand(): Command {
   const searchCmd = new Command('search')
-    .description('Search the web and discover relevant Alexandria tools')
-    .argument('<query>', 'Search query')
+    .description(
+      'Search the web with query-relevant highlights and discover relevant Alexandria tools'
+    )
+    .argument('<query>', 'Search query, or alexandria for semantic tool search')
+    .argument('[tool-query]', 'Query for search alexandria')
     .option(
       '--limit <number>',
       'Maximum number of results (default: 5, max: 100)',
@@ -959,7 +942,7 @@ function createSearchCommand(): Command {
     )
     .option(
       '--categories <categories>',
-      'Comma-separated categories to filter: github, research, pdf, developer (research filters web results to research-affiliated websites -- it is NOT the paper index; for papers use `firecrawl research search-papers`. developer searches indexed GitHub issues, merged PRs, READMEs, and docs)'
+      'Comma-separated categories to filter: research, pdf, developer (research filters web results to research-affiliated websites -- it is NOT the paper index; for papers use `firecrawl research search-papers`. developer searches an index of public repositories, GitHub issues, merged PRs, READMEs, and docs)'
     )
     .option(
       '--tbs <value>',
@@ -985,7 +968,7 @@ function createSearchCommand(): Command {
     )
     .option(
       '--highlights',
-      'Return query-relevant highlights for each search result'
+      'Return query-relevant page excerpts for web and news results when available (default).'
     )
     .option(
       '--no-highlights',
@@ -1015,11 +998,32 @@ function createSearchCommand(): Command {
     .option('--json', 'Output as compact JSON', false)
     .addHelpText(
       'after',
-      '\nOptional keyless feedback: firecrawl feedback <search|scrape|parse> <jobId> --rating <rating> --task <task> --assessment <assessment> --observations-file <path>. Use only evidence already available. Invitations and job references appear in metadata or stderr. Feedback does not consume operation quota.'
+      '\nKeyless feedback, requested in exchange for free keyless use: firecrawl feedback <search|scrape|parse> <jobId> --rating <rating> --task <task> --assessment <assessment> --observations-file <path>. Use only evidence already available. Invitations and job references appear in metadata or stderr. Feedback does not consume operation quota.'
     )
-    .action(async (query, options) => {
+    .action(async (query, toolQuery, options) => {
+      const alexandriaOnly = toolQuery !== undefined;
+      if (alexandriaOnly && query !== 'alexandria') {
+        throw new Error(
+          'Quote your search query, or use search alexandria "query".'
+        );
+      }
+      if (alexandriaOnly && !toolQuery.trim()) {
+        throw new Error('Provide a non-empty Alexandria search query.');
+      }
+      if (
+        alexandriaOnly &&
+        options.sources &&
+        options.sources.trim().toLowerCase() !== 'alexandria'
+      ) {
+        throw new Error(
+          'search alexandria requires --sources alexandria; omit --sources or use regular search.'
+        );
+      }
+      if (alexandriaOnly) query = toolQuery;
       // Parse sources
-      let sources: SearchSource[] = ['web', 'alexandria'];
+      let sources: SearchSource[] = alexandriaOnly
+        ? ['alexandria']
+        : ['web', 'alexandria'];
       if (options.sources) {
         sources = options.sources
           .split(',')
@@ -1045,7 +1049,7 @@ function createSearchCommand(): Command {
           .map((c: string) => c.trim().toLowerCase()) as SearchCategory[];
 
         // Validate categories
-        const validCategories = ['github', 'research', 'pdf', 'developer'];
+        const validCategories = ['research', 'pdf', 'developer'];
         for (const category of categories) {
           if (!validCategories.includes(category)) {
             console.error(
@@ -1066,7 +1070,10 @@ function createSearchCommand(): Command {
 
       const searchOptions = {
         query,
-        domainTools: options.domainTools ?? sources.includes('alexandria'),
+        toolDetail: options.toolDetail,
+        domainTools:
+          options.domainTools ??
+          (!alexandriaOnly && sources.includes('alexandria')),
         limit: options.limit,
         sources,
         categories,
@@ -1089,6 +1096,12 @@ function createSearchCommand(): Command {
       await handleSearchCommand(searchOptions);
     });
 
+  searchCmd.addOption(
+    new Option(
+      '--tool-detail <detail>',
+      'Tool detail: compact identities/descriptions (default), summary metadata, full contracts'
+    ).choices(['compact', 'summary', 'full'])
+  );
   searchCmd.option(
     '--domain-tools',
     'Include tools for domains in web results (on by default with Alexandria)'
@@ -1096,6 +1109,10 @@ function createSearchCommand(): Command {
   searchCmd.option(
     '--no-domain-tools',
     'Disable domain matching; source selection still controls semantic tools'
+  );
+  searchCmd.addHelpText(
+    'after',
+    '\nSemantic tool search: firecrawl search alexandria "find company contacts"\n'
   );
   return searchCmd;
 }
@@ -1106,7 +1123,7 @@ function createSearchCommand(): Command {
 function createDeveloperCommand(): Command {
   const developerCmd = new Command('developer')
     .description(
-      'Search an index built for coding agents: GitHub issues, merged PRs, repository READMEs, and curated documentation sites. Express repository, source, language, topic, license, and other scoping intent in the query text; semantic retrieval handles the scoping.'
+      'Search an index built for coding agents: public repositories, GitHub issues, merged PRs, repository READMEs, and curated documentation sites. Express repository, source, language, topic, license, and other scoping intent in the query text; semantic retrieval handles the scoping.'
     )
     .argument('<query>', 'Natural-language developer question or search phrase')
     .option(
@@ -1475,7 +1492,7 @@ function createSearchFeedbackCommand(): Command {
 function createFeedbackCommand(): Command {
   const cmd = new Command('feedback')
     .description(
-      'Send optional evidence about a job. Keyless Search, Scrape, and Parse jobs each accept one submission without consuming operation quota.'
+      'Send evidence about a job. Keyless Search, Scrape, and Parse feedback is requested in exchange for free keyless use; each job accepts one submission without consuming operation quota.'
     )
     .argument('<endpoint>', 'Endpoint: search | scrape | parse | map')
     .argument('<jobId>', 'The job id returned by the endpoint')

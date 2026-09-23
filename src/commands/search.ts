@@ -33,6 +33,7 @@ export async function executeSearch(
       limit: options.limit ?? DEFAULT_SEARCH_LIMIT,
       integration: 'cli',
     };
+    searchParams.toolDetail = options.toolDetail ?? 'compact';
     if (options.domainTools !== undefined)
       searchParams.domainTools = options.domainTools;
 
@@ -293,9 +294,21 @@ function formatSearchReadable(
         typeof tool.provider === 'string' && typeof tool.capability === 'string'
           ? `${tool.provider}/${tool.capability}`
           : undefined;
+      if ((options.toolDetail ?? 'compact') === 'compact') {
+        lines.push(`  ${address ?? tool.id ?? 'Tool'}`);
+        if (typeof tool.description === 'string')
+          lines.push(`    ${clipPassage(tool.description)}`);
+        lines.push('');
+        continue;
+      }
       const title = tool.label ?? tool.name ?? address ?? tool.id ?? 'Tool';
       lines.push(String(title));
-      if (address) lines.push(`  Tool: ${address}`);
+      if (address) {
+        lines.push(`  Tool: ${address}`);
+        lines.push(
+          `  Inspect: npx firecrawl-cli@alexandria list ${address} --json`
+        );
+      }
       if (typeof tool.description === 'string')
         lines.push(`  ${clipPassage(tool.description)}`);
       if (typeof tool.creditsCost === 'number')
@@ -307,7 +320,9 @@ function formatSearchReadable(
       lines.push('');
     }
     lines.push(
-      'Discovery only. Inspect inputs, coverage and access in --json output.',
+      (options.toolDetail ?? 'compact') === 'compact'
+        ? 'Inspect: firecrawl list <provider> <capability> --pretty'
+        : 'Discovery only. Inspect inputs, coverage and access in --json output.',
       'Use find-tools for tool sets or missing contracts; execute selected tools with scrape --alexandria <provider/capability> --options <json>.',
       ''
     );

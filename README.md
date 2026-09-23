@@ -18,25 +18,6 @@ npx -y firecrawl-cli@latest init -y --browser
 - `--browser` opens the browser for Firecrawl authentication automatically
 - skills install globally to every detected AI coding agent by default
 
-### Alexandria beta: browse tools
-
-Use the Alexandria beta with your existing Firecrawl login or API key:
-
-```bash
-npx firecrawl-cli@alexandria alexandria list          # introduction and live categories
-npx firecrawl-cli@alexandria list --providers         # flat provider list
-npx firecrawl-cli@alexandria list finance             # providers in a category
-npx firecrawl-cli@alexandria list benzinga            # provider's tools
-npx firecrawl-cli@alexandria list-tools benzinga      # same browsing interface
-npx firecrawl-cli@alexandria list benzinga <capability> --json
-```
-
-The category overview is available in `1.23.4-alexandria-beta.9` onward. `list` and `list-tools` are interchangeable, including under `firecrawl alexandria`. The root explains how to find and call tools and lists live category descriptions. Choose a category to see its providers, or jump directly to a provider. Selecting a capability reveals its inputs, response, examples, and price. Browsable results expose next commands in JSON; the text guide explains how to select each category. Selecting a capability displays the final contract. Generated commands use `firecrawl`; when using `npx`, replace that prefix with `npx firecrawl-cli@alexandria`.
-
-Discovery is free and never executes the listed tools. The root reads `GET /exchange/discover` on the configured Firecrawl API using your existing credentials; provider and tool lookups use the Find Tools meta tool through Scrape. Category membership and descriptions stay on the server. The root shows all returned categories; `--limit` controls provider/tool page size (default 20, maximum 100). Follow `More` to continue a page. Root `--json` exposes categories at `data.items`; provider/tool JSON keeps the Scrape envelope at `data.alexandria[0].data`. Both include request IDs and navigation where available.
-
-Provider IDs take precedence over category IDs; use `--category` to select a category explicitly. Display names such as `retail`, `developer`, and `public-records` also resolve to their catalog category IDs. Follow a provider with a complete capability ID, such as `calendar/ratings`, to inspect its contract. Use `firecrawl search --sources alexandria` to find tools by task, or `firecrawl find-tools` for URL lookup and raw catalog selectors.
-
 ### Setup Skills, Workflows, and MCP
 
 If you are using an AI coding agent like Claude Code, you can also install skill groups manually — one command per family:
@@ -300,7 +281,7 @@ firecrawl https://example.com --exclude-tags nav,aside,.ad
 
 ### `search` - Search the web
 
-Search the web and optionally scrape content from search results.
+Search the web with query-relevant highlights and optionally scrape content from search results.
 
 ```bash
 # Basic search
@@ -318,15 +299,14 @@ firecrawl search "landscape photography" --sources images
 # Multiple sources
 firecrawl search "machine learning" --sources web,news,images
 
-# Filter by category (GitHub, research-affiliated websites, PDFs)
-firecrawl search "web data python" --categories github
+# Filter by category (research-affiliated websites, PDFs, developer index)
 firecrawl search "transformer architecture" --categories research
-firecrawl search "machine learning" --categories github,research
+firecrawl search "machine learning" --categories pdf,research
 
 # Note: --categories research narrows *web* results to research-affiliated
 # websites. To search papers themselves, use `firecrawl research search-papers`.
 
-# Developer search: GitHub issues, merged PRs, READMEs, and docs
+# Developer search: public repositories, GitHub issues, merged PRs, READMEs, and docs
 firecrawl search "axum middleware ordering" --categories developer
 
 # Time-based search
@@ -347,23 +327,23 @@ firecrawl search "AI data tools"
 
 #### Search Options
 
-| Option                       | Description                                                                                                                                                               |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--limit <n>`                | Maximum results (default: 5, max: 100)                                                                                                                                    |
-| `--sources <sources>`        | Comma-separated: `web`, `images`, `news` (default: web)                                                                                                                   |
-| `--categories <categories>`  | Comma-separated: `github`, `research` (research-affiliated websites -- for papers use [`research search-papers`](#research---search-research-papers)), `pdf`, `developer` |
-| `--tbs <value>`              | Time filter: `qdr:h` (hour), `qdr:d` (day), `qdr:w` (week), `qdr:m` (month), `qdr:y` (year)                                                                               |
-| `--location <location>`      | Geo-targeting (e.g., "Germany", "San Francisco,California,United States")                                                                                                 |
-| `--country <code>`           | ISO country code (default: US)                                                                                                                                            |
-| `--timeout <ms>`             | Timeout in milliseconds (default: 60000)                                                                                                                                  |
-| `--highlights`               | Return query-relevant highlights for each result                                                                                                                          |
-| `--no-highlights`            | Keep the original search snippets                                                                                                                                         |
-| `--ignore-invalid-urls`      | Exclude URLs invalid for other Firecrawl endpoints                                                                                                                        |
-| `--scrape`                   | Enable scraping of search results                                                                                                                                         |
-| `--scrape-formats <formats>` | Scrape formats when `--scrape` enabled (default: markdown)                                                                                                                |
-| `--only-main-content`        | Include only main content when scraping (default: true)                                                                                                                   |
-| `-o, --output <path>`        | Save to file                                                                                                                                                              |
-| `--json`                     | Output as compact JSON                                                                                                                                                    |
+| Option                       | Description                                                                                                                                                     |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--limit <n>`                | Maximum results (default: 5, max: 100)                                                                                                                          |
+| `--sources <sources>`        | Comma-separated: `web`, `images`, `news` (default: web)                                                                                                         |
+| `--categories <categories>`  | Comma-separated: `research` (research-affiliated websites -- for papers use [`research search-papers`](#research---search-research-papers)), `pdf`, `developer` |
+| `--tbs <value>`              | Time filter: `qdr:h` (hour), `qdr:d` (day), `qdr:w` (week), `qdr:m` (month), `qdr:y` (year)                                                                     |
+| `--location <location>`      | Geo-targeting (e.g., "Germany", "San Francisco,California,United States")                                                                                       |
+| `--country <code>`           | ISO country code (default: US)                                                                                                                                  |
+| `--timeout <ms>`             | Timeout in milliseconds (default: 60000)                                                                                                                        |
+| `--highlights`               | Query-relevant highlights for web and news when available (default)                                                                                             |
+| `--no-highlights`            | Keep the original search snippets                                                                                                                               |
+| `--ignore-invalid-urls`      | Exclude URLs invalid for other Firecrawl endpoints                                                                                                              |
+| `--scrape`                   | Enable scraping of search results                                                                                                                               |
+| `--scrape-formats <formats>` | Scrape formats when `--scrape` enabled (default: markdown)                                                                                                      |
+| `--only-main-content`        | Include only main content when scraping (default: true)                                                                                                         |
+| `-o, --output <path>`        | Save to file                                                                                                                                                    |
+| `--json`                     | Output as compact JSON                                                                                                                                          |
 
 #### Examples
 
@@ -371,8 +351,8 @@ firecrawl search "AI data tools"
 # Research a topic with recent results
 firecrawl search "React Server Components" --tbs qdr:m --limit 10
 
-# Find GitHub repositories
-firecrawl search "web data library" --categories github --limit 20
+# Search public developer sources
+firecrawl search "web data library" --categories developer --limit 20
 
 # Search and get full content
 firecrawl search "firecrawl documentation" --scrape --scrape-formats markdown --json -o results.json
@@ -383,7 +363,7 @@ firecrawl research search-papers "large language models" --json
 # Narrow web results to research-affiliated websites (not the paper index)
 firecrawl search "large language models" --categories research --json
 
-# Answer a programming question from issues, merged PRs, READMEs, and docs
+# Answer a programming question from public repositories, GitHub issues, merged PRs, READMEs, and docs
 firecrawl search "tokio select cancellation safety" --categories developer --json
 
 # Search with location targeting
@@ -397,7 +377,7 @@ firecrawl search "AI startups funding" --sources news --tbs qdr:w --limit 15
 
 ### `developer` - Search developer sources
 
-Search an index built for coding agents: GitHub issues, merged pull requests, repository READMEs, and curated documentation sites. Use it for a programming question: code behaviour, a library or framework, an API contract, an error message, or a known bug.
+Search an index built for coding agents: public repositories, GitHub issues, merged pull requests, repository READMEs, and curated documentation sites. Use it for a programming question: code behaviour, a library or framework, an API contract, an error message, or a known bug.
 
 The CLI intentionally keeps this agent-facing surface lean: it accepts only the query and result count. Express repository, source, result-kind, language, topic, license, and other scoping intent in the query text; semantic retrieval handles the scoping. For advanced filters, use the [Developer Index REST API](https://docs.firecrawl.dev/features/developer).
 
@@ -486,8 +466,8 @@ Paper ids accept `pmid:`, `pmcid:`, `doi:`, and `arxiv:` forms, plus canonical `
 
 ### `feedback` - Send endpoint job feedback
 
-Send optional evidence through `/v2/feedback`. Keyless `search`, `scrape`, and
-`parse` jobs require `--rating`, `--task`, `--assessment`, and 1-20 observations
+Send evidence through `/v2/feedback`. Feedback on keyless `search`, `scrape`, and
+`parse` jobs is requested in exchange for free keyless use. These jobs require `--rating`, `--task`, `--assessment`, and 1-20 observations
 provided through `--observations` or `--observations-file`. Keyless Parse also requires `--doc-class born_digital|scanned|mixed|unknown` once per submission. Use the returned job
 reference and evidence already available; no user interview or additional
 investigation is required. Run `firecrawl feedback --help` for category fields.
@@ -564,7 +544,7 @@ Reason definitions:
 - proxy_error: The operation explicitly reported a proxy failure.
 - other: Another operation failure was reported; describe the returned error without guessing its cause.
 
-Set `FIRECRAWL_NO_ENDPOINT_FEEDBACK=1` or `FIRECRAWL_DISABLE_ENDPOINT_FEEDBACK=1` to skip authenticated endpoint feedback calls. These flags do not suppress keyless invitations or submissions. The API includes a pointer on every eligible keyless job response. Submitting feedback remains optional and is never required for continued keyless access.
+Set `FIRECRAWL_NO_ENDPOINT_FEEDBACK=1` or `FIRECRAWL_DISABLE_ENDPOINT_FEEDBACK=1` to skip authenticated endpoint feedback calls. These flags do not suppress keyless invitations or submissions. The API includes a pointer on every eligible keyless job response. Feedback is requested in exchange for free keyless use; continued keyless access does not depend on it.
 
 #### Feedback Options
 
@@ -1078,25 +1058,38 @@ firecrawl setup workflows
 
 For more details, visit the [Firecrawl Documentation](https://docs.firecrawl.dev).
 
-### Alexandria provider terms (beta)
+### Alexandria tool shorthand
+
+Use a provider/capability in place of a URL. The explicit `--alexandria` form remains supported:
+
+```bash
+firecrawl scrape benzinga/news/search --options '{"pageSize":10}'
+firecrawl scrape firecrawl-research-index/read --options '{"paperId":"123","query":"methodology","k":4}'
+firecrawl scrape --alexandria benzinga/news/search --options '{"pageSize":10}'
+firecrawl scrape https://example.com
+```
+
+URLs (including domains, IP addresses and localhost) continue to scrape websites. Tool addresses go directly to Alexandria, which validates the provider and capability; they never fall back to URL scraping. There is no extra catalog lookup. Bare names such as `firecrawl scrape amazon` fail locally with a suggested website URL and directions to `firecrawl list`. Suggestions are not verified or executed. Mixing URLs and tools in one command is rejected.
+
+### Alexandria provider terms
 
 When a provider returns `THIRD_PARTY_DATA_TERMS_REQUIRED`, review its linked terms.
 Read the current provider agreement and metadata with:
 
 ```bash
-npx firecrawl-cli@alexandria alexandria terms show benzinga --pretty
+npx firecrawl-cli@latest alexandria terms show benzinga --pretty
 ```
 
 After reviewing it, explicitly accept the exact version and digest for the organization
 associated with your Firecrawl API key:
 
 ```bash
-npx firecrawl-cli@alexandria alexandria terms accept benzinga \
+npx firecrawl-cli@latest alexandria terms accept benzinga \
   --terms-version '<reviewed-version>' --digest '<reviewed-sha256>' --confirm
 ```
 
-This posts to `/exchange/provider-terms/accept`. No automatic acceptance or retry
-occurs. A `409 terms_changed` requires reviewing the new agreement before retrying.
+This records acceptance of the reviewed Alexandria provider terms. No automatic
+acceptance or retry occurs. A `409 terms_changed` requires reviewing the new agreement before retrying.
 Agents must present the returned terms and provider links, ask the user for explicit
 approval, and wait before accepting. If review is refused or a provider link is
 unavailable, show the error and direct an organization admin to
@@ -1110,3 +1103,16 @@ After confirmed success, rerun the original provider command; its normal credits
 Alexandria execution JSON includes an additive `receipt`: `creditsUsed` is actual reported usage (missing means unknown), `requestId` is the client idempotency identity, and `operationId`/`operationType` identify the server scrape. Existing response fields remain available. IDs, reported credits, and available retry delays print to stderr.
 
 Use the same request ID to recover pending or uncertain execution. Completed results, including failures, replay under the same ID; a deliberate new execution needs a new ID and may charge again. Never automatically rotate an uncertain ID. Structured failures preserve available status, code, action and retry metadata.
+
+### Alexandria session feedback
+
+Report the outcome of a session, missing provider coverage, or capability issues:
+
+```bash
+firecrawl alexandria feedback --rating partial \
+  --url https://example.com \
+  --requested-functionality "Find records and download their attachments" \
+  --rationale "Found summaries but could not retrieve attachments" --json
+```
+
+No job ID is required. Alexandria session feedback has no job-age deadline and does not refund credits. Optional `--provider-feedback` and `--capability-feedback` accept JSON arrays; see `firecrawl alexandria feedback --help` for their fields and issue codes. Capability issue codes are `new_capability_request` (requires `requestedFunctionality`), `missing_capability` (the provider exists but lacks this capability), `insufficient_functionality`, `incorrect_result`, `execution_error`, and `other`. Existing `feedback` and `search-feedback` commands retain their job-specific behavior. Endpoint feedback opt-out environment variables also apply to this command.

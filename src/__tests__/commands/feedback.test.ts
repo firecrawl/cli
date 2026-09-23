@@ -7,6 +7,7 @@ import {
   parseFeedbackListArg,
   parsePageNumbersArg,
 } from '../../commands/feedback';
+import { parseAlexandriaFeedbackArray } from '../../commands/alexandria-feedback';
 import { initializeConfig } from '../../utils/config';
 import { setupTest, teardownTest } from '../utils/mock-client';
 
@@ -120,6 +121,53 @@ describe('executeEndpointFeedback', () => {
     const [, init] = mockFetch.mock.calls[0];
     expect(init.headers.Authorization).toBeUndefined();
     expect(JSON.parse(init.body).observations).toEqual(observations);
+  });
+
+  it('posts Alexandria session feedback without job fields or legacy metadata', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        feedbackId: 'session-feedback',
+        creditsRefunded: 0,
+      }),
+    });
+    const requestedWebsite = {
+      url: 'https://example.com',
+      requestedFunctionality: 'Download attachments',
+    };
+    const capabilityFeedback = [
+      {
+        name: 'attachments',
+        provider: 'example',
+        issue: 'new_capability_request',
+        why: 'Missing documents',
+        requestedFunctionality: 'Return attachment URLs',
+      },
+    ];
+    const result = await executeEndpointFeedback({
+      endpoint: 'alexandria',
+      rating: 'partial',
+      requestedWebsite,
+      rationale: 'Only summaries available',
+      capabilityFeedback,
+      jobId: 'must-not-be-sent',
+      url: 'https://legacy.example',
+      metadata: { legacy: true },
+    });
+    expect(result.success).toBe(true);
+    const [url, request] = mockFetch.mock.calls[0];
+    expect(url).toBe('https://api.firecrawl.dev/v2/feedback');
+    expect(JSON.parse(request.body)).toEqual({
+      endpoint: 'alexandria',
+      rating: 'partial',
+      origin: 'cli',
+      integration: 'cli',
+      requestedWebsite,
+      rationale: 'Only summaries available',
+      capabilityFeedback,
+    });
   });
 
   it('posts generic endpoint feedback to /v2/feedback', async () => {
@@ -303,5 +351,49 @@ describe('keyless document class option', () => {
     expect(
       parseEndpointFeedbackCliOptions({ rating: 'good' }).docClass
     ).toBeUndefined();
+  });
+});
+
+describe('parseAlexandriaFeedbackArray capability issues', () => {
+  const base = {
+    name: 'attachments',
+    provider: 'example',
+    why: 'Provider has no attachment endpoint',
+  };
+  const parse = (entry: Record<string, unknown>) =>
+    parseAlexandriaFeedbackArray(JSON.stringify([entry]), true);
+
+  it('accepts missing_capability without requestedFunctionality', () => {
+    expect(parse({ ...base, issue: 'missing_capability' })).toEqual([
+      { ...base, issue: 'missing_capability' },
+    ]);
+  });
+
+  it('accepts missing_capability with requestedFunctionality', () => {
+    expect(
+      parse({
+        ...base,
+        issue: 'missing_capability',
+        requestedFunctionality: ' Download attachments ',
+      })
+    ).toEqual([
+      {
+        ...base,
+        issue: 'missing_capability',
+        requestedFunctionality: 'Download attachments',
+      },
+    ]);
+  });
+
+  it('still requires requestedFunctionality for new_capability_request', () => {
+    expect(() => parse({ ...base, issue: 'new_capability_request' })).toThrow(
+      'requestedFunctionality must contain 1–2000 characters.'
+    );
+  });
+
+  it('still rejects unknown issue codes', () => {
+    expect(() => parse({ ...base, issue: 'not_a_real_issue' })).toThrow(
+      'unsupported issue code.'
+    );
   });
 });

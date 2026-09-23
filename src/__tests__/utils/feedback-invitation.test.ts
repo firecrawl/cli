@@ -20,7 +20,7 @@ describe('feedback invitation output', () => {
     const printed = stderr.mock.calls.flat().join('');
     expect(printed).toBe(
       'Feedback job (parse): job-1\n' +
-        'Optional feedback on evidence you already observed: firecrawl feedback parse job-1 --help\n'
+        'Feedback requested in exchange for free keyless use: firecrawl feedback parse job-1 --help\n'
     );
     expect(printed).not.toContain('Server feedback guidance.');
     expect(printed).not.toContain('--observations-file');
