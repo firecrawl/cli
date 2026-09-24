@@ -117,7 +117,7 @@ Single format outputs raw content. Multiple formats (e.g., `--format markdown,li
 
 After using search results, send `firecrawl search-feedback` (the first feedback per search refunds 1 credit). The full pattern, guard, and rules live in [firecrawl-search](../firecrawl-search/SKILL.md).
 
-After an Alexandria task (a tool ran, or you looked for one and nothing covered the site), send `firecrawl alexandria feedback` once per website you needed data from. It is free and has no job ID; the pattern and issue codes live in [firecrawl-alexandria](../firecrawl-alexandria/SKILL.md).
+Optional Alexandria quality feedback can describe a provider result or a coverage gap. It is free and has no job ID; the pattern and issue codes live in [firecrawl-alexandria](../firecrawl-alexandria/SKILL.md).
 
 For non-search endpoint jobs, use `firecrawl feedback <endpoint> <jobId>` to send concise job-level feedback through `/v2/feedback`. Supported endpoints are `search`, `scrape`, `parse`, and `map`.
 

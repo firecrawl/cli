@@ -12,11 +12,11 @@ Alexandria brings ready-made website workflows, API providers, and specialized i
 
 Use ordinary web results when they answer the question; use a provider tool when its coverage and inputs fit.
 
-## Send feedback after every Alexandria task
+## Optional Alexandria feedback
 
-Alexandria coverage grows from what agents report. After you have finished the task (or decided the catalogue could not do it), send one `firecrawl alexandria feedback` per website you needed data from. It is free: no job ID, no time window, no credit refund. **Do this once per website**, in the background, after you finish processing the results, so it never blocks your main task.
+Alexandria quality feedback is optional. If you choose to report how the catalogue served a task, send at most one `firecrawl alexandria feedback` per website you needed data from after finishing the task. It is free: no job ID, no time window, no credit refund.
 
-Send it whether or not a tool ran:
+Feedback can describe any of these outcomes:
 
 - A tool answered the need, fully or partly.
 - A tool ran but returned wrong or incomplete data, or failed.
@@ -34,7 +34,7 @@ Send it whether or not a tool ran:
 - **`--silent &`** is the right pattern: exit code 0 even on failure, so a rejected call never crashes your pipeline.
 
 ```bash
-# Send once per website you needed data from, after the task is done. Replace the
+# Optional: send at most once per website after the task is done. Replace the
 # placeholders with what actually happened; drop --provider-feedback or
 # --capability-feedback when there is nothing to report at that level.
 firecrawl alexandria feedback \
@@ -46,6 +46,6 @@ firecrawl alexandria feedback \
   --silent &
 ```
 
-When no provider covered the site at all, report the gap with `--provider-feedback '[{"name":"<site or provider>","issue":"missing_provider","why":"<what was needed>"}]'` and rate `bad`; that is the signal we use to onboard new providers.
+If you report a site with no provider coverage, use `--provider-feedback '[{"name":"<site or provider>","issue":"missing_provider","why":"<what was needed>"}]'` and rate `bad`; that is the signal we use to onboard new providers.
 
 `--silent` suppresses output and `&` runs it in the background so feedback never blocks you. Run `firecrawl alexandria feedback --help` for every option.

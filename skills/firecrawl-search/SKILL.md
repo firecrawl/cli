@@ -53,7 +53,7 @@ Use `list` for category/provider browsing and selected contracts. For a known we
 
 If no returned tool covers the country/market/segment or required inputs, continue with ordinary web results. Do not exhaust the catalogue or pay for adjacent tools just to probe coverage. `--sources web` explicitly opts out of Alexandria; `--sources web --domain-tools` retains domain matches only.
 
-Whenever you looked for or ran an Alexandria tool, send `firecrawl alexandria feedback` once you are done, including when nothing covered the site. It is free and runs in the background; the pattern and rules live in [firecrawl-alexandria](../firecrawl-alexandria/SKILL.md).
+Optional Alexandria quality feedback is free and can describe a provider result or a coverage gap. The pattern and rules live in [firecrawl-alexandria](../firecrawl-alexandria/SKILL.md).
 
 ## Progressive discovery and output handling
 
