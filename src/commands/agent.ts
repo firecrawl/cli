@@ -242,7 +242,8 @@ export async function executeAgent(
 
     // Load schema from file if specified
     let schema: Record<string, unknown> | undefined = options.schema as
-      Record<string, unknown> | undefined;
+      | Record<string, unknown>
+      | undefined;
     if (options.schemaFile) {
       schema = loadSchemaFromFile(options.schemaFile);
     }

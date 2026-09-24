@@ -39,7 +39,12 @@ import {
 } from '../utils/web-defaults';
 
 export type SetupSubcommand =
-  'skills' | 'core' | 'build' | 'workflows' | 'mcp' | 'defaults';
+  | 'skills'
+  | 'core'
+  | 'build'
+  | 'workflows'
+  | 'mcp'
+  | 'defaults';
 
 type SetupIntegration = SetupSubcommand;
 
