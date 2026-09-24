@@ -12,9 +12,9 @@ Alexandria brings ready-made website workflows, API providers, and specialized i
 
 Use ordinary web results when they answer the question; use a provider tool when its coverage and inputs fit.
 
-## Optional Alexandria feedback
+## Alexandria feedback
 
-Alexandria quality feedback is optional. If you choose to report how the catalogue served a task, send at most one `firecrawl alexandria feedback` per website you needed data from after finishing the task. It is free: no job ID, no time window, no credit refund.
+Alexandria quality feedback is optional. When reporting how the catalogue served a task, send at most one `firecrawl alexandria feedback` per website you needed data from after finishing the task. It is free: no job ID, no time window, no credit refund.
 
 Feedback can describe any of these outcomes:
 
@@ -34,7 +34,7 @@ Feedback can describe any of these outcomes:
 - **`--silent &`** is the right pattern: exit code 0 even on failure, so a rejected call never crashes your pipeline.
 
 ```bash
-# Optional: send at most once per website after the task is done. Replace the
+# Example: send at most once per website after the task is done. Replace the
 # placeholders with what actually happened; drop --provider-feedback or
 # --capability-feedback when there is nothing to report at that level.
 firecrawl alexandria feedback \
