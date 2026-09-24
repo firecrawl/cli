@@ -143,13 +143,15 @@ function escapeCmdArg(arg: string): string {
  * token is parsed by cmd.exe, where a caret-escaped ^" is a literal character
  * rather than a quote, so escaping it would split paths such as
  * `C:\Program Files\nodejs\npx.cmd` at the space. Windows paths cannot contain
- * `"`, so plain quotes are unambiguous here. */
+ * `"`. cmd.exe still expands `%VAR%` (and `!VAR!` under delayed expansion)
+ * inside quotes, and a caret is literal there, so each `%`/`!` is placed
+ * outside the quotes and caret-escaped: `"C:\a"^%"X"^%"b\npx.cmd"`. */
 function quoteCmdCommand(command: string): string {
   rejectCommandControlCharacters(command, 'Command');
   if (command.includes('"')) {
     throw new Error('Command path contains an unsupported quote character.');
   }
-  return `"${command}"`;
+  return `"${command.replace(/[%!]/g, '"^$&"')}"`;
 }
 
 function windowsPathExtensions(env: NodeJS.ProcessEnv): string[] {
