@@ -18,6 +18,7 @@ import {
 import { getOrigin } from '../utils/url';
 import { executeMap } from './map';
 import { getStatus } from './status';
+import { requireAlexandriaKey } from './alexandria';
 
 /**
  * Output timing information if requested
@@ -114,6 +115,10 @@ export async function executeScrape(
     scrapeParams.maxAge = options.maxAge;
   }
 
+  if (options.maxPages !== undefined) {
+    scrapeParams.parsers = [{ type: 'pdf', maxPages: options.maxPages }];
+  }
+
   if (options.location) {
     scrapeParams.location = options.location;
   }
@@ -142,6 +147,12 @@ export async function executeScrape(
   const requestStartTime = Date.now();
 
   try {
+    if (options.toolDetail !== undefined)
+      scrapeParams.toolDetail = options.toolDetail;
+    if (options.domainTools) {
+      requireAlexandriaKey(options.apiKey);
+      scrapeParams.domainTools = true;
+    }
     let result: any;
     if (isKeylessMode(options.apiKey, options.apiUrl)) {
       // Keyless free tier: header-less request. The API identifies the CLI via

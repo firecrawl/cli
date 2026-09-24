@@ -2,17 +2,25 @@
  * Types and interfaces for the agent command
  */
 
-import type { AgentWebhookConfig } from 'firecrawl';
+import type { AgentMode, AgentSuggestion, AgentWebhookConfig } from 'firecrawl';
 
-export type AgentModel = 'spark-1-pro' | 'spark-1-mini';
+export type AgentModel = 'spark-1-pro' | 'spark-1-mini' | 'spark-2';
+
+export type AgentEffort = 'low' | 'medium' | 'high';
 
 export type AgentStatus = 'processing' | 'completed' | 'failed' | 'cancelled';
 
 export interface AgentOptions {
   /** Natural language prompt describing the data to extract */
   prompt: string;
-  /** Model to use: spark-1-mini (default, cheaper) or spark-1-pro (higher accuracy) */
+  /** Model to use: spark-2 (default), spark-1-mini, or spark-1-pro */
   model?: AgentModel;
+  /** Reasoning effort for the run */
+  effort?: AgentEffort;
+  /** Continue an existing thread instead of starting a new one */
+  threadId?: string;
+  /** extract (structured data) or chat (message reply) */
+  mode?: AgentMode;
   /** Specific URLs to focus extraction on */
   urls?: string[];
   /** JSON schema for structured output */
@@ -50,6 +58,8 @@ export interface AgentResult {
   data?: {
     jobId: string;
     status: AgentStatus;
+    threadId?: string;
+    threadTurn?: number;
   };
   error?: string;
 }
@@ -62,6 +72,22 @@ export interface AgentStatusResult {
     data?: any;
     creditsUsed?: number;
     expiresAt?: string;
+    threadId?: string;
+    threadTurn?: number;
+    mode?: AgentMode;
+    message?: string;
+    suggestions?: AgentSuggestion[];
   };
   error?: string;
+}
+
+export interface AgentThreadOptions {
+  threadId: string;
+  /** Inline each succeeded run's data */
+  includeData?: boolean;
+  apiKey?: string;
+  apiUrl?: string;
+  output?: string;
+  pretty?: boolean;
+  json?: boolean;
 }

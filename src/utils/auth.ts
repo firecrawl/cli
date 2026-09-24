@@ -13,9 +13,16 @@ import {
 import { updateConfig, getApiKey } from './config';
 
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
-const WEB_URL = 'https://firecrawl.dev';
+// The apex redirects to www, and egress allowlists often permit only www.
+// Polling www directly avoids both the redirect and the blocked apex.
+const WEB_URL = 'https://www.firecrawl.dev';
 const AUTH_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const POLL_INTERVAL_MS = 2000; // 2 seconds
+const POLL_REQUEST_TIMEOUT_MS = 10000; // 10 seconds per request
+// A dead transport fails on every attempt, so a small budget is enough.
+const MAX_TRANSPORT_FAILURES = 3;
+// The server rate limits at 30 polls per minute, so allow it to recover.
+const MAX_SERVER_FAILURES = 5;
 
 /**
  * Prompt for input
@@ -85,6 +92,77 @@ function generateCodeChallenge(verifier: string): string {
   return crypto.createHash('sha256').update(verifier).digest('base64url');
 }
 
+export interface AuthSession {
+  apiKey: string;
+  apiUrl?: string;
+  teamName?: string;
+}
+
+/**
+ * Outcome of one poll.
+ *
+ * The caller must be able to tell a user who has not authorised yet from a
+ * server that refused and from a host the CLI cannot reach. Collapsing all
+ * three into one value is what made a dead transport look like a slow user.
+ */
+export type PollAuthResult =
+  | { status: 'pending' }
+  | { status: 'complete'; session: AuthSession }
+  | { status: 'server-busy'; detail: string }
+  | { status: 'server-error'; detail: string }
+  | { status: 'unreachable'; detail: string };
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Node reports DNS, TLS and proxy failures as a bare "fetch failed" TypeError
+ * and puts the real reason on `cause`, so unwrap it or the message says nothing.
+ */
+function describeFetchError(error: unknown): string {
+  const base = errorMessage(error);
+  const cause =
+    error instanceof Error
+      ? (error as Error & { cause?: unknown }).cause
+      : undefined;
+  if (!cause) return base;
+
+  const causeText = errorMessage(cause).replace(/\s*\.\s*$/, '');
+  const causeCode = (cause as { code?: unknown }).code;
+  const code = typeof causeCode === 'string' ? ` (${causeCode})` : '';
+  return causeText && causeText !== base
+    ? `${base}: ${causeText}${code}`
+    : `${base}${code}`;
+}
+
+function hostLabel(webUrl: string): string {
+  try {
+    return new URL(webUrl).host;
+  } catch {
+    return webUrl;
+  }
+}
+
+function debugLog(message: string): void {
+  if (process.env.FIRECRAWL_DEBUG) {
+    process.stderr.write(`[firecrawl] ${message}\n`);
+  }
+}
+
+async function describeHttpError(response: Response): Promise<string> {
+  let serverMessage = '';
+  try {
+    const body = await response.json();
+    if (body && typeof body.error === 'string') serverMessage = body.error;
+  } catch {
+    // No body, or not JSON. The status line is the whole story.
+  }
+  return serverMessage
+    ? `HTTP ${response.status}: ${serverMessage}`
+    : `HTTP ${response.status} ${response.statusText}`.trim();
+}
+
 /**
  * Poll the server for authentication status using PKCE verification
  * Uses POST to send the code_verifier securely (not in URL)
@@ -93,11 +171,12 @@ async function pollAuthStatus(
   sessionId: string,
   codeVerifier: string,
   webUrl: string
-): Promise<{ apiKey: string; apiUrl?: string; teamName?: string } | null> {
+): Promise<PollAuthResult> {
   const statusUrl = `${webUrl}/api/auth/cli/status`;
 
+  let response: Response;
   try {
-    const response = await fetch(statusUrl, {
+    response = await fetch(statusUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -106,43 +185,83 @@ async function pollAuthStatus(
         session_id: sessionId,
         code_verifier: codeVerifier,
       }),
+      // Without this a black-holed connection never settles and the poll stalls.
+      signal: AbortSignal.timeout(POLL_REQUEST_TIMEOUT_MS),
     });
+  } catch (error) {
+    return { status: 'unreachable', detail: describeFetchError(error) };
+  }
 
-    if (!response.ok) {
-      return null;
+  if (!response.ok) {
+    const detail = await describeHttpError(response);
+    // Rate limits and server faults pass. Every other code is a refusal that
+    // more polling cannot change.
+    if (response.status === 429 || response.status >= 500) {
+      return { status: 'server-busy', detail };
     }
+    return { status: 'server-error', detail };
+  }
 
-    const data = await response.json();
-    if (data.status === 'complete' && data.apiKey) {
-      return {
+  let data: {
+    status?: string;
+    apiKey?: string;
+    apiUrl?: string;
+    teamName?: string;
+  };
+  try {
+    data = await response.json();
+  } catch (error) {
+    return {
+      status: 'server-busy',
+      detail: `Unreadable response body: ${errorMessage(error)}`,
+    };
+  }
+
+  if (data.status === 'complete' && data.apiKey) {
+    return {
+      status: 'complete',
+      session: {
         apiKey: data.apiKey,
         apiUrl: data.apiUrl || DEFAULT_API_URL,
         teamName: data.teamName || undefined,
-      };
-    }
-
-    return null;
-  } catch {
-    return null;
+      },
+    };
   }
+
+  return { status: 'pending' };
 }
 
 /**
  * Wait for authentication with polling
+ *
+ * A pending user keeps the poll running until `timeoutMs`. A dead transport or
+ * a refusal ends it with a message that names the host and the reason.
  */
 async function waitForAuth(
   sessionId: string,
   codeVerifier: string,
   webUrl: string,
   timeoutMs: number = AUTH_TIMEOUT_MS
-): Promise<{ apiKey: string; apiUrl?: string; teamName?: string }> {
+): Promise<AuthSession> {
   const startTime = Date.now();
+  const host = hostLabel(webUrl);
   let dots = 0;
+  let transportFailures = 0;
+  let serverFailures = 0;
 
   return new Promise((resolve, reject) => {
+    const clearLine = (): void => {
+      process.stdout.write('\r' + ' '.repeat(50) + '\r');
+    };
+
+    const fail = (message: string): void => {
+      clearLine();
+      reject(new Error(message));
+    };
+
     const poll = async () => {
       if (Date.now() - startTime > timeoutMs) {
-        reject(new Error('Authentication timed out. Please try again.'));
+        fail('Authentication timed out. Please try again.');
         return;
       }
 
@@ -152,10 +271,54 @@ async function waitForAuth(
       dots++;
 
       const result = await pollAuthStatus(sessionId, codeVerifier, webUrl);
-      if (result) {
-        process.stdout.write('\r' + ' '.repeat(50) + '\r');
-        resolve(result);
-        return;
+
+      switch (result.status) {
+        case 'complete':
+          clearLine();
+          resolve(result.session);
+          return;
+
+        case 'pending':
+          transportFailures = 0;
+          serverFailures = 0;
+          break;
+
+        case 'unreachable':
+          // Both budgets count consecutive failures, so each outcome clears the
+          // other counter.
+          serverFailures = 0;
+          transportFailures += 1;
+          debugLog(`cannot reach ${host}: ${result.detail}`);
+          if (transportFailures >= MAX_TRANSPORT_FAILURES) {
+            fail(
+              `Cannot reach ${host}: ${result.detail}. ` +
+                `${transportFailures} attempts to POST ${host}/api/auth/cli/status all failed to connect, ` +
+                `so the browser login cannot complete. Check DNS, proxy and firewall rules for ${host}, ` +
+                `or point the CLI at a host this network allows: firecrawl login --method browser --web-url <url>`
+            );
+            return;
+          }
+          break;
+
+        case 'server-busy':
+          transportFailures = 0;
+          serverFailures += 1;
+          debugLog(`${host} returned a retryable error: ${result.detail}`);
+          if (serverFailures >= MAX_SERVER_FAILURES) {
+            fail(
+              `${host} is not answering the login poll: ${result.detail}. ` +
+                `Please try again in a moment.`
+            );
+            return;
+          }
+          break;
+
+        case 'server-error':
+          fail(
+            `${host} rejected the login poll: ${result.detail}. ` +
+              `Run "firecrawl login" again to start a new session.`
+          );
+          return;
       }
 
       setTimeout(poll, POLL_INTERVAL_MS);
@@ -699,3 +862,8 @@ export async function ensureAuthenticated(): Promise<string> {
  * Export for direct login command usage
  */
 export { browserLogin, manualLogin, interactiveLogin };
+
+/**
+ * Exported for tests that cover the pending, unreachable and refused cases
+ */
+export { pollAuthStatus, waitForAuth, WEB_URL };

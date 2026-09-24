@@ -39,12 +39,7 @@ import {
 } from '../utils/web-defaults';
 
 export type SetupSubcommand =
-  | 'skills'
-  | 'core'
-  | 'build'
-  | 'workflows'
-  | 'mcp'
-  | 'defaults';
+  'skills' | 'core' | 'build' | 'workflows' | 'mcp' | 'defaults';
 
 type SetupIntegration = SetupSubcommand;
 
@@ -302,6 +297,26 @@ export async function handleSetupCommand(
   }
 
   switch (subcommand) {
+    case 'alexandria': {
+      if (options.nativeSkills || options.project) {
+        throw new Error(
+          'Alexandria beta skill setup requires npm and global scope.'
+        );
+      }
+      const args = buildSkillsInstallArgs({
+        repo: path.resolve(__dirname, '../../beta-skills'),
+        skills: ['firecrawl-alexandria', 'firecrawl-agent'],
+        agent: options.agent,
+        includeNpxYes: true,
+      });
+      // Copy out of the npm cache so the installed skill survives cache cleanup.
+      runClientCommand('npx', [...args.slice(1), '--copy'], {
+        stdio: 'inherit',
+        env: cleanNpmEnv(),
+      });
+      await offerSkillsAuth(options);
+      break;
+    }
     // `skills` is the historical name for the core set; keep it as an alias.
     case 'skills':
     case 'core':

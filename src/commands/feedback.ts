@@ -15,8 +15,12 @@ import {
 export type EndpointFeedbackEndpoint = 'search' | 'scrape' | 'parse' | 'map';
 
 export interface EndpointFeedbackOptions {
-  endpoint: EndpointFeedbackEndpoint;
-  jobId: string;
+  endpoint: EndpointFeedbackEndpoint | 'alexandria';
+  jobId?: string;
+  requestedWebsite?: { url: string; requestedFunctionality: string };
+  rationale?: string;
+  providerFeedback?: Record<string, unknown>[];
+  capabilityFeedback?: Record<string, unknown>[];
   rating: SearchFeedbackRating;
   issues?: string[];
   tags?: string[];
@@ -255,24 +259,44 @@ export async function executeEndpointFeedback(
 
     const body: Record<string, unknown> = {
       endpoint: options.endpoint,
-      jobId: options.jobId,
+      ...(options.endpoint === 'alexandria' ? {} : { jobId: options.jobId }),
       rating: options.rating,
       origin: 'cli',
       integration: 'cli',
     };
 
-    const entries: Array<[string, unknown]> = [
-      ['issues', normalizeList(options.issues)],
-      ['tags', normalizeList(options.tags)],
-      ['note', options.note],
-      ['valuableSources', options.valuableSources],
-      ['valuableResults', options.valuableResults],
-      ['missingContent', options.missingContent],
-      ['querySuggestions', options.querySuggestions],
-      ['url', options.url],
-      ['pageNumbers', options.pageNumbers],
-      ['metadata', options.metadata],
-    ];
+    if (options.endpoint !== 'alexandria' && !options.jobId) {
+      throw new Error('Job feedback requires a job ID.');
+    }
+    // Positions in `valuableResults` are 1-indexed within a search result
+    // group (web/images/news), so they are meaningless anywhere else. Reject
+    // rather than drop: silently ignoring the flag would let a caller believe
+    // the results were recorded.
+    if (options.endpoint !== 'search' && options.valuableResults?.length) {
+      throw new Error(
+        '--valuable-results is only supported for search feedback.'
+      );
+    }
+    const entries: Array<[string, unknown]> =
+      options.endpoint === 'alexandria'
+        ? [
+            ['requestedWebsite', options.requestedWebsite],
+            ['rationale', options.rationale],
+            ['providerFeedback', options.providerFeedback],
+            ['capabilityFeedback', options.capabilityFeedback],
+          ]
+        : [
+            ['issues', normalizeList(options.issues)],
+            ['tags', normalizeList(options.tags)],
+            ['note', options.note],
+            ['valuableSources', options.valuableSources],
+            ['valuableResults', options.valuableResults],
+            ['missingContent', options.missingContent],
+            ['querySuggestions', options.querySuggestions],
+            ['url', options.url],
+            ['pageNumbers', options.pageNumbers],
+            ['metadata', options.metadata],
+          ];
 
     for (const [key, value] of entries) {
       if (value === undefined) continue;

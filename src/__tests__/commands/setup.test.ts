@@ -94,6 +94,30 @@ describe('handleSetupCommand', () => {
     );
   });
 
+  it('copies only the bundled beta skills for explicit beta setup', async () => {
+    await handleSetupCommand('alexandria', { agent: 'claude-code', yes: true });
+    expect(execFileSync).toHaveBeenCalledWith(
+      'npx',
+      [
+        '-y',
+        'skills',
+        'add',
+        path.resolve('beta-skills'),
+        '--full-depth',
+        '--global',
+        '--yes',
+        '--agent',
+        'claude-code',
+        '--skill',
+        'firecrawl-alexandria',
+        'firecrawl-agent',
+        '--copy',
+      ],
+      expect.objectContaining({ stdio: 'inherit' })
+    );
+    expect(execSync).not.toHaveBeenCalled();
+  });
+
   it('installs the CLI skills globally for a specific agent without using --all', async () => {
     await handleSetupCommand('skills', { agent: 'cursor' });
 

@@ -188,7 +188,9 @@ export function handleScrapeOutput(
   }
 
   // Determine if we should force JSON output
-  const forceJson = shouldOutputJson(outputPath, json);
+  const forceJson =
+    shouldOutputJson(outputPath, json) ||
+    Array.isArray((result.data as any).tools);
 
   // If JSON is forced, always output JSON regardless of format
   if (forceJson) {

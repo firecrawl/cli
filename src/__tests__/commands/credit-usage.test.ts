@@ -3,7 +3,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { executeCreditUsage } from '../../commands/credit-usage';
+import {
+  executeCreditUsage,
+  handleCreditUsageCommand,
+} from '../../commands/credit-usage';
 import { initializeConfig } from '../../utils/config';
 import { setupTest, teardownTest } from '../utils/mock-client';
 
@@ -24,6 +27,40 @@ describe('executeCreditUsage', () => {
     teardownTest();
     vi.clearAllMocks();
   });
+
+  it.each([
+    [1109895, 'Remaining Credits: 1,109,895\nPlan Credits: 100,000\n'],
+    [
+      100000,
+      'Remaining Credits: 100,000\nPlan Credits: 100,000\nUsed Credits: 0 (0.0%)\n',
+    ],
+    [
+      25000,
+      'Remaining Credits: 25,000\nPlan Credits: 100,000\nUsed Credits: 75,000 (75.0%)\n',
+    ],
+  ])(
+    'formats a remaining balance of %i without negative usage',
+    async (remainingCredits, expected) => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: {
+            remainingCredits,
+            planCredits: 100000,
+            billingPeriodStart: null,
+            billingPeriodEnd: null,
+          },
+        }),
+      });
+      const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+      try {
+        await handleCreditUsageCommand();
+        expect(stdout).toHaveBeenCalledWith(expected);
+      } finally {
+        stdout.mockRestore();
+      }
+    }
+  );
 
   describe('API call generation', () => {
     it('should make GET request to correct endpoint', async () => {

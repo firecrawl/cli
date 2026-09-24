@@ -1,11 +1,11 @@
 ---
 name: firecrawl-developer-index
-description: Search issues, merged pull requests, READMEs, and documentation. Use when the question is how a library or API behaves, what an error means, or whether a bug was fixed; prefer this over a general web page.
+description: Search an index of public repositories, GitHub issues, merged pull requests, repository READMEs, and curated documentation sites. Use when a programming question needs external documentation or upstream evidence.
 ---
 
 # Firecrawl Developer Index
 
-Answer a developer question from the primary source: the issue where the bug was reported, the merged pull request that fixed it, the README or documentation page that states the contract. A blog post that describes a behaviour is a weaker answer than the passage that defines it, so reach for the index first and the open web second.
+Answer a developer question from the primary source: the issue where the bug was reported, the merged pull request that fixed it, the README or documentation page that states the contract. A blog post that describes a behaviour is a weaker answer than the passage that defines it, so reach for the index first and the open web second. The repository half of the index covers public repositories only. Private or internal repositories are not in it, so a question about private code needs a different route: read that code directly.
 
 There is **no fixed recipe**. Read the question, decide what kind it is, and choose the approach below. A literal error string wants a different move than "how do I do X". Don't run machinery a question doesn't call for.
 

@@ -33,7 +33,11 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
           # Dry run on non-main branches
-          if [ "${{ github.ref_name }}" != "main" ]; then
+          if [[ "$VERSION" == *"-alexandria"* ]]; then
+            echo "dry_run=true" >> "$GITHUB_OUTPUT"
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "Alexandria is npm-only; skipping binary releases"
+          elif [ "${{ github.ref_name }}" != "main" ]; then
             echo "dry_run=true" >> "$GITHUB_OUTPUT"
             echo "released=false" >> "$GITHUB_OUTPUT"
             echo "Dry run on branch ${{ github.ref_name }} — will build but not release"

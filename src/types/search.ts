@@ -4,10 +4,12 @@
 
 import type { ScrapeFormat } from './scrape';
 
-export type SearchSource = 'web' | 'images' | 'news';
-export type SearchCategory = 'github' | 'research' | 'pdf' | 'developer';
+export type SearchSource = 'web' | 'images' | 'news' | 'alexandria';
+export type SearchCategory = 'research' | 'pdf' | 'developer';
 
 export interface SearchOptions {
+  domainTools?: boolean;
+  toolDetail?: 'compact' | 'summary' | 'full';
   /** Search query (required) */
   query: string;
   /** API key for Firecrawl */
@@ -16,9 +18,9 @@ export interface SearchOptions {
   apiUrl?: string;
   /** Maximum number of results (default: 5, max: 100) */
   limit?: number;
-  /** Sources to search: web, images, news (default: web) */
+  /** Sources to search: web, images, news, alexandria (CLI default: web,alexandria) */
   sources?: SearchSource[];
-  /** Categories to filter results: github, research, pdf, developer */
+  /** Categories to filter results: research, pdf, developer */
   categories?: SearchCategory[];
   /** Time-based search parameter (e.g., qdr:h, qdr:d, qdr:w, qdr:m, qdr:y) */
   tbs?: string;
@@ -99,8 +101,9 @@ export interface NewsSearchResult {
 }
 
 /**
- * One hit from the `developer` category. The index covers GitHub issues,
- * merged pull requests, repository READMEs, and curated documentation sites.
+ * One hit from the `developer` category. The index covers public repositories,
+ * GitHub issues, merged pull requests, repository READMEs, and curated
+ * documentation sites.
  * `description` holds the matched passage, which runs to several KB.
  */
 export interface DeveloperSearchResult {
@@ -112,6 +115,7 @@ export interface DeveloperSearchResult {
 }
 
 export interface SearchResultData {
+  tools?: Record<string, unknown>[];
   web?: WebSearchResult[];
   images?: ImageSearchResult[];
   news?: NewsSearchResult[];

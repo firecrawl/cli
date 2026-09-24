@@ -5,6 +5,11 @@
  */
 
 import { execSync } from 'child_process';
+import {
+  detectPackageManager,
+  PACKAGE_MANAGERS,
+  type PackageManager,
+} from '../utils/package-manager';
 import { isAuthenticated, browserLogin, interactiveLogin } from '../utils/auth';
 import { saveCredentials } from '../utils/credentials';
 import { updateConfig, getApiKey } from '../utils/config';
@@ -237,8 +242,7 @@ async function installSkillRepoQuiet(
     }
   }
 
-  // No npx and native already failed — nothing left to try
-  return null;
+  throw new Error('No skills installer is available.');
 }
 
 /**
@@ -298,7 +302,9 @@ function parseSkillCount(output: string): number | null {
  */
 function printNextSteps(
   skillCount: number | null,
-  defaultsHandled = false
+  defaultsHandled = false,
+  skillsInstalled = true,
+  cliCommand = 'firecrawl'
 ): void {
   const arrow = `${dim}→${reset}`;
   const summary =
@@ -307,34 +313,34 @@ function printNextSteps(
       : `${green}✓${reset} Skills installed ${dim}across your AI coding agents${reset}`;
 
   console.log('');
-  console.log(`  ${summary}`);
+  if (skillsInstalled) console.log(`  ${summary}`);
   console.log('');
   console.log(
     `  ${dim}Connect & interact with the web ${reset}${dim}(direct or in your AI agent):${reset}`
   );
   console.log(
-    `    ${arrow} ${bold}Scrape${reset}    "Scrape the pricing page of stripe.com"    ${dim}firecrawl scrape https://stripe.com/pricing${reset}`
+    `    ${arrow} ${bold}Scrape${reset}    "Scrape the pricing page of stripe.com"    ${dim}${cliCommand} scrape https://stripe.com/pricing${reset}`
   );
   console.log(
-    `    ${arrow} ${bold}Search${reset}    "Search for the latest stories in AI"      ${dim}firecrawl search "latest stories in AI"${reset}`
+    `    ${arrow} ${bold}Search${reset}    "Search for the latest stories in AI"      ${dim}${cliCommand} search "latest stories in AI"${reset}`
   );
   console.log(
-    `    ${arrow} ${bold}Interact${reset}  "Go to amazon.com, search keyboards, filter by Prime"  ${dim}firecrawl interact "search keyboards, filter by Prime"${reset}`
+    `    ${arrow} ${bold}Interact${reset}  "Go to amazon.com, search keyboards, filter by Prime"  ${dim}${cliCommand} interact "search keyboards, filter by Prime"${reset}`
   );
   console.log('');
   console.log(
-    `  ${arrow} ${dim}Add MCP:     ${reset} ${bold}firecrawl setup mcp${reset}`
+    `  ${arrow} ${dim}Add MCP:     ${reset} ${bold}${cliCommand} setup mcp${reset}`
   );
   if (!defaultsHandled) {
     console.log(
-      `  ${arrow} ${dim}Default web:${reset} ${bold}firecrawl setup defaults${reset}`
+      `  ${arrow} ${dim}Default web:${reset} ${bold}${cliCommand} setup defaults${reset}`
     );
   }
   console.log(
-    `  ${arrow} ${dim}Make default:${reset} ${bold}firecrawl make default${reset}`
+    `  ${arrow} ${dim}Make default:${reset} ${bold}${cliCommand} make default${reset}`
   );
   console.log(
-    `  ${arrow} ${dim}All commands:${reset} ${bold}firecrawl --help${reset}`
+    `  ${arrow} ${dim}All commands:${reset} ${bold}${cliCommand} --help${reset}`
   );
   console.log('');
   console.log(
@@ -358,18 +364,20 @@ function cliIsOnPath(): boolean {
   }
 }
 
-/** The directory npm drops global bins into, or null if it can't be resolved. */
-function globalBinDir(): string | null {
+/** Resolve the selected package manager's global executable directory. */
+function globalBinDir(manager: PackageManager): string | null {
   try {
-    const prefix = execSync('npm prefix -g', {
+    const prefix = execSync(PACKAGE_MANAGERS[manager].bin, {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: cleanNpmEnv(),
+      env: process.env,
     })
       .toString()
       .trim();
     if (!prefix) return null;
-    // On Windows global bins live in the prefix root; elsewhere in <prefix>/bin.
-    return process.platform === 'win32' ? prefix : `${prefix}/bin`;
+    // npm returns a prefix; pnpm and Bun return the executable directory.
+    return manager === 'npm' && process.platform !== 'win32'
+      ? `${prefix}/bin`
+      : prefix;
   } catch {
     return null;
   }
@@ -393,10 +401,10 @@ function rcFileForShell(): string {
  * fresh Windows shell. The install reports success, yet the command silently
  * doesn't exist in any new terminal. Detect that and print the exact fix.
  */
-function warnIfCliNotOnPath(): void {
+function warnIfCliNotOnPath(manager: PackageManager): void {
   if (cliIsOnPath()) return;
 
-  const bin = globalBinDir();
+  const bin = globalBinDir(manager);
   console.log('');
   console.log(
     `  ${bold}⚠ "firecrawl" was installed but isn't on your PATH yet.${reset}`
@@ -417,11 +425,11 @@ function warnIfCliNotOnPath(): void {
     console.log(`    ${bold}echo '${line}' >> ${rc}${reset}`);
   } else {
     console.log(
-      `  ${dim}Add your npm global bin directory (see "npm prefix -g") to PATH.${reset}`
+      `  ${dim}Add your global bin directory (see "${PACKAGE_MANAGERS[manager].bin}") to PATH.${reset}`
     );
   }
   console.log(
-    `  ${dim}Until then you can still run:${reset} ${bold}npx firecrawl-cli <command>${reset}`
+    `  ${dim}Until then you can still run:${reset} ${bold}${PACKAGE_MANAGERS[manager].run} <command>${reset}`
   );
   console.log('');
 }
@@ -436,14 +444,49 @@ async function stepInstall(): Promise<boolean> {
   if (!shouldInstall) return true;
 
   console.log(`\n  Installing firecrawl-cli globally...`);
+  return installGlobalCli();
+}
+
+function installGlobalCli(): boolean {
+  const manager = detectPackageManager();
+  const commands = PACKAGE_MANAGERS[manager];
   try {
-    execSync('npm install -g firecrawl-cli', { stdio: 'inherit' });
-    console.log(`  ${green}✓${reset} CLI installed globally\n`);
-    warnIfCliNotOnPath();
+    const version = execSync(`${manager} --version`, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: process.env,
+      timeout: 10_000,
+    })
+      .toString()
+      .trim();
+    console.log(
+      `  Using ${manager} ${version} from PATH (Node ${process.version})`
+    );
+    if (
+      !/^\d+\.\d+\.\d+/.test(version) ||
+      (manager === 'npm' && Number(version.split('.')[0]) < 7)
+    ) {
+      throw new Error(
+        `Unsupported ${manager} version ${version}. Update ${manager} and check your PATH before retrying.`
+      );
+    }
+    execSync(commands.install, { stdio: 'inherit', env: process.env });
+    console.log(`${green}✓${reset} CLI installed globally\n`);
+    warnIfCliNotOnPath(manager);
     return true;
-  } catch {
+  } catch (error) {
+    console.error(`Failed to install firecrawl-cli globally using ${manager}.`);
     console.error(
-      '\n  Failed to install globally. You may need sudo or fix npm permissions.'
+      error instanceof Error ? error.message : 'Unknown install error'
+    );
+    console.error(
+      `Check "${manager} --version" and your PATH. Retry: ${commands.install}`
+    );
+    if (manager === 'pnpm')
+      console.error(
+        'If the global bin directory is missing, run "pnpm setup" and restart your shell.'
+      );
+    console.log(
+      `You can run without a global install: ${commands.run} <command>`
     );
     return false;
   }
@@ -519,7 +562,9 @@ export async function stepAuth(options: InitOptions): Promise<boolean> {
   }
 }
 
-async function stepIntegrations(options: InitOptions): Promise<number | null> {
+async function stepIntegrations(
+  options: InitOptions
+): Promise<{ skillCount: number | null; skillsInstalled: boolean }> {
   const { checkbox, confirm } = await import('@inquirer/prompts');
 
   const wantIntegrations = await confirm({
@@ -527,7 +572,7 @@ async function stepIntegrations(options: InitOptions): Promise<number | null> {
     default: true,
   });
 
-  if (!wantIntegrations) return null;
+  if (!wantIntegrations) return { skillCount: null, skillsInstalled: false };
 
   const integrations = await checkbox<string>({
     message: 'Which integrations?',
@@ -555,7 +600,7 @@ async function stepIntegrations(options: InitOptions): Promise<number | null> {
 
   if (integrations.length === 0) {
     console.log(`  ${dim}No integrations selected.${reset}\n`);
-    return null;
+    return { skillCount: null, skillsInstalled: false };
   }
 
   // If skills/workflows are being installed, let the user route them to a
@@ -571,6 +616,7 @@ async function stepIntegrations(options: InitOptions): Promise<number | null> {
         : null;
 
   let totalSkills: number | null = null;
+  let skillsInstalled = false;
   for (const integration of integrations) {
     switch (integration) {
       case 'skills': {
@@ -581,6 +627,7 @@ async function stepIntegrations(options: InitOptions): Promise<number | null> {
             options,
             targetAgents
           );
+          skillsInstalled = true;
           if (count != null) totalSkills = (totalSkills ?? 0) + count;
         } catch {
           console.error(
@@ -610,6 +657,7 @@ async function stepIntegrations(options: InitOptions): Promise<number | null> {
             options,
             targetAgents
           );
+          skillsInstalled = true;
           if (count != null) totalSkills = (totalSkills ?? 0) + count;
         } catch {
           console.error(
@@ -660,7 +708,7 @@ async function stepIntegrations(options: InitOptions): Promise<number | null> {
       }
     }
   }
-  return totalSkills;
+  return { skillCount: totalSkills, skillsInstalled };
 }
 
 /**
@@ -949,10 +997,12 @@ export async function handleInitCommand(
     return;
   }
 
+  let installFailed = false;
   // Step 1: Install
   if (!options.skipInstall) {
     const ok = await stepInstall();
     if (!ok) {
+      installFailed = true;
       console.log(`  ${dim}Continuing with setup...${reset}\n`);
     }
   }
@@ -964,8 +1014,9 @@ export async function handleInitCommand(
 
   // Step 3: Integrations (skills, MCP, env)
   let skillCount: number | null = null;
+  let skillsInstalled = false;
   if (!options.skipSkills) {
-    skillCount = await stepIntegrations(options);
+    ({ skillCount, skillsInstalled } = await stepIntegrations(options));
   }
 
   // Step 4: Template
@@ -974,10 +1025,22 @@ export async function handleInitCommand(
   // Step 5: Default web provider
   await stepDefaults();
 
-  printNextSteps(skillCount, true);
+  printNextSteps(
+    skillCount,
+    true,
+    skillsInstalled,
+    installFailed ? PACKAGE_MANAGERS[detectPackageManager()].run : 'firecrawl'
+  );
+  if (installFailed) {
+    console.error(
+      'Setup incomplete: global CLI installation failed. Other completed steps are preserved.'
+    );
+    process.exitCode = 1;
+  }
 }
 
 async function runNonInteractive(options: InitOptions): Promise<void> {
+  const failures: string[] = [];
   const steps: string[] = [];
   if (!options.skipAuth) steps.push('auth');
   if (!options.skipInstall) steps.push('install');
@@ -1025,6 +1088,7 @@ async function runNonInteractive(options: InitOptions): Promise<void> {
           '\nAuthentication failed:',
           error instanceof Error ? error.message : 'Unknown error'
         );
+        failures.push('authentication');
         console.log('You can authenticate later with: firecrawl login\n');
       }
     }
@@ -1032,21 +1096,11 @@ async function runNonInteractive(options: InitOptions): Promise<void> {
 
   if (!options.skipInstall) {
     console.log(`${stepLabel()} Installing firecrawl-cli globally...`);
-    try {
-      execSync('npm install -g firecrawl-cli', { stdio: 'inherit' });
-      console.log(`${green}✓${reset} CLI installed globally\n`);
-      warnIfCliNotOnPath();
-    } catch {
-      console.error(
-        `\n${dim}Failed to install firecrawl-cli globally. You may need sudo or fix npm permissions.${reset}`
-      );
-      console.log(
-        `${dim}Continuing — the CLI is already running via npx.${reset}\n`
-      );
-    }
+    if (!installGlobalCli()) failures.push('global CLI installation');
   }
 
   let skillCount: number | null = null;
+  let skillsInstalled = false;
   if (!options.skipSkills) {
     console.log(
       `${stepLabel()} Installing firecrawl skills for AI coding agents...`
@@ -1054,15 +1108,29 @@ async function runNonInteractive(options: InitOptions): Promise<void> {
     for (const selection of [INIT_CLI_SELECTION, INIT_WORKFLOW_SELECTION]) {
       try {
         const count = await installSkillRepoQuiet(selection, options);
+        skillsInstalled = true;
         if (count != null) skillCount = (skillCount ?? 0) + count;
       } catch {
         console.error(
           `\n${dim}Failed to install ${selection.label}. Retry with: ${selection.retryCommand}${reset}`
         );
-        process.exit(1);
+        failures.push(selection.label);
       }
     }
   }
 
-  printNextSteps(skillCount);
+  printNextSteps(
+    skillCount,
+    false,
+    skillsInstalled,
+    failures.includes('global CLI installation')
+      ? PACKAGE_MANAGERS[detectPackageManager()].run
+      : 'firecrawl'
+  );
+  if (failures.length > 0) {
+    console.error(
+      `Setup incomplete: ${failures.join(', ')} failed. Other completed steps are preserved.`
+    );
+    process.exitCode = 1;
+  }
 }

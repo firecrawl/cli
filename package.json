@@ -1,6 +1,9 @@
 {
   "name": "firecrawl-cli",
-  "version": "1.23.3",
+  "version": "1.24.4",
+  "publishConfig": {
+    "tag": "latest"
+  },
   "description": "Command-line interface for Firecrawl. Scrape, crawl, and extract data from any website, and search a ~43M-abstract research paper index (PubMed, bioRxiv, medRxiv, arXiv), directly from your terminal.",
   "main": "dist/index.js",
   "bin": {
@@ -64,7 +67,7 @@
   },
   "homepage": "https://docs.firecrawl.dev/cli",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
   },
   "files": [
     "dist",
@@ -82,7 +85,7 @@
   "dependencies": {
     "@inquirer/prompts": "^8.2.1",
     "commander": "^14.0.2",
-    "firecrawl": "4.24.0",
+    "firecrawl": "4.40.0",
     "yaml": "^2.9.0",
     "zod-to-json-schema": "3.24.6"
   }

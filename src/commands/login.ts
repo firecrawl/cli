@@ -10,10 +10,10 @@ import {
   manualLogin,
   interactiveLogin,
   isAuthenticated,
+  WEB_URL,
 } from '../utils/auth';
 
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
-const WEB_URL = 'https://firecrawl.dev';
 
 export interface LoginOptions {
   apiKey?: string;

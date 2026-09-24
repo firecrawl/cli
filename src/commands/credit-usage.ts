@@ -111,10 +111,14 @@ function formatReadable(data: CreditUsageResult['data']): string {
   lines.push(`Remaining Credits: ${formatNumber(data.remainingCredits)}`);
 
   if (data.planCredits > 0) {
-    const usedCredits = data.planCredits - data.remainingCredits;
-    const usagePercent = ((usedCredits / data.planCredits) * 100).toFixed(1);
     lines.push(`Plan Credits: ${formatNumber(data.planCredits)}`);
-    lines.push(`Used Credits: ${formatNumber(usedCredits)} (${usagePercent}%)`);
+    if (data.remainingCredits <= data.planCredits) {
+      const usedCredits = data.planCredits - data.remainingCredits;
+      const usagePercent = ((usedCredits / data.planCredits) * 100).toFixed(1);
+      lines.push(
+        `Used Credits: ${formatNumber(usedCredits)} (${usagePercent}%)`
+      );
+    }
   }
 
   // Format billing period if available
