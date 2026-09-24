@@ -139,6 +139,19 @@ function escapeCmdArg(arg: string): string {
   return quoted.replace(CMD_META_CHARS, '^$1');
 }
 
+/** Quote the program path that cmd.exe itself resolves. Unlike arguments, this
+ * token is parsed by cmd.exe, where a caret-escaped ^" is a literal character
+ * rather than a quote, so escaping it would split paths such as
+ * `C:\Program Files\nodejs\npx.cmd` at the space. Windows paths cannot contain
+ * `"`, so plain quotes are unambiguous here. */
+function quoteCmdCommand(command: string): string {
+  rejectCommandControlCharacters(command, 'Command');
+  if (command.includes('"')) {
+    throw new Error('Command path contains an unsupported quote character.');
+  }
+  return `"${command}"`;
+}
+
 function windowsPathExtensions(env: NodeJS.ProcessEnv): string[] {
   const configured = env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD';
   return configured
@@ -208,7 +221,7 @@ function isCommandOnPath(command: string): boolean {
  * On every other platform we spawn the binary directly with no shell, exactly as
  * `execFileSync` did before.
  */
-function runClientCommand(
+export function runClientCommand(
   command: string,
   args: string[],
   options: Parameters<typeof execFileSync>[2]
@@ -229,7 +242,7 @@ function runClientCommand(
     return;
   }
 
-  const line = [escapeCmdArg(resolved), ...args.map(escapeCmdArg)].join(' ');
+  const line = [quoteCmdCommand(resolved), ...args.map(escapeCmdArg)].join(' ');
   const comspec = env.ComSpec ?? env.COMSPEC ?? 'cmd.exe';
   const windowsOptions = {
     ...options,
