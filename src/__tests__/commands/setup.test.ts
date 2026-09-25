@@ -886,7 +886,11 @@ describe('handleSetupCommand', () => {
       expect(command).toBe('cmd.exe');
       expect(passthruArgs.slice(0, 3)).toEqual(['/d', '/s', '/c']);
       expect(opts?.windowsVerbatimArguments).toBe(true);
-      expect(passthruArgs[3]).toContain(`^\"${path.join(bin, 'npx.CMD')}^\"`);
+      // cmd.exe parses the command token itself, so its quotes must stay real
+      // quotes: a caret-escaped ^" is a literal character there, and the path
+      // would split at the space in "Program Files".
+      expect(passthruArgs[3]).toContain(`""${path.join(bin, 'npx.CMD')}" `);
+      expect(passthruArgs[3]).not.toContain(`^\"${path.join(bin, 'npx.CMD')}`);
       expect(passthruArgs[3]).toContain('add-mcp@1.14.0');
       expect(passthruArgs[3]).toContain(
         '^"Authorization: Bearer ${FIRECRAWL_API_KEY}^"'

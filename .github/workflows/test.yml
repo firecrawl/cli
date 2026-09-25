@@ -40,6 +40,31 @@ jobs:
       - name: Run tests
         run: pnpm run test
 
+  # The main test job runs on Linux, where the real cmd.exe spawn tests are
+  # skipped. Run them on Windows so command quoting stays covered.
+  test-windows-spawn:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Windows spawn tests
+        run: pnpm exec vitest run src/__tests__/commands/setup-windows-spawn.test.ts
+
   test-binary:
     if: github.event_name == 'pull_request'
     strategy:
