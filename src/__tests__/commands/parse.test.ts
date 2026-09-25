@@ -38,6 +38,7 @@ describe('executeParse', () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     fs.rmSync(tmpDir, { recursive: true, force: true });
     teardownTest();
@@ -61,7 +62,7 @@ describe('executeParse', () => {
     ];
     expect(url).toBe('https://api.firecrawl.dev/v2/parse');
     expect(init.method).toBe('POST');
-    expect(init.headers).toBeUndefined();
+    expect(init.headers).toEqual({});
 
     const options = JSON.parse(init.body.get('options') as string);
     expect(options).toEqual({
@@ -69,6 +70,14 @@ describe('executeParse', () => {
       integration: 'cli',
     });
     expect(init.body.get('file')).toBeInstanceOf(Blob);
+  });
+
+  it('does not send an invitation opt-out with the keyless uploaded file', async () => {
+    vi.stubEnv('FIRECRAWL_NO_ENDPOINT_FEEDBACK', 'true');
+    initializeConfig({ apiUrl: 'https://api.firecrawl.dev' });
+    const result = await executeParse({ file: filePath });
+    expect(result.success).toBe(true);
+    expect(mockFetch.mock.calls[0][1].headers).toEqual({});
   });
 
   it('includes the bearer token when an API key is configured', async () => {

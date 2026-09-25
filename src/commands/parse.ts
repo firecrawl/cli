@@ -1,3 +1,4 @@
+import { reportFeedbackInvitation } from '../utils/feedback-invitation';
 /**
  * Parse command implementation
  *
@@ -184,8 +185,9 @@ export async function executeParse(
   try {
     const response = await fetch(`${apiUrl}/v2/parse`, {
       method: 'POST',
-      headers:
-        !keyless && apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
+      headers: {
+        ...(!keyless && apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
       body: form,
     });
 
@@ -194,6 +196,11 @@ export async function executeParse(
 
     const payload = (await response.json().catch(() => ({}))) as any;
 
+    if (keyless)
+      reportFeedbackInvitation(
+        payload?.data?.metadata ?? payload?.metadata,
+        'parse'
+      );
     if (!response.ok || payload?.success === false) {
       const message =
         payload?.error ||

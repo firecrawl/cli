@@ -1,23 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   executeEndpointFeedback,
+  parseEndpointFeedbackCliOptions,
   handleEndpointFeedbackCommand,
   parseEndpointFeedbackEndpoint,
   parseFeedbackListArg,
   parsePageNumbersArg,
 } from '../../commands/feedback';
 import { parseAlexandriaFeedbackArray } from '../../commands/alexandria-feedback';
-import { getClient } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { setupTest, teardownTest } from '../utils/mock-client';
 
-vi.mock('../../utils/client', async () => {
-  const actual = await vi.importActual('../../utils/client');
-  return {
-    ...actual,
-    getClient: vi.fn(),
-  };
-});
+vi.mock('../../utils/credentials', () => ({
+  loadCredentials: vi.fn(() => null),
+}));
 
 describe('executeEndpointFeedback', () => {
   let mockFetch: ReturnType<typeof vi.fn>;
@@ -36,8 +32,95 @@ describe('executeEndpointFeedback', () => {
   afterEach(() => {
     teardownTest();
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
     delete process.env.FIRECRAWL_NO_ENDPOINT_FEEDBACK;
     delete process.env.FIRECRAWL_DISABLE_ENDPOINT_FEEDBACK;
+  });
+
+  it.each([undefined, 'https://api.firecrawl.dev'])(
+    'submits keyless evidence despite authenticated opt-out with API URL %s',
+    async (apiUrl) => {
+      vi.stubEnv('FIRECRAWL_API_KEY', '');
+      vi.stubEnv('FIRECRAWL_NO_ENDPOINT_FEEDBACK', '1');
+      vi.stubEnv('FIRECRAWL_DISABLE_ENDPOINT_FEEDBACK', '1');
+      initializeConfig({
+        apiKey: undefined,
+        apiUrl: 'https://api.firecrawl.dev',
+      });
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          feedbackId: 'feedback-1',
+          creditsRefunded: 0,
+        }),
+      });
+      const observations = [
+        {
+          kind: 'incorrect',
+          reason: 'missing_fields',
+          format: 'json',
+          basis: 'output',
+          detail: 'The table contains the expected column headings.',
+          page: 2,
+        },
+      ];
+      const result = await executeEndpointFeedback({
+        apiUrl,
+        endpoint: 'parse',
+        docClass: 'born_digital',
+        jobId: '00000000-0000-4000-8000-000000000001',
+        rating: 'good',
+        task: 'Read the table headings',
+        assessment: 'The output preserved all table headings.',
+        observations,
+      });
+      expect(result.success).toBe(true);
+      const [, init] = mockFetch.mock.calls[0];
+      expect(init.headers.Authorization).toBeUndefined();
+      expect(JSON.parse(init.body)).toMatchObject({
+        endpoint: 'parse',
+        docClass: 'born_digital',
+        observations,
+        origin: 'cli',
+        integration: 'cli',
+      });
+    }
+  );
+
+  it('preserves replacement sources on keyless irrelevant Search observations', async () => {
+    vi.stubEnv('FIRECRAWL_API_KEY', '');
+    initializeConfig({
+      apiKey: undefined,
+      apiUrl: 'https://api.firecrawl.dev',
+    });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true, feedbackId: 'feedback-1' }),
+    });
+    const observations = [
+      {
+        kind: 'irrelevant',
+        reason: 'aggregator_over_official',
+        position: 1,
+        knownSources: ['https://example.com/official'],
+        basis: 'output',
+        detail: 'The official reference should rank before this aggregator.',
+      },
+    ];
+    await executeEndpointFeedback({
+      endpoint: 'search',
+      jobId: '00000000-0000-4000-8000-000000000001',
+      rating: 'partial',
+      task: 'Find the official retry reference',
+      assessment: 'An aggregator ranked above the official reference.',
+      observations,
+    });
+    const [, init] = mockFetch.mock.calls[0];
+    expect(init.headers.Authorization).toBeUndefined();
+    expect(JSON.parse(init.body).observations).toEqual(observations);
   });
 
   it('posts Alexandria session feedback without job fields or legacy metadata', async () => {
@@ -112,10 +195,6 @@ describe('executeEndpointFeedback', () => {
       apiUrl: 'http://localhost:3002',
     });
 
-    expect(getClient).toHaveBeenCalledWith({
-      apiKey: undefined,
-      apiUrl: 'http://localhost:3002',
-    });
     expect(result).toEqual({
       success: true,
       feedbackId: '0193f6c5-1234-7890-abcd-1234567890ab',
@@ -197,7 +276,6 @@ describe('executeEndpointFeedback', () => {
       creditsRefunded: 0,
     });
 
-    expect(getClient).not.toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -226,7 +304,6 @@ describe('executeEndpointFeedback', () => {
 
       expect(stderrSpy).not.toHaveBeenCalled();
       expect(stdoutSpy).not.toHaveBeenCalled();
-      expect(getClient).not.toHaveBeenCalled();
       expect(mockFetch).not.toHaveBeenCalled();
     } finally {
       exitSpy.mockRestore();
@@ -254,6 +331,26 @@ describe('feedback parsing', () => {
   it('parses positive page numbers', () => {
     expect(parsePageNumbersArg('1, 2, bad, -1, 3')).toEqual([1, 2, 3]);
     expect(parsePageNumbersArg('[4,5]')).toEqual([4, 5]);
+  });
+});
+
+describe('keyless document class option', () => {
+  it.each(['born_digital', 'scanned', 'mixed', 'unknown'] as const)(
+    'preserves %s for submission',
+    (docClass) => {
+      expect(
+        parseEndpointFeedbackCliOptions({ rating: 'partial', docClass })
+          .docClass
+      ).toBe(docClass);
+    }
+  );
+  it('rejects an unsupported class without changing authenticated defaults', () => {
+    expect(() =>
+      parseEndpointFeedbackCliOptions({ rating: 'partial', docClass: 'pdf' })
+    ).toThrow('--doc-class');
+    expect(
+      parseEndpointFeedbackCliOptions({ rating: 'good' }).docClass
+    ).toBeUndefined();
   });
 });
 

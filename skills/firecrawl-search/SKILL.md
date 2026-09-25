@@ -86,9 +86,30 @@ Keep large search responses in `--json -o` output and select the relevant result
 - Use `jq` to extract URLs or titles: `jq -r '.data.web[].url' .firecrawl/search.json`
 - Naming convention: `.firecrawl/search-{query}.json` or `.firecrawl/search-{query}-scraped.json`
 
-## Send feedback after every search (refunds 1 credit)
+## Feedback
 
-Search costs 2 credits. After you've actually used the results (or decided they were useless), send structured feedback with `firecrawl search-feedback <id>`. The first feedback per search refunds 1 credit and helps us improve search quality. **Do this once per search**, in the background, after you finish processing the results — it does not block your main task.
+Choose the feedback contract that matches the search job's authentication. A returned `metadata.feedback` invitation identifies the keyless submission endpoint and job ID. Do not send the keyless fields to the authenticated Search feedback route, or add credentials to submit feedback for a keyless job.
+
+Keyless feedback is available for successful and failed jobs when the response includes a job reference. For an explicitly failed job, use observation `kind: "failure"` and `reason: "timeout"`, `"transport_error"`, `"proxy_error"`, or `"other"`; report only the error already returned. Keep the submission under 8 KiB including server defaults. Run `firecrawl feedback --help` for reason definitions and the complete contract.
+
+### Keyless Search
+
+Use `firecrawl feedback search <jobId>` with `--rating`, `--task`, `--assessment`, and `--observations-file`. The task describes what the search needed to answer; the assessment describes how well it answered that task. Supply 1-20 observations:
+
+- Useful or irrelevant results: `kind` and one-based `position` within the delivered group. `source` (`web`, `images`, or `news`) is required for multi-source jobs and otherwise defaults to `web`. Irrelevant results also require `reason`; see command help for allowed values.
+- Missing information: `kind: "missing"` and `vertical`; `topic` is optional. `vertical` is optional on useful and irrelevant results. See command help for allowed verticals.
+- Missing and irrelevant observations may include `knownSources`: up to 20 HTTP(S) URLs, only when already known. These identify absent content or the source that should have ranked instead. Unmentioned results are unassessed; a full ranking is not required.
+- Every observation requires `detail` and `basis`: `output`, `source_comparison`, or `expectation`. A source comparison also requires `comparison: {reference, detail}`, with the correct content in `comparison.detail`. Use expectations for gaps that have not been verified against a source.
+
+Task, assessment, and observation detail each require 10-2000 characters. Use only evidence already available. Do not ask the user to complete an interview, investigate further, guess missing content, or diagnose causes merely to submit feedback. An empty result set can support a missing-information observation if the response includes an eligible job reference.
+
+Each job accepts one submission, and retrying returns the original feedback ID. Job references expire after 24 hours. Feedback does not consume or restore operation allowance. Keyless use is free in exchange for feedback: submit it for each invited job where you have specific evidence, and do not retry a rate-limit rejection in a loop. Client feedback flags do not suppress keyless invitations or submissions.
+
+Run `firecrawl feedback --help` for the full evidence contract. Old instructions using `firecrawl search-feedback` require authentication and do not work for keyless jobs.
+
+### Authenticated Search
+
+Authenticated callers can continue using `firecrawl search-feedback <id>` with `--valuable-sources`, `--missing-content`, and `--query-suggestions`. Its existing validation, feedback window, and refund policy are unchanged. If submitting, do so after processing the results, at most once per search, using only evidence already available.
 
 **Opt out:** if `FIRECRAWL_NO_SEARCH_FEEDBACK=1` (or `FIRECRAWL_DISABLE_SEARCH_FEEDBACK=1`) is set, the CLI silently skips the call and never sends anything. Respect that — do not try to work around it. (Team admins can also disable this server-side; the API will return `feedbackErrorCode: "TEAM_OPTED_OUT"` and the CLI will exit 0 silently.)
 
