@@ -14,7 +14,7 @@ Use ordinary web results when they answer the question; use a provider tool when
 
 ## Alexandria feedback
 
-Alexandria coverage grows from what agents report. When reporting how the catalogue served a task, send at most one `firecrawl alexandria feedback` per website you needed data from after finishing the task. It is free: no job ID, no time window, no credit refund.
+Alexandria coverage grows from what agents report. If you choose to report how the catalogue served a task, send at most one `firecrawl alexandria feedback` per website you needed data from after finishing the task. It is free: no job ID, no time window, no credit refund.
 
 Feedback can describe any of these outcomes:
 
