@@ -110,3 +110,32 @@ it.each([
     });
   }
 );
+
+it('retains all valid charges when other SQL costs are invalid', () => {
+  const response = {
+    data: {
+      creditsCost: 0,
+      alexandria: [5, undefined, 110, -1, NaN, Infinity, '15', 0, 15].flatMap(
+        (cost) => sqlResponse(cost).data.alexandria
+      ),
+    },
+  };
+  expect(receiptFor(response, 'scrape')).toEqual({
+    creditsUsed: 0,
+    separatelyBilledCredits: 130,
+  });
+});
+it('retains a valid zero alongside invalid costs', () => {
+  const response = {
+    data: {
+      creditsCost: 0,
+      alexandria: [undefined, 0, -1].flatMap(
+        (cost) => sqlResponse(cost).data.alexandria
+      ),
+    },
+  };
+  expect(receiptFor(response, 'scrape')).toEqual({
+    creditsUsed: 0,
+    separatelyBilledCredits: 0,
+  });
+});

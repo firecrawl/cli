@@ -34,13 +34,13 @@ export function receiptFor(
           )
           .map((entry: any) => entry.data.creditsCost)
       : [];
+  const validSqlCosts = sqlCosts.filter(
+    (cost: unknown): cost is number =>
+      typeof cost === 'number' && Number.isFinite(cost) && cost >= 0
+  );
   const separatelyBilledCredits =
-    sqlCosts.length > 0 &&
-    sqlCosts.every(
-      (cost: unknown) =>
-        typeof cost === 'number' && Number.isFinite(cost) && cost >= 0
-    )
-      ? sqlCosts.reduce((sum: number, cost: number) => sum + cost, 0)
+    validSqlCosts.length > 0
+      ? validSqlCosts.reduce((sum: number, cost: number) => sum + cost, 0)
       : undefined;
   return {
     ...(separatelyBilledCredits !== undefined &&
