@@ -874,7 +874,9 @@ Examples:
   $ firecrawl parse ./report.pdf -Q "What is the total revenue?"
   $ firecrawl parse ./report.pdf --json --pretty -o report.json
 
-Supported file types: .html, .htm, .pdf, .docx, .doc, .odt, .rtf, .xlsx, .xls
+Supported file types: .html, .htm, .pdf, .docx, .doc, .odt, .rtf, .xlsx, .xls,
+  and raster images (.png, .jpg, .jpeg, .jp2, .tif, .tiff, .gif, .bmp, .webp, .avif)
+  which are OCR'd as one-page documents
 Max upload size: 50 MB
 `
     )
