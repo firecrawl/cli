@@ -4,7 +4,7 @@
  */
 
 import { getClient, isKeylessMode } from '../utils/client';
-import { getConfig, validateConfig } from '../utils/config';
+import { getConfig, normalizeApiUrl, validateConfig } from '../utils/config';
 import {
   getScrapeId,
   loadInteractSession,
@@ -46,7 +46,7 @@ function resolveApiConfig(options: { apiKey?: string; apiUrl?: string }) {
     validateConfig(apiKey);
   }
   const apiUrl = options.apiUrl || config.apiUrl || 'https://api.firecrawl.dev';
-  return { apiKey, apiUrl: apiUrl.replace(/\/$/, ''), keyless };
+  return { apiKey, apiUrl: normalizeApiUrl(apiUrl), keyless };
 }
 
 /**

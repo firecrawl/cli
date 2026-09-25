@@ -11,6 +11,7 @@ import {
   isCustomApiUrl,
   validateConfig,
   updateConfig,
+  normalizeApiUrl,
   type GlobalConfig,
 } from './config';
 
@@ -33,7 +34,7 @@ export async function keylessRequest(
   path: string,
   body: Record<string, unknown>
 ): Promise<any> {
-  const apiUrl = (getConfig().apiUrl || DEFAULT_API_URL).replace(/\/$/, '');
+  const apiUrl = normalizeApiUrl(getConfig().apiUrl || DEFAULT_API_URL);
   const response = await fetch(`${apiUrl}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -49,7 +50,7 @@ export async function keylessRequest(
 }
 
 export async function keylessGet(path: string): Promise<any> {
-  const apiUrl = (getConfig().apiUrl || DEFAULT_API_URL).replace(/\/$/, '');
+  const apiUrl = normalizeApiUrl(getConfig().apiUrl || DEFAULT_API_URL);
   const response = await fetch(`${apiUrl}${path}`, {
     method: 'GET',
     headers: { 'Content-Type': 'application/json' },
