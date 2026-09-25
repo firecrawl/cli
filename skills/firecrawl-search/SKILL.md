@@ -83,7 +83,8 @@ Keep large search responses in `--json -o` output and select the relevant result
 - **`--highlights` on by default:** results are query-relevant excerpts from the page. Use `--no-highlights` for the original snippets.
 - **`--scrape` fetches full content** — reuse that content instead of re-scraping result URLs. This saves credits and avoids redundant fetches.
 - For large results, use `-o` and bounded local reads when a filesystem is available. Do not dump the full response into context.
-- Use `jq` to extract URLs **with their source and 1-indexed position** (you'll need both for feedback): `jq -r '.data | to_entries[] | .key as $s | .value | to_entries[] | "\($s):\(.key + 1)\t\(.value.url)"' .firecrawl/search.json`
+- Use `jq` to extract URLs **with their source and 1-indexed position** (you'll need both for feedback): `jq -r '.data | to_entries[] | select(.key as $k | ["web","images","news"] | index($k)) | .key as $s | .value | to_entries[] | "\($s):\(.key + 1)\t\(.value.url // "-")"' .firecrawl/search.json`
+  Only those three groups are addressable by `--valuable-results`; `data.tools` and any other key are skipped, and an image or news result with no `url` prints `-` — address it by its position anyway.
 - Naming convention: `.firecrawl/search-{query}.json` or `.firecrawl/search-{query}-scraped.json`
 
 ## Send feedback after every search (refunds 1 credit)
@@ -108,13 +109,15 @@ Search costs 2 credits. After you've actually used the results (or decided they 
 Verify the search returned results before reading its `id`. Zero-result searches write no output file, so the file may be missing — or left over from an earlier search. The guard below skips feedback when the file is missing or has zero results; call `search-feedback` only inside it:
 
 ```bash
-# Send once per search. Rate honestly and replace the placeholder with the
-# rating that matches what actually happened. The two fields shown
-# satisfy the substantive-content rule for every rating.
+# Send once per search. Replace BOTH placeholders: the rating that matches
+# what actually happened, and the exhaustive source:position list of the
+# results that were genuinely useful (from the jq above). Never send the
+# list below as-is -- marking results you did not use corrupts the signal.
+# The two fields shown satisfy the substantive-content rule for every rating.
 if SEARCH_ID=$(jq -er 'select(any(.data[]; length > 0)) | .id' .firecrawl/search-react-hooks.json); then
   firecrawl search-feedback "$SEARCH_ID" \
     --rating "<good|partial|bad>" \
-    --valuable-results "web:1,web:3" \
+    --valuable-results "<source:position,... - every result you actually used>" \
     --missing-content '[{"topic":"useDeferredValue","description":"No example of useDeferredValue with Suspense"}]' \
     --silent &
 fi
