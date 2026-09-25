@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { apiFailure } from '../../commands/alexandria';
-import { receiptFor } from '../../utils/receipt';
+import { receiptFor, printReceipt } from '../../utils/receipt';
 
 afterEach(() => vi.useRealTimers());
 
@@ -58,3 +58,55 @@ it('handles HTTP-date retry delays without treating invalid numeric delays as da
   for (const value of ['-5', 'nonsense', ''])
     expect(failure(value)).not.toHaveProperty('retryAfterSeconds');
 });
+
+const sqlResponse = (cost: unknown, overrides = {}) => ({
+  data: {
+    creditsCost: 0,
+    alexandria: [
+      {
+        provider: 'firecrawl',
+        capability: 'sql',
+        data: { kind: 'result', creditsCost: cost },
+        ...overrides,
+      },
+    ],
+  },
+});
+it('shows separately billed SQL costs without changing the outer receipt charge', () => {
+  const receipt = receiptFor(sqlResponse(110), 'scrape');
+  expect(receipt).toEqual({ creditsUsed: 0, separatelyBilledCredits: 110 });
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    printReceipt(receipt);
+    expect(log).toHaveBeenCalledWith(
+      'Credits: 110 (0 outer request + 110 separately billed provider calls)'
+    );
+  } finally {
+    log.mockRestore();
+  }
+});
+it('preserves zero-cost nested execution', () => {
+  expect(receiptFor(sqlResponse(0), 'scrape')).toEqual({
+    creditsUsed: 0,
+    separatelyBilledCredits: 0,
+  });
+});
+it.each([undefined, -1, NaN, Infinity, '110'])(
+  'ignores invalid nested costs: %s',
+  (cost) => {
+    expect(receiptFor(sqlResponse(cost), 'scrape')).toEqual({ creditsUsed: 0 });
+  }
+);
+it.each([
+  { provider: 'other' },
+  { capability: 'bash' },
+  { error: { code: 'provider_error' } },
+  { data: { kind: 'plan', creditsCost: 110 } },
+])(
+  'does not treat other payloads as separately billed SQL: %j',
+  (overrides) => {
+    expect(receiptFor(sqlResponse(110, overrides), 'scrape')).toEqual({
+      creditsUsed: 0,
+    });
+  }
+);

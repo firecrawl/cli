@@ -1454,3 +1454,55 @@ it('sends missing_capability feedback without requestedFunctionality', async () 
   expect(requests).toHaveLength(1);
   expect(requests[0].body.capabilityFeedback).toEqual(capability);
 });
+
+it('displays nested SQL cost while preserving the free outer receipt', async () => {
+  response = {
+    success: true,
+    scrape_id: 'sql-outer',
+    data: {
+      creditsCost: 0,
+      alexandria: [
+        {
+          provider: 'firecrawl',
+          capability: 'sql',
+          creditsCost: 0,
+          data: {
+            kind: 'result',
+            creditsCost: 110,
+            rows: [],
+            receipt: {
+              creditsUsed: 110,
+              requestId: 'inner-request',
+              operationId: 'inner-scrape',
+              operationType: 'scrape',
+            },
+          },
+        },
+      ],
+    },
+  };
+  const result = await cli([
+    'scrape',
+    '--alexandria',
+    'firecrawl/sql',
+    '--options',
+    JSON.stringify({
+      query: 'SELECT * FROM "similarweb/web/traffic" LIMIT 1',
+      execute: true,
+    }),
+    '--json',
+  ]);
+  expect(result.code).toBe(0);
+  expect(result.stderr).toContain(
+    'Credits: 110 (0 outer request + 110 separately billed provider calls)'
+  );
+  const output = JSON.parse(result.stdout);
+  expect(output.receipt).toMatchObject({
+    creditsUsed: 0,
+    separatelyBilledCredits: 110,
+  });
+  expect(output.data.alexandria[0].data.receipt).toEqual(
+    (response as any).data.alexandria[0].data.receipt
+  );
+  expect(requests).toHaveLength(1);
+});
