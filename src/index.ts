@@ -2253,6 +2253,7 @@ Shorthand: "firecrawl x" is an alias for "firecrawl experimental".
 `
   );
 experimental.addCommand(createDownloadCommand());
+program.addCommand(createSqlCommand(), { hidden: true });
 experimental.addCommand(createSqlCommand(), { hidden: true });
 program.addCommand(experimental);
 
