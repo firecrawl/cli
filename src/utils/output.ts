@@ -5,11 +5,15 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ScrapeResult, ScrapeFormat } from '../types/scrape';
+import { agentHintMetadata, writeAgentHints } from './agent-hints';
 
 /**
  * Determine if output should be JSON based on flag or file extension
  */
-function shouldOutputJson(outputPath?: string, jsonFlag?: boolean): boolean {
+export function shouldOutputJson(
+  outputPath?: string,
+  jsonFlag?: boolean
+): boolean {
   // Explicit --json flag takes precedence
   if (jsonFlag) return true;
 
@@ -177,28 +181,51 @@ export function handleScrapeOutput(
   pretty: boolean = false,
   json: boolean = false
 ): void {
+  const explicitJson = shouldOutputJson(outputPath, json);
   if (!result.success) {
+    if (explicitJson) {
+      writeOutput(
+        JSON.stringify(result, null, pretty ? 2 : undefined),
+        outputPath,
+        !!outputPath
+      );
+      process.exitCode = 1;
+      return;
+    }
+    writeAgentHints(result);
     // Always use stderr for errors to allow piping
     console.error('Error:', result.error);
     process.exit(1);
+    return;
   }
 
   if (!result.data) {
+    if (explicitJson) {
+      writeOutput(
+        JSON.stringify(result, null, pretty ? 2 : undefined),
+        outputPath,
+        !!outputPath
+      );
+    } else {
+      writeAgentHints(result);
+    }
     return;
   }
 
   // Determine if we should force JSON output
-  const forceJson =
-    shouldOutputJson(outputPath, json) ||
-    Array.isArray((result.data as any).tools);
+  const forceJson = explicitJson || Array.isArray((result.data as any).tools);
 
   // If JSON is forced, always output JSON regardless of format
   if (forceJson) {
     let jsonContent: string;
     try {
       jsonContent = pretty
-        ? JSON.stringify(result.data, null, 2)
-        : JSON.stringify(result.data);
+        ? JSON.stringify(
+            { ...result.data, ...agentHintMetadata(result) },
+            null,
+            2
+          )
+        : JSON.stringify({ ...result.data, ...agentHintMetadata(result) });
     } catch (error) {
       jsonContent = JSON.stringify({
         error: 'Failed to serialize response',
@@ -219,6 +246,7 @@ export function handleScrapeOutput(
   if (isSingleFormat && isRawTextFormat && singleFormat) {
     const content = extractContent(result.data, singleFormat);
     if (content !== null) {
+      writeAgentHints(result);
       writeOutput(content, outputPath, !!outputPath);
       return;
     }
@@ -231,6 +259,7 @@ export function handleScrapeOutput(
     result.data.screenshot
   ) {
     const content = formatScreenshotOutput(result.data);
+    writeAgentHints(result);
     writeOutput(content, outputPath, !!outputPath);
     return;
   }
@@ -245,6 +274,7 @@ export function handleScrapeOutput(
     // Multiple formats - extract only requested formats
     outputData = extractMultipleFormats(result.data, formats);
   }
+  outputData = { ...outputData, ...agentHintMetadata(result) };
 
   let jsonContent: string;
   try {

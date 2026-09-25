@@ -3,8 +3,9 @@
  */
 
 import type { ScrapeFormat, ScrapeLocation } from './scrape';
+import type { AgentHintMetadata, AgentHintOptions } from '../utils/agent-hints';
 
-export interface ParseOptions {
+export interface ParseOptions extends AgentHintOptions {
   /** Local file path to parse */
   file: string;
   /** Output format(s) */
@@ -35,7 +36,7 @@ export interface ParseOptions {
   query?: string;
 }
 
-export interface ParseResult {
+export interface ParseResult extends AgentHintMetadata {
   success: boolean;
   data?: any;
   error?: string;

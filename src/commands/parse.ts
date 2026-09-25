@@ -11,9 +11,15 @@ import * as path from 'path';
 import type { FormatOption } from 'firecrawl';
 import type { ParseOptions, ParseResult } from '../types/parse';
 import type { ScrapeFormat } from '../types/scrape';
-import { getClient, isKeylessMode } from '../utils/client';
+import { AGENT_HINTS_HEADERS, getClient, isKeylessMode } from '../utils/client';
 import { getConfig, validateConfig } from '../utils/config';
-import { handleScrapeOutput } from '../utils/output';
+import { handleScrapeOutput, shouldOutputJson } from '../utils/output';
+import {
+  agentHintMetadata,
+  withoutAgentHints,
+  writeAgentHints,
+} from '../utils/agent-hints';
+import { apiFailure } from './alexandria';
 
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
 
@@ -184,8 +190,10 @@ export async function executeParse(
   try {
     const response = await fetch(`${apiUrl}/v2/parse`, {
       method: 'POST',
-      headers:
-        !keyless && apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
+      headers: {
+        ...AGENT_HINTS_HEADERS,
+        ...(!keyless && apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
       body: form,
     });
 
@@ -198,12 +206,17 @@ export async function executeParse(
       const message =
         payload?.error ||
         `HTTP ${response.status}: ${response.statusText || 'Request failed'}`;
-      return { success: false, error: message };
+      return {
+        ...apiFailure({ response: { data: payload } }),
+        success: false,
+        error: message,
+      };
     }
 
     return {
       success: true,
-      data: payload?.data ?? payload,
+      data: withoutAgentHints(payload?.data ?? payload),
+      ...agentHintMetadata(payload),
     };
   } catch (error) {
     const requestEndTime = Date.now();
@@ -220,10 +233,18 @@ export async function executeParse(
  * /v2/parse response shape matches /v2/scrape.
  */
 export async function handleParseCommand(options: ParseOptions): Promise<void> {
-  const result = await executeParse(options);
+  const response = await executeParse(options);
+  const result =
+    options.agentHints === false ? withoutAgentHints(response) : response;
 
-  if (options.query && result.success && result.data?.answer) {
+  if (
+    options.query &&
+    result.success &&
+    result.data?.answer &&
+    !shouldOutputJson(options.output, options.json)
+  ) {
     const { writeOutput } = await import('../utils/output');
+    writeAgentHints(result);
     writeOutput(result.data.answer, options.output, !!options.output);
     return;
   }
