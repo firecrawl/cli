@@ -192,6 +192,37 @@ describe('executeScrape', () => {
       });
     });
 
+    it('sends a single screenshot format when --screenshot and --full-page-screenshot are both set', async () => {
+      mockClient.scrape.mockResolvedValue({ screenshot: 'https://x/s.png' });
+
+      await executeScrape({
+        url: 'https://example.com',
+        formats: ['markdown'],
+        screenshot: true,
+        fullPageScreenshot: true,
+      });
+
+      expect(mockClient.scrape).toHaveBeenCalledWith('https://example.com', {
+        formats: ['markdown', { type: 'screenshot', fullPage: true }],
+        integration: 'cli',
+      });
+    });
+
+    it('drops every plain screenshot format when a full-page screenshot is requested', async () => {
+      mockClient.scrape.mockResolvedValue({ screenshot: 'https://x/s.png' });
+
+      await executeScrape({
+        url: 'https://example.com',
+        formats: ['screenshot', 'markdown', 'screenshot'],
+        fullPageScreenshot: true,
+      });
+
+      expect(mockClient.scrape).toHaveBeenCalledWith('https://example.com', {
+        formats: ['markdown', { type: 'screenshot', fullPage: true }],
+        integration: 'cli',
+      });
+    });
+
     it('sends a single screenshot format when --full-page-screenshot is combined with --format screenshot', async () => {
       mockClient.scrape.mockResolvedValue({ screenshot: 'https://x/s.png' });
 
