@@ -259,16 +259,26 @@ function urlToFilename(url: string): string {
  * Pick one filename per URL. URLs that differ only in their query string or
  * in `/` versus `-` in the path map to the same name, so later ones get a
  * numeric suffix instead of overwriting an earlier page from the same batch.
+ * Every URL's plain name is reserved before any suffix is handed out, and
+ * names are compared case-insensitively because macOS and Windows file
+ * systems are.
  */
 function uniqueFilenames(urls: string[]): string[] {
-  const used = new Set<string>();
-  return urls.map((url) => {
-    const base = urlToFilename(url);
+  const bases = urls.map(urlToFilename);
+  const used = new Set(bases.map((name) => name.toLowerCase()));
+  const claimed = new Set<string>();
+  return bases.map((base) => {
+    const key = base.toLowerCase();
+    if (!claimed.has(key)) {
+      claimed.add(key);
+      return base;
+    }
     let name = base;
-    for (let n = 2; used.has(name); n++) {
+    for (let n = 2; used.has(name.toLowerCase()); n++) {
       name = base.replace(/\.md$/, `-${n}.md`);
     }
-    used.add(name);
+    used.add(name.toLowerCase());
+    claimed.add(name.toLowerCase());
     return name;
   });
 }

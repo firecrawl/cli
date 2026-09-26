@@ -88,4 +88,51 @@ describe('multi-URL scrape filenames', () => {
       join('.firecrawl', 'example.com.md'),
     ]);
   });
+
+  it('does not give a suffixed name that another URL in the batch needs', async () => {
+    const urls = [
+      'https://example.com/a?x=1',
+      'https://example.com/a?x=2',
+      'https://example.com/a-2',
+    ];
+
+    await handleMultiScrapeCommand(urls, { url: urls[0] });
+
+    const written = new Map(
+      vi
+        .mocked(fs.writeFileSync)
+        .mock.calls.map(([file, content]) => [String(file), String(content)])
+    );
+    expect(written).toEqual(
+      new Map([
+        [
+          join('.firecrawl', 'example.com-a.md'),
+          'page https://example.com/a?x=1',
+        ],
+        [
+          join('.firecrawl', 'example.com-a-3.md'),
+          'page https://example.com/a?x=2',
+        ],
+        [
+          join('.firecrawl', 'example.com-a-2.md'),
+          'page https://example.com/a-2',
+        ],
+      ])
+    );
+  });
+
+  it('treats names that differ only in case as a collision', async () => {
+    const urls = ['https://example.com/Foo', 'https://example.com/foo'];
+
+    await handleMultiScrapeCommand(urls, { url: urls[0] });
+
+    const files = vi
+      .mocked(fs.writeFileSync)
+      .mock.calls.map(([file]) => String(file))
+      .sort();
+    expect(files).toEqual([
+      join('.firecrawl', 'example.com-Foo.md'),
+      join('.firecrawl', 'example.com-foo-2.md'),
+    ]);
+  });
 });
