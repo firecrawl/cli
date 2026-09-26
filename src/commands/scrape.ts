@@ -256,6 +256,24 @@ function urlToFilename(url: string): string {
 }
 
 /**
+ * Pick one filename per URL. URLs that differ only in their query string or
+ * in `/` versus `-` in the path map to the same name, so later ones get a
+ * numeric suffix instead of overwriting an earlier page from the same batch.
+ */
+function uniqueFilenames(urls: string[]): string[] {
+  const used = new Set<string>();
+  return urls.map((url) => {
+    const base = urlToFilename(url);
+    let name = base;
+    for (let n = 2; used.has(name); n++) {
+      name = base.replace(/\.md$/, `-${n}.md`);
+    }
+    used.add(name);
+    return name;
+  });
+}
+
+/**
  * Handle scrape for multiple URLs.
  * Each result is saved as a separate file in .firecrawl/
  */
@@ -277,7 +295,9 @@ export async function handleMultiScrapeCommand(
 
   process.stderr.write(`Scraping ${total} URLs...\n`);
 
-  const promises = urls.map(async (url) => {
+  const filenames = uniqueFilenames(urls);
+
+  const promises = urls.map(async (url, index) => {
     const scrapeOptions: ScrapeOptions = { ...options, url };
     const result = await executeScrape(scrapeOptions);
 
@@ -291,8 +311,7 @@ export async function handleMultiScrapeCommand(
       return;
     }
 
-    const filename = urlToFilename(url);
-    const filepath = path.join(dir, filename);
+    const filepath = path.join(dir, filenames[index]);
     const content = result.data?.markdown || JSON.stringify(result.data);
     fs.writeFileSync(filepath, content, 'utf-8');
 
