@@ -18,6 +18,29 @@ let clientInstance: Firecrawl | null = null;
 
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
 
+export const AGENT_HINTS_HEADERS = {
+  'X-Firecrawl-Agent-Hints': 'true',
+} as const;
+
+function createClient(options: FirecrawlClientOptions): Firecrawl {
+  const client = new Firecrawl(options);
+  const http = (client as any).http?.instance;
+
+  if (!http?.interceptors?.request?.use) {
+    throw new Error('Firecrawl SDK client cannot enable API agent hints');
+  }
+
+  http.interceptors.request.use((request: any) => {
+    request.headers = {
+      ...request.headers,
+      ...AGENT_HINTS_HEADERS,
+    };
+    return request;
+  });
+
+  return client;
+}
+
 /**
  * Keyless free tier: scrape and search work without an API key against the
  * Firecrawl cloud (rate-limited per IP). The cloud only grants this when NO
@@ -36,13 +59,20 @@ export async function keylessRequest(
   const apiUrl = (getConfig().apiUrl || DEFAULT_API_URL).replace(/\/$/, '');
   const response = await fetch(`${apiUrl}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...AGENT_HINTS_HEADERS,
+    },
     body: JSON.stringify(body),
   });
   const json: any = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(
-      json?.error || `Firecrawl request failed (HTTP ${response.status})`
+  if (!response.ok || json?.success === false) {
+    // Keep the API envelope so command renderers can preserve typed errors and hints.
+    throw Object.assign(
+      new Error(
+        json?.error || `Firecrawl request failed (HTTP ${response.status})`
+      ),
+      { response: { data: json } }
     );
   }
   return json;
@@ -52,7 +82,10 @@ export async function keylessGet(path: string): Promise<any> {
   const apiUrl = (getConfig().apiUrl || DEFAULT_API_URL).replace(/\/$/, '');
   const response = await fetch(`${apiUrl}${path}`, {
     method: 'GET',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...AGENT_HINTS_HEADERS,
+    },
   });
   const json: any = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -117,7 +150,7 @@ export function getClient(
       backoffFactor: options.backoffFactor ?? config.backoffFactor,
     };
 
-    return new Firecrawl(clientOptions);
+    return createClient(clientOptions);
   }
 
   // Return singleton instance or create one
@@ -133,7 +166,7 @@ export function getClient(
       backoffFactor: config.backoffFactor,
     };
 
-    clientInstance = new Firecrawl(clientOptions);
+    clientInstance = createClient(clientOptions);
   }
 
   return clientInstance;

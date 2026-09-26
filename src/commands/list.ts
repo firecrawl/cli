@@ -459,7 +459,7 @@ export async function handleList(
       error instanceof DiscoveryFailure ? error.envelope : apiFailure(error);
     const message =
       failure.error ??
-      failure.data?.alexandria?.[0]?.error?.message ??
+      (failure as Record<string, any>).data?.alexandria?.[0]?.error?.message ??
       'Tool discovery failed.';
     writeOutput(
       asJson

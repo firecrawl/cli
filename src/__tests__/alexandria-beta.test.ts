@@ -496,6 +496,43 @@ it('searches Alexandria semantically with the positional shortcut', async () => 
   expect(requests).toHaveLength(1);
 });
 
+it('preserves search hints on empty JSON responses and supports local suppression', async () => {
+  response = {
+    success: true,
+    id: 'search-empty',
+    data: { web: [] },
+    agent_hints: [
+      'Try a narrower query if the result set does not cover the task.',
+    ],
+  };
+  const args = ['search', 'example', '--sources', 'web', '--json'];
+  const result = await cli(args);
+  expect(result.code).toBe(0);
+  expect(JSON.parse(result.stdout)).toEqual(response);
+  const suppressed = await cli([...args, '--no-agent-hints']);
+  expect(suppressed.code).toBe(0);
+  expect(JSON.parse(suppressed.stdout)).toEqual({
+    success: true,
+    id: 'search-empty',
+    data: { web: [] },
+  });
+  expect(requests[0].body).toEqual(requests[1].body);
+});
+
+it('keeps server-authored search error guidance in JSON', async () => {
+  status = 400;
+  response = {
+    success: false,
+    error: 'Invalid source',
+    code: 'INVALID_BODY',
+    id: 'failed-search',
+    agent_hints: ['Use a supported search source.'],
+  };
+  const result = await cli(['search', 'example', '--sources', 'web', '--json']);
+  expect(result.code).toBe(1);
+  expect(JSON.parse(result.stdout)).toEqual({ ...response, status: 400 });
+});
+
 it('sends provider calls to Scrape with a stable retry ID and preserves the receipt', async () => {
   const args = [
     'scrape',
