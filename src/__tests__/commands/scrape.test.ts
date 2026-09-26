@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { executeScrape } from '../../commands/scrape';
+import { executeScrape, handleScrapeCommand } from '../../commands/scrape';
 import { getClient, isKeylessMode, keylessRequest } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { setupTest, teardownTest } from '../utils/mock-client';
@@ -188,6 +188,53 @@ describe('executeScrape', () => {
 
       expect(mockClient.scrape).toHaveBeenCalledWith('https://example.com', {
         formats: ['markdown', 'screenshot'],
+        integration: 'cli',
+      });
+    });
+
+    it('sends a single screenshot format when --screenshot and --full-page-screenshot are both set', async () => {
+      mockClient.scrape.mockResolvedValue({ screenshot: 'https://x/s.png' });
+
+      await executeScrape({
+        url: 'https://example.com',
+        formats: ['markdown'],
+        screenshot: true,
+        fullPageScreenshot: true,
+      });
+
+      expect(mockClient.scrape).toHaveBeenCalledWith('https://example.com', {
+        formats: ['markdown', { type: 'screenshot', fullPage: true }],
+        integration: 'cli',
+      });
+    });
+
+    it('drops every plain screenshot format when a full-page screenshot is requested', async () => {
+      mockClient.scrape.mockResolvedValue({ screenshot: 'https://x/s.png' });
+
+      await executeScrape({
+        url: 'https://example.com',
+        formats: ['screenshot', 'markdown', 'screenshot'],
+        fullPageScreenshot: true,
+      });
+
+      expect(mockClient.scrape).toHaveBeenCalledWith('https://example.com', {
+        formats: ['markdown', { type: 'screenshot', fullPage: true }],
+        integration: 'cli',
+      });
+    });
+
+    it('sends a single screenshot format when --full-page-screenshot is combined with --format screenshot', async () => {
+      mockClient.scrape.mockResolvedValue({ screenshot: 'https://x/s.png' });
+
+      await executeScrape({
+        url: 'https://example.com',
+        formats: ['markdown', 'screenshot'],
+        fullPageScreenshot: true,
+      });
+
+      // The API rejects more than one screenshot format.
+      expect(mockClient.scrape).toHaveBeenCalledWith('https://example.com', {
+        formats: ['markdown', { type: 'screenshot', fullPage: true }],
         integration: 'cli',
       });
     });
@@ -517,6 +564,35 @@ describe('executeScrape', () => {
         formats: ['markdown', 'links', 'images'],
         integration: 'cli',
       });
+    });
+  });
+
+  describe('Full-page screenshot output', () => {
+    it('prints the screenshot URL alongside markdown for --full-page-screenshot', async () => {
+      mockClient.scrape.mockResolvedValue({
+        markdown: '# Test',
+        screenshot: 'https://cdn.example.com/full.png',
+      });
+      const write = vi
+        .spyOn(process.stdout, 'write')
+        .mockImplementation(() => true);
+
+      try {
+        await handleScrapeCommand({
+          url: 'https://example.com',
+          formats: ['markdown'],
+          fullPageScreenshot: true,
+        });
+        const printed = write.mock.calls
+          .map((call) => String(call[0]))
+          .join('');
+        expect(JSON.parse(printed)).toEqual({
+          markdown: '# Test',
+          screenshot: 'https://cdn.example.com/full.png',
+        });
+      } finally {
+        write.mockRestore();
+      }
     });
   });
 });
