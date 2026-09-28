@@ -45,7 +45,7 @@ describe('executeParse', () => {
   });
 
   it('posts to /v2/parse without auth when using the default cloud API with no key', async () => {
-    initializeConfig({ apiUrl: 'https://api.firecrawl.dev' });
+    initializeConfig({ apiUrl: 'https://api.firecrawl.dev///' });
 
     const result = await executeParse({ file: filePath });
 

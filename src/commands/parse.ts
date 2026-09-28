@@ -12,7 +12,7 @@ import type { FormatOption } from 'firecrawl';
 import type { ParseOptions, ParseResult } from '../types/parse';
 import type { ScrapeFormat } from '../types/scrape';
 import { getClient, isKeylessMode } from '../utils/client';
-import { getConfig, validateConfig } from '../utils/config';
+import { getConfig, normalizeApiUrl, validateConfig } from '../utils/config';
 import { handleScrapeOutput } from '../utils/output';
 
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
@@ -162,9 +162,8 @@ export async function executeParse(
     validateConfig(apiKey);
   }
 
-  const apiUrl = (options.apiUrl || config.apiUrl || DEFAULT_API_URL).replace(
-    /\/$/,
-    ''
+  const apiUrl = normalizeApiUrl(
+    options.apiUrl || config.apiUrl || DEFAULT_API_URL
   );
 
   const buffer = fs.readFileSync(filePath);
