@@ -7,7 +7,7 @@ export function reportFeedbackInvitation(
   }
   if (typeof metadata?.feedback?.jobId === 'string') {
     process.stderr.write(
-      `Feedback requested in exchange for free keyless use: firecrawl feedback ${endpoint} ${metadata.feedback.jobId} --help\n`
+      `If this result is wrong, incomplete, blocked, or an error, optional feedback helps improve Firecrawl: firecrawl feedback ${endpoint} ${metadata.feedback.jobId} --help\n`
     );
   }
 }

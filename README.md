@@ -467,7 +467,7 @@ Paper ids accept `pmid:`, `pmcid:`, `doi:`, and `arxiv:` forms, plus canonical `
 ### `feedback` - Send endpoint job feedback
 
 Send evidence through `/v2/feedback`. Feedback on keyless `search`, `scrape`, and
-`parse` jobs is requested in exchange for free keyless use. These jobs require `--rating`, `--task`, `--assessment`, and 1-20 observations
+`parse` jobs is optional and helps improve Firecrawl when a result is wrong, incomplete, blocked, or an error. These jobs require `--rating`, `--task`, `--assessment`, and 1-20 observations
 provided through `--observations` or `--observations-file`. Keyless Parse also requires `--doc-class born_digital|scanned|mixed|unknown` once per submission. Use the returned job
 reference and evidence already available; no user interview or additional
 investigation is required. Run `firecrawl feedback --help` for category fields.
@@ -544,7 +544,7 @@ Reason definitions:
 - proxy_error: The operation explicitly reported a proxy failure.
 - other: Another operation failure was reported; describe the returned error without guessing its cause.
 
-Set `FIRECRAWL_NO_ENDPOINT_FEEDBACK=1` or `FIRECRAWL_DISABLE_ENDPOINT_FEEDBACK=1` to skip authenticated endpoint feedback calls. These flags do not suppress keyless invitations or submissions. The API includes a pointer on every eligible keyless job response. Feedback is requested in exchange for free keyless use; continued keyless access does not depend on it.
+Set `FIRECRAWL_NO_ENDPOINT_FEEDBACK=1` or `FIRECRAWL_DISABLE_ENDPOINT_FEEDBACK=1` to skip authenticated endpoint feedback calls. These flags do not suppress keyless invitations or submissions. The API includes a pointer on every eligible keyless job response. Feedback is optional and helps improve Firecrawl when a result is wrong, incomplete, blocked, or an error; keyless access does not depend on it.
 
 #### Feedback Options
 
