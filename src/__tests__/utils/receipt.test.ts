@@ -139,3 +139,107 @@ it('retains a valid zero alongside invalid costs', () => {
     separatelyBilledCredits: 0,
   });
 });
+
+const enrichmentResponse = (
+  cost: unknown,
+  complete: unknown = true,
+  overrides = {}
+) => ({
+  data: {
+    creditsCost: 0,
+    alexandria: [
+      {
+        provider: 'firecrawl',
+        capability: 'enrich',
+        data: {
+          status: 'matched',
+          providerCredits: cost,
+          billingComplete: complete,
+          steps: [{ creditsCost: cost }],
+        },
+        ...overrides,
+      },
+    ],
+  },
+});
+it('shows enrichment provider costs once while retaining the zero outer charge', () => {
+  const receipt = receiptFor(enrichmentResponse(30), 'scrape');
+  expect(receipt).toEqual({
+    creditsUsed: 0,
+    separatelyBilledCredits: 30,
+    providerCostsComplete: true,
+  });
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    printReceipt(receipt);
+    expect(log).toHaveBeenCalledWith(
+      'Credits: 30 (0 outer request + 30 separately billed provider calls)'
+    );
+    expect(log).toHaveBeenCalledTimes(1);
+  } finally {
+    log.mockRestore();
+  }
+});
+it('labels partial enrichment costs without claiming they are the final total', () => {
+  const receipt = receiptFor(enrichmentResponse(5, false), 'scrape');
+  expect(receipt).toMatchObject({
+    separatelyBilledCredits: 5,
+    providerCostsComplete: false,
+  });
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    printReceipt(receipt);
+    expect(log).toHaveBeenCalledWith(
+      'Known credits: 5 (0 outer request + 5 separately billed provider calls)'
+    );
+    expect(log).toHaveBeenCalledWith(
+      'Provider costs are incomplete; additional credits may have been incurred.'
+    );
+  } finally {
+    log.mockRestore();
+  }
+});
+it('preserves confirmed zero-cost enrichment', () => {
+  expect(receiptFor(enrichmentResponse(0), 'scrape')).toEqual({
+    creditsUsed: 0,
+    separatelyBilledCredits: 0,
+    providerCostsComplete: true,
+  });
+});
+it.each([undefined, -1, NaN, Infinity, '30'])(
+  'does not present malformed enrichment costs as complete: %s',
+  (cost) => {
+    expect(receiptFor(enrichmentResponse(cost), 'scrape')).toEqual({
+      creditsUsed: 0,
+      providerCostsComplete: false,
+    });
+  }
+);
+it.each([
+  { provider: 'other' },
+  { capability: 'bash' },
+  { error: { code: 'unauthorized' } },
+])('ignores unrelated or rejected enrichment-like data: %j', (overrides) => {
+  expect(receiptFor(enrichmentResponse(30, true, overrides), 'scrape')).toEqual(
+    { creditsUsed: 0 }
+  );
+});
+it('preserves separate SQL and enrichment costs without changing search receipts', () => {
+  const value = {
+    data: {
+      creditsCost: 0,
+      alexandria: [
+        ...sqlResponse(10).data.alexandria,
+        ...enrichmentResponse(30).data.alexandria,
+      ],
+    },
+  };
+  expect(receiptFor(value, 'scrape')).toEqual({
+    creditsUsed: 0,
+    separatelyBilledCredits: 40,
+    providerCostsComplete: true,
+  });
+  expect(receiptFor({ ...value, creditsUsed: 2 }, 'search')).toEqual({
+    creditsUsed: 2,
+  });
+});
