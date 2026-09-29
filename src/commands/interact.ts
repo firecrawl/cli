@@ -3,7 +3,7 @@
  * Execute AI prompts or code against a scraped page in a live browser session
  */
 
-import { getClient, isKeylessMode } from '../utils/client';
+import { getClient, isKeylessMode, withCliSignupTag } from '../utils/client';
 import { getConfig, validateConfig } from '../utils/config';
 import {
   getScrapeId,
@@ -100,8 +100,10 @@ export async function handleInteractExecute(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(
-        (errorData as any).error ||
-          `HTTP ${response.status}: ${response.statusText}`
+        withCliSignupTag(
+          (errorData as any).error ||
+            `HTTP ${response.status}: ${response.statusText}`
+        )
       );
     }
 
@@ -167,8 +169,10 @@ export async function handleInteractStop(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(
-        (errorData as any).error ||
-          `HTTP ${response.status}: ${response.statusText}`
+        withCliSignupTag(
+          (errorData as any).error ||
+            `HTTP ${response.status}: ${response.statusText}`
+        )
       );
     }
 

@@ -29,6 +29,17 @@ export function isKeylessMode(apiKey?: string, apiUrl?: string): boolean {
   return !getApiKey(apiKey) && !isCustomApiUrl(apiUrl);
 }
 
+/**
+ * The API's keyless prompts link to signup tagged `utm_medium=api`. Retag them
+ * as `cli` so accounts created from the CLI are attributed to the CLI.
+ */
+export function withCliSignupTag(message: string): string {
+  return message.replaceAll(
+    'utm_source=keyless&utm_medium=api',
+    'utm_source=keyless&utm_medium=cli'
+  );
+}
+
 export async function keylessRequest(
   path: string,
   body: Record<string, unknown>
@@ -42,7 +53,9 @@ export async function keylessRequest(
   const json: any = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(
-      json?.error || `Firecrawl request failed (HTTP ${response.status})`
+      withCliSignupTag(
+        json?.error || `Firecrawl request failed (HTTP ${response.status})`
+      )
     );
   }
   return json;
@@ -57,7 +70,9 @@ export async function keylessGet(path: string): Promise<any> {
   const json: any = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(
-      json?.error || `Firecrawl request failed (HTTP ${response.status})`
+      withCliSignupTag(
+        json?.error || `Firecrawl request failed (HTTP ${response.status})`
+      )
     );
   }
   return json;
