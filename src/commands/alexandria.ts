@@ -2,8 +2,7 @@ import { receiptFor, printReceipt, printRetry } from '../utils/receipt';
 import { randomUUID } from 'node:crypto';
 import { Command, Option } from 'commander';
 import { type AlexandriaCall } from 'firecrawl';
-import { getClient } from '../utils/client';
-import { getApiKey } from '../utils/config';
+import { getApiKey, getConfig } from '../utils/config';
 import { writeOutput } from '../utils/output';
 
 type Call = AlexandriaCall & { options: Record<string, unknown> };
@@ -207,19 +206,52 @@ export async function requestAlexandria(
   if (options.showReceipt !== false) console.error(`Request ID: ${requestId}`);
   let envelope: Record<string, any>;
   try {
-    const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
-    const result = await app.scrape({
-      alexandria: calls,
-      integration: 'cli',
-      timeout: options.timeout,
-      requestId,
+    const requestedTimeout = options.timeout ?? 120_000;
+    if (!Number.isInteger(requestedTimeout) || requestedTimeout <= 0)
+      throw new Error('timeout must be a positive integer');
+    const timeout = Math.min(requestedTimeout, 120_000);
+    const base = (
+      options.apiUrl ||
+      getConfig().apiUrl ||
+      'https://api.firecrawl.dev'
+    ).replace(/\/$/, '');
+    // The SDK still caps Alexandria transport at 80s, below the API's 120s deadline.
+    const response = await fetch(`${base}/v2/scrape`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${getApiKey(options.apiKey)}`,
+        'Content-Type': 'application/json',
+        'x-request-id': requestId,
+      },
+      body: JSON.stringify({ alexandria: calls, integration: 'cli', timeout }),
+      redirect: 'error',
+      signal: AbortSignal.timeout(timeout + 30_000),
     });
+    const body = await response.json();
+    if (!response.ok || !body?.success) {
+      throw Object.assign(
+        new Error(`Alexandria request failed (HTTP ${response.status})`),
+        {
+          response: {
+            status: response.status,
+            headers: response.headers,
+            data: body,
+          },
+        }
+      );
+    }
+    if (
+      !Array.isArray(body.data?.alexandria) ||
+      !Number.isInteger(body.data?.creditsCost) ||
+      body.data.creditsCost < 0
+    )
+      throw new Error('Invalid alexandria response');
     envelope = {
       success: true,
-      ...(result.scrapeId && { scrape_id: result.scrapeId }),
+      ...(body.scrape_id && { scrape_id: body.scrape_id }),
       data: {
-        alexandria: result.alexandria,
-        creditsCost: result.creditsCost,
+        alexandria: body.data.alexandria,
+        creditsCost: body.data.creditsCost,
       },
     };
   } catch (error) {
