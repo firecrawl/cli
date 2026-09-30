@@ -19,7 +19,7 @@ For structured records, filterable listings, transcripts, or datasets, first che
 firecrawl search "your query" -o .firecrawl/result.json --json
 
 # Optional task context, when known; reuse the same opaque ID only within one task
-firecrawl search "React memo docs" --objective "Find official rerender guidance" --session-id task_123 --client-model claude-sonnet-4-6 --json
+firecrawl search "React memo docs" --objective "Find official rerender guidance" --session-id task_123 --client-model claude-sonnet-4-6 -o .firecrawl/search-react-memo.json --json
 
 # Search and scrape full page content from results
 firecrawl search "your query" --scrape -o .firecrawl/scraped.json --json

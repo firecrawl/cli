@@ -101,6 +101,10 @@ describe('executeSearch', () => {
         integration: 'cli',
         toolDetail: 'compact',
       });
+      const body = mockHttpPost.mock.calls[0][1];
+      expect(body).not.toHaveProperty('objective');
+      expect(body).not.toHaveProperty('sessionId');
+      expect(body).not.toHaveProperty('clientModel');
     });
 
     it('should allow highlights to be disabled', async () => {
