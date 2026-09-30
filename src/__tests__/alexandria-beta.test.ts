@@ -1290,6 +1290,8 @@ it('submits Alexandria session feedback without a job ID', async () => {
     'https://example.com',
     '--requested-functionality',
     'Download attachments',
+    '--objective',
+    ' Compare contract requirements across agencies ',
     '--rationale',
     'Only summaries available',
     '--json',
@@ -1306,6 +1308,7 @@ it('submits Alexandria session feedback without a job ID', async () => {
       url: 'https://example.com',
       requestedFunctionality: 'Download attachments',
     },
+    objective: 'Compare contract requirements across agencies',
     rationale: 'Only summaries available',
   });
 });
@@ -1325,9 +1328,23 @@ const sessionFeedbackArgs = [
   'https://example.com',
   '--requested-functionality',
   'Get attachments',
+  '--objective',
+  'Compare contract requirements',
   '--rationale',
   'Missing documents',
 ];
+
+it('requires a non-blank objective before sending feedback', async () => {
+  const index = sessionFeedbackArgs.indexOf('--objective');
+  const withoutObjective = sessionFeedbackArgs.filter(
+    (_, i) => i !== index && i !== index + 1
+  );
+  expect((await cli(withoutObjective)).code).not.toBe(0);
+  const blank = [...sessionFeedbackArgs];
+  blank[index + 1] = '   ';
+  expect((await cli(blank)).code).not.toBe(0);
+  expect(requests).toHaveLength(0);
+});
 
 it('honors the child feedback API key before root authentication', async () => {
   const result = await cli(
