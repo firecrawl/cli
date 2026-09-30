@@ -1,7 +1,7 @@
 ---
 name: firecrawl
 description: |
-  Any live-web task via the Firecrawl CLI — including ordinary web research: searching the web, reading or extracting pages, gathering sources, discovering site URLs, bulk extraction, downloading a site, change alerts, or pages needing clicks/login — web only; local files route to firecrawl-parse. For papers use firecrawl-research-index; for library, API, error, or bug questions use firecrawl-developer-index.
+  Any live-web task via Firecrawl (its MCP tools when connected, otherwise the CLI) — including ordinary web research: searching the web, reading or extracting pages, gathering sources, discovering site URLs, bulk extraction, downloading a site, change alerts, or pages needing clicks/login — web only; local files route to firecrawl-parse. For papers use firecrawl-research-index; for library, API, error, or bug questions use firecrawl-developer-index.
 allowed-tools:
   - Bash(firecrawl *)
   - Bash(npx firecrawl-cli *)
@@ -12,6 +12,20 @@ allowed-tools:
 Search, scrape, and interact with the web. Returns clean markdown optimized for LLM context windows.
 
 Run `firecrawl --help` or `firecrawl <command> --help` for full option details. For app integration or outcome workflows (research briefs, SEO audits, etc.), route to the `firecrawl-build` / `firecrawl-workflows` skills — see [When to Load References](#when-to-load-references).
+
+## Firecrawl MCP tools
+
+If Firecrawl MCP tools (names starting `firecrawl_`) are available in this session, use them instead of the CLI for what they cover. Don't install, authenticate, or run the CLI for those tasks.
+
+| Need                      | MCP tool                                                                  |
+| ------------------------- | ------------------------------------------------------------------------- |
+| Find pages on a topic     | `firecrawl_search`                                                        |
+| Get a page's content      | `firecrawl_scrape` with a `url`                                           |
+| Answer a coding question  | `firecrawl_developer_search`                                              |
+| Find or read papers       | `firecrawl_research_search_papers`, then `firecrawl_research_read_paper`  |
+| Structured data providers | `firecrawl_find_tools`, then `firecrawl_scrape` with an `alexandria` body |
+
+The connected server's tool list is the authority, and some connections expose only the tools above. For a need outside that list (map, crawl, interact, monitor, download, parse), use the CLI when a shell is available; otherwise say this connection doesn't support it. Everything below applies when no Firecrawl MCP tools are connected.
 
 ## Prerequisites
 
