@@ -6,6 +6,10 @@ import {
   parseFeedbackListArg,
   parsePageNumbersArg,
 } from '../../commands/feedback';
+import {
+  parseValuableResultsArg,
+  type ValuableResultInput,
+} from '../../commands/search-feedback';
 import { parseAlexandriaFeedbackArray } from '../../commands/alexandria-feedback';
 import { getClient } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
@@ -153,6 +157,45 @@ describe('executeEndpointFeedback', () => {
     });
   });
 
+  it('rejects --valuable-results on non-search endpoints', async () => {
+    const result = await executeEndpointFeedback({
+      endpoint: 'scrape',
+      jobId: '0193f6c5-1234-7890-abcd-1234567890ab',
+      rating: 'good',
+      valuableResults: [{ source: 'web', position: 1 }],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe(
+      '--valuable-results is only supported for search feedback.'
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('forwards valuableResults for search feedback', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ success: true, creditsRefunded: 1 }),
+    });
+
+    const valuableResults: ValuableResultInput[] = [
+      { source: 'web', position: 1 },
+      { source: 'news', position: 2 },
+    ];
+    const result = await executeEndpointFeedback({
+      endpoint: 'search',
+      jobId: '0193f6c5-1234-7890-abcd-1234567890ab',
+      rating: 'good',
+      valuableResults,
+    });
+
+    expect(result.success).toBe(true);
+    const [, request] = mockFetch.mock.calls[0];
+    expect(JSON.parse(request.body).valuableResults).toEqual(valuableResults);
+  });
+
   it('treats team opt-out as a disabled success', async () => {
     mockFetch.mockResolvedValue({
       ok: false,
@@ -254,6 +297,55 @@ describe('feedback parsing', () => {
   it('parses positive page numbers', () => {
     expect(parsePageNumbersArg('1, 2, bad, -1, 3')).toEqual([1, 2, 3]);
     expect(parsePageNumbersArg('[4,5]')).toEqual([4, 5]);
+  });
+
+  it('parses valuable results as source:position pairs', () => {
+    expect(parseValuableResultsArg('web:1, news:2')).toEqual([
+      { source: 'web', position: 1 },
+      { source: 'news', position: 2 },
+    ]);
+    expect(parseValuableResultsArg('images:3')).toEqual([
+      { source: 'images', position: 3 },
+    ]);
+  });
+
+  it('parses valuable results from JSON, keeping reasons', () => {
+    expect(
+      parseValuableResultsArg(
+        '[{"source":"web","position":1,"reason":"Answered it"},{"source":"news","position":2}]'
+      )
+    ).toEqual([
+      { source: 'web', position: 1, reason: 'Answered it' },
+      { source: 'news', position: 2 },
+    ]);
+  });
+
+  // Each group is numbered from 1 independently, so a bare position does not
+  // identify a result.
+  it('rejects valuable results without a source', () => {
+    expect(() => parseValuableResultsArg('1,3')).toThrow(
+      'must be "source:position"'
+    );
+    expect(() => parseValuableResultsArg('[{"position":1}]')).toThrow(
+      'source must be one of'
+    );
+  });
+
+  it('rejects unknown sources and non-positive positions', () => {
+    expect(() => parseValuableResultsArg('video:1')).toThrow(
+      'source must be one of'
+    );
+    expect(() => parseValuableResultsArg('web:0')).toThrow(
+      'positions must be integers of 1 or greater'
+    );
+    expect(() => parseValuableResultsArg('web:abc')).toThrow(
+      'positions must be integers of 1 or greater'
+    );
+  });
+
+  it('returns undefined for empty input', () => {
+    expect(parseValuableResultsArg(undefined)).toBeUndefined();
+    expect(parseValuableResultsArg('   ')).toBeUndefined();
   });
 });
 
