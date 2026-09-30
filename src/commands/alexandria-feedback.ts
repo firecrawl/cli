@@ -108,6 +108,11 @@ export function createAlexandriaFeedbackCommand(): Command {
       'What you needed from the website',
       detail
     )
+    .requiredOption(
+      '--objective <text>',
+      'The underlying goal: what you or your user were ultimately trying to accomplish',
+      detail
+    )
     .requiredOption('--rationale <text>', 'Why you gave this rating', detail)
     .option(
       '--provider-feedback <json>',
