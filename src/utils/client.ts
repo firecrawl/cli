@@ -30,15 +30,15 @@ export function isKeylessMode(apiKey?: string, apiUrl?: string): boolean {
 }
 
 /**
- * The API's keyless prompts link to signup tagged `utm_medium=api`. Retag them
- * as `cli` so accounts created from the CLI are attributed to the CLI.
+ * Headers for keyless requests. The API reads X-Origin to attribute keyless
+ * use, and a keyless prompt's signup link, to the CLI; requests without a body
+ * (GET research and developer lookups, interact stop) carry nothing else.
+ * Keyless error messages are printed as the API sends them: their
+ * firecrawl.dev/k/<id> link already resolves to CLI attribution.
  */
-export function withCliSignupTag(message: string): string {
-  return message.replaceAll(
-    'utm_source=keyless&utm_medium=api',
-    'utm_source=keyless&utm_medium=cli'
-  );
-}
+export const KEYLESS_CLI_HEADERS: Readonly<Record<string, string>> = {
+  'X-Origin': 'cli',
+};
 
 export async function keylessRequest(
   path: string,
@@ -47,15 +47,13 @@ export async function keylessRequest(
   const apiUrl = (getConfig().apiUrl || DEFAULT_API_URL).replace(/\/$/, '');
   const response = await fetch(`${apiUrl}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...KEYLESS_CLI_HEADERS },
     body: JSON.stringify(body),
   });
   const json: any = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(
-      withCliSignupTag(
-        json?.error || `Firecrawl request failed (HTTP ${response.status})`
-      )
+      json?.error || `Firecrawl request failed (HTTP ${response.status})`
     );
   }
   return json;
@@ -65,14 +63,12 @@ export async function keylessGet(path: string): Promise<any> {
   const apiUrl = (getConfig().apiUrl || DEFAULT_API_URL).replace(/\/$/, '');
   const response = await fetch(`${apiUrl}${path}`, {
     method: 'GET',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...KEYLESS_CLI_HEADERS },
   });
   const json: any = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(
-      withCliSignupTag(
-        json?.error || `Firecrawl request failed (HTTP ${response.status})`
-      )
+      json?.error || `Firecrawl request failed (HTTP ${response.status})`
     );
   }
   return json;

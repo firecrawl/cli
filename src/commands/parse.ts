@@ -11,7 +11,7 @@ import * as path from 'path';
 import type { FormatOption } from 'firecrawl';
 import type { ParseOptions, ParseResult } from '../types/parse';
 import type { ScrapeFormat } from '../types/scrape';
-import { getClient, isKeylessMode, withCliSignupTag } from '../utils/client';
+import { getClient, isKeylessMode, KEYLESS_CLI_HEADERS } from '../utils/client';
 import { getConfig, validateConfig } from '../utils/config';
 import { handleScrapeOutput } from '../utils/output';
 
@@ -184,8 +184,14 @@ export async function executeParse(
   try {
     const response = await fetch(`${apiUrl}/v2/parse`, {
       method: 'POST',
+      // Multipart options are parsed after auth, so the header carries the
+      // CLI origin to the keyless check.
       headers:
-        !keyless && apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
+        !keyless && apiKey
+          ? { Authorization: `Bearer ${apiKey}` }
+          : keyless
+            ? { ...KEYLESS_CLI_HEADERS }
+            : undefined,
       body: form,
     });
 
@@ -195,10 +201,9 @@ export async function executeParse(
     const payload = (await response.json().catch(() => ({}))) as any;
 
     if (!response.ok || payload?.success === false) {
-      const message = withCliSignupTag(
+      const message =
         payload?.error ||
-          `HTTP ${response.status}: ${response.statusText || 'Request failed'}`
-      );
+        `HTTP ${response.status}: ${response.statusText || 'Request failed'}`;
       return { success: false, error: message };
     }
 
