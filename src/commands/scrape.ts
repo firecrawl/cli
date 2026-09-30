@@ -66,8 +66,13 @@ export async function executeScrape(
     formats.push(...options.formats);
   }
 
-  // Add screenshot format if requested and not already included
+  // Add screenshot format if requested and not already included. The API
+  // accepts only one screenshot format, so a full-page screenshot replaces a
+  // plain `screenshot` from --format instead of being added next to it.
   if (options.fullPageScreenshot) {
+    for (let i = formats.length - 1; i >= 0; i--) {
+      if (formats[i] === 'screenshot') formats.splice(i, 1);
+    }
     formats.push({ type: 'screenshot', fullPage: true });
   } else if (options.screenshot && !formats.includes('screenshot')) {
     formats.push('screenshot');
@@ -225,7 +230,10 @@ export async function handleScrapeCommand(
       : ['markdown'];
 
   // Add screenshot to effective formats if it was requested separately
-  if (options.screenshot && !effectiveFormats.includes('screenshot')) {
+  if (
+    (options.screenshot || options.fullPageScreenshot) &&
+    !effectiveFormats.includes('screenshot')
+  ) {
     effectiveFormats.push('screenshot');
   }
 
