@@ -120,6 +120,27 @@ describe('executeSearch', () => {
       );
     });
 
+    it('forwards optional task context with the search request', async () => {
+      mockHttpPost.mockResolvedValue(mockSearchResponse({ web: [] }));
+
+      await executeSearch({
+        query: 'React memo docs',
+        objective: 'Find official guidance on preventing unnecessary rerenders',
+        sessionId: 'task_123',
+        clientModel: 'claude-sonnet-4-6',
+      });
+
+      expect(mockHttpPost).toHaveBeenCalledWith(
+        '/v2/search',
+        expect.objectContaining({
+          objective:
+            'Find official guidance on preventing unnecessary rerenders',
+          sessionId: 'task_123',
+          clientModel: 'claude-sonnet-4-6',
+        })
+      );
+    });
+
     it('should pass apiUrl to getClient when provided', async () => {
       mockHttpPost.mockResolvedValue(mockSearchResponse({ web: [] }));
 
