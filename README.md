@@ -661,22 +661,22 @@ firecrawl agent <job-id> --wait
 
 #### Agent Options
 
-| Option                      | Description                                                   |
-| --------------------------- | ------------------------------------------------------------- |
-| `--urls <urls>`             | Comma-separated URLs to focus extraction on                   |
-| `--model <model>`           | `spark-1-mini` (default, cheaper) or `spark-1-pro` (accurate) |
-| `--schema <json>`           | JSON schema for structured output (inline JSON string)        |
-| `--schema-file <path>`      | Path to JSON schema file for structured output                |
-| `--max-credits <number>`    | Maximum credits to spend (job fails if exceeded)              |
-| `--webhook <url-or-json>`   | Webhook URL or configuration                                  |
-| `--status`                  | Check status of existing agent job                            |
-| `--cancel`                  | Cancel an active agent job by job ID                          |
-| `--wait`                    | Wait for agent to complete before returning results           |
-| `--poll-interval <seconds>` | Polling interval in seconds when waiting (default: 5)         |
-| `--timeout <seconds>`       | Timeout in seconds when waiting (default: no timeout)         |
-| `-o, --output <path>`       | Save output to file                                           |
-| `--json`                    | Output as JSON format                                         |
-| `--pretty`                  | Pretty print JSON output                                      |
+| Option                      | Description                                                                            |
+| --------------------------- | -------------------------------------------------------------------------------------- |
+| `--urls <urls>`             | Comma-separated URLs to focus extraction on                                            |
+| `--model <model>`           | `spark-2` (default). `spark-1-mini` and `spark-1-pro` are deprecated and run `spark-2` |
+| `--schema <json>`           | JSON schema for structured output (inline JSON string)                                 |
+| `--schema-file <path>`      | Path to JSON schema file for structured output                                         |
+| `--max-credits <number>`    | Maximum credits to spend (job fails if exceeded)                                       |
+| `--webhook <url-or-json>`   | Webhook URL or configuration                                                           |
+| `--status`                  | Check status of existing agent job                                                     |
+| `--cancel`                  | Cancel an active agent job by job ID                                                   |
+| `--wait`                    | Wait for agent to complete before returning results                                    |
+| `--poll-interval <seconds>` | Polling interval in seconds when waiting (default: 5)                                  |
+| `--timeout <seconds>`       | Timeout in seconds when waiting (default: no timeout)                                  |
+| `-o, --output <path>`       | Save output to file                                                                    |
+| `--json`                    | Output as JSON format                                                                  |
+| `--pretty`                  | Pretty print JSON output                                                               |
 
 #### Examples
 
@@ -687,8 +687,8 @@ firecrawl agent "Find the top 5 competitors of Notion and their pricing" --wait 
 # Extract data with cost limit
 firecrawl agent "Get all blog post titles and dates" --urls https://blog.example.com --max-credits 100 --wait
 
-# Use higher accuracy model for complex extraction
-firecrawl agent "Extract detailed technical specifications" --model spark-1-pro --wait --json --pretty
+# Spend more reasoning on a complex extraction
+firecrawl agent "Extract detailed technical specifications" --effort high --wait --json --pretty
 
 # Save structured results to file
 firecrawl agent "Extract contact information" --schema-file ./contact-schema.json --wait --json -o contacts.json --pretty
