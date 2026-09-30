@@ -7,11 +7,11 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import packageJson from '../../package.json';
 import { isAuthenticated } from '../utils/auth';
-import { getConfig, validateConfig } from '../utils/config';
+import { getConfig, isCustomApiUrl, validateConfig } from '../utils/config';
 import { loadCredentials } from '../utils/credentials';
 import { isSearchFeedbackDisabledLocally } from './search-feedback';
 
-export type AuthSource = 'env' | 'stored' | 'none';
+export type AuthSource = 'env' | 'stored' | 'self-hosted' | 'none';
 
 interface QueueStatusResponse {
   success: boolean;
@@ -55,7 +55,11 @@ interface LocalStatus {
 }
 
 /**
- * Detect how the user is authenticated
+ * Detect how the user is authenticated.
+ *
+ * `self-hosted` is reported when the stored credentials point at a custom
+ * apiUrl and no apiKey is present. Self-hosted Firecrawl instances do not
+ * require an API key, so the CLI is considered configured in that state.
  */
 export function getAuthSource(): AuthSource {
   if (process.env.FIRECRAWL_API_KEY) {
@@ -65,23 +69,38 @@ export function getAuthSource(): AuthSource {
   if (stored?.apiKey) {
     return 'stored';
   }
+  if (stored?.apiUrl && isCustomApiUrl(stored.apiUrl)) {
+    return 'self-hosted';
+  }
   return 'none';
+}
+
+/**
+ * Build request headers for a status API call. Omits Authorization entirely
+ * when no apiKey is present (self-hosted with no key) so the server does not
+ * see `Authorization: Bearer undefined`.
+ */
+function buildStatusHeaders(apiKey?: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+  return headers;
 }
 
 /**
  * Fetch queue status from API
  */
 async function fetchQueueStatus(
-  apiKey: string,
+  apiKey: string | undefined,
   apiUrl: string
 ): Promise<QueueStatusResponse> {
   const url = `${apiUrl.replace(/\/$/, '')}/v2/team/queue-status`;
   const response = await fetch(url, {
     method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: buildStatusHeaders(apiKey),
   });
 
   if (!response.ok) {
@@ -98,16 +117,13 @@ async function fetchQueueStatus(
  * Fetch credit usage from API
  */
 async function fetchCreditUsage(
-  apiKey: string,
+  apiKey: string | undefined,
   apiUrl: string
 ): Promise<CreditUsageResponse> {
   const url = `${apiUrl.replace(/\/$/, '')}/v2/team/credit-usage`;
   const response = await fetch(url, {
     method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: buildStatusHeaders(apiKey),
   });
 
   if (!response.ok) {
@@ -125,9 +141,13 @@ async function fetchCreditUsage(
  */
 export async function getStatus(): Promise<StatusResult> {
   const authSource = getAuthSource();
+  // Self-hosted setups (custom apiUrl, no apiKey) are a valid configured state.
+  // Treat them as authenticated for reporting purposes so we don't tell users
+  // to run `firecrawl login` against an instance that has no login flow.
+  const authenticated = isAuthenticated() || authSource === 'self-hosted';
   const result: StatusResult = {
     version: packageJson.version,
-    authenticated: isAuthenticated(),
+    authenticated,
     authSource,
   };
 
@@ -142,10 +162,11 @@ export async function getStatus(): Promise<StatusResult> {
 
     const apiUrl = config.apiUrl || 'https://api.firecrawl.dev';
 
-    // Fetch both endpoints in parallel
+    // Fetch both endpoints in parallel. apiKey may be undefined for
+    // self-hosted instances; the fetch helpers omit Authorization in that case.
     const [queueStatus, creditUsage] = await Promise.all([
-      fetchQueueStatus(apiKey!, apiUrl),
-      fetchCreditUsage(apiKey!, apiUrl),
+      fetchQueueStatus(apiKey, apiUrl),
+      fetchCreditUsage(apiKey, apiUrl),
     ]);
 
     if (queueStatus.success && queueStatus.maxConcurrency !== undefined) {
@@ -262,13 +283,20 @@ export async function handleStatusCommand(): Promise<void> {
 
   // Auth status with source
   if (status.authenticated) {
-    const sourceLabel =
-      status.authSource === 'env'
-        ? 'via FIRECRAWL_API_KEY'
-        : 'via stored credentials';
-    console.log(
-      `  ${green}●${reset} Authenticated ${dim}${sourceLabel}${reset}`
-    );
+    if (status.authSource === 'self-hosted') {
+      const apiUrl = getConfig().apiUrl;
+      console.log(
+        `  ${green}●${reset} Self-hosted ${dim}${apiUrl || ''}${reset}`
+      );
+    } else {
+      const sourceLabel =
+        status.authSource === 'env'
+          ? 'via FIRECRAWL_API_KEY'
+          : 'via stored credentials';
+      console.log(
+        `  ${green}●${reset} Authenticated ${dim}${sourceLabel}${reset}`
+      );
+    }
   } else {
     console.log(`  ${red}●${reset} Not authenticated`);
     console.log(`  ${dim}Run 'firecrawl login' to authenticate${reset}`);
