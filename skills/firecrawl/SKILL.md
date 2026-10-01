@@ -117,7 +117,7 @@ Single format outputs raw content. Multiple formats (e.g., `--format markdown,li
 
 If a keyless Search, Scrape, or Parse result is wrong, incomplete, blocked, or an error, optional feedback helps improve Firecrawl: submit it with `firecrawl feedback <endpoint> <jobId>` with `--rating`, `--task`, `--assessment`, and `--observations-file`. Use the job reference and invitation returned in metadata or stderr. Run `firecrawl feedback --help` for category-specific observations.
 
-After an Alexandria task (a tool ran, or you looked for one and nothing covered the site), send `firecrawl alexandria feedback` once per website you needed data from. It is free and has no job ID; the pattern and issue codes live in [firecrawl-alexandria](../firecrawl-alexandria/SKILL.md).
+For Alexandria feedback about a provider result or coverage gap, see [firecrawl-alexandria](../firecrawl-alexandria/SKILL.md).
 
 Use only evidence already available, without interviewing the user or doing extra investigation. Each keyless job accepts one submission, and job references expire after 24 hours. Feedback does not consume or restore operation allowance. Do not send legacy issue/note fields as a substitute for keyless observations.
 

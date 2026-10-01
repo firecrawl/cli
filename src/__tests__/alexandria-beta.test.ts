@@ -1290,6 +1290,8 @@ it('submits Alexandria session feedback without a job ID', async () => {
     'https://example.com',
     '--requested-functionality',
     'Download attachments',
+    '--objective',
+    ' Compare contract requirements across agencies ',
     '--rationale',
     'Only summaries available',
     '--json',
@@ -1306,6 +1308,7 @@ it('submits Alexandria session feedback without a job ID', async () => {
       url: 'https://example.com',
       requestedFunctionality: 'Download attachments',
     },
+    objective: 'Compare contract requirements across agencies',
     rationale: 'Only summaries available',
   });
 });
@@ -1325,9 +1328,23 @@ const sessionFeedbackArgs = [
   'https://example.com',
   '--requested-functionality',
   'Get attachments',
+  '--objective',
+  'Compare contract requirements',
   '--rationale',
   'Missing documents',
 ];
+
+it('requires a non-blank objective before sending feedback', async () => {
+  const index = sessionFeedbackArgs.indexOf('--objective');
+  const withoutObjective = sessionFeedbackArgs.filter(
+    (_, i) => i !== index && i !== index + 1
+  );
+  expect((await cli(withoutObjective)).code).not.toBe(0);
+  const blank = [...sessionFeedbackArgs];
+  blank[index + 1] = '   ';
+  expect((await cli(blank)).code).not.toBe(0);
+  expect(requests).toHaveLength(0);
+});
 
 it('honors the child feedback API key before root authentication', async () => {
   const result = await cli(
@@ -1453,4 +1470,56 @@ it('sends missing_capability feedback without requestedFunctionality', async () 
   expect(result.code).toBe(0);
   expect(requests).toHaveLength(1);
   expect(requests[0].body.capabilityFeedback).toEqual(capability);
+});
+
+it('displays nested SQL cost while preserving the free outer receipt', async () => {
+  response = {
+    success: true,
+    scrape_id: 'sql-outer',
+    data: {
+      creditsCost: 0,
+      alexandria: [
+        {
+          provider: 'firecrawl',
+          capability: 'sql',
+          creditsCost: 0,
+          data: {
+            kind: 'result',
+            creditsCost: 110,
+            rows: [],
+            receipt: {
+              creditsUsed: 110,
+              requestId: 'inner-request',
+              operationId: 'inner-scrape',
+              operationType: 'scrape',
+            },
+          },
+        },
+      ],
+    },
+  };
+  const result = await cli([
+    'scrape',
+    '--alexandria',
+    'firecrawl/sql',
+    '--options',
+    JSON.stringify({
+      query: 'SELECT * FROM "similarweb/web/traffic" LIMIT 1',
+      execute: true,
+    }),
+    '--json',
+  ]);
+  expect(result.code).toBe(0);
+  expect(result.stderr).toContain(
+    'Credits: 110 (0 outer request + 110 separately billed provider calls)'
+  );
+  const output = JSON.parse(result.stdout);
+  expect(output.receipt).toMatchObject({
+    creditsUsed: 0,
+    separatelyBilledCredits: 110,
+  });
+  expect(output.data.alexandria[0].data.receipt).toEqual(
+    (response as any).data.alexandria[0].data.receipt
+  );
+  expect(requests).toHaveLength(1);
 });

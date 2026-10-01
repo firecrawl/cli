@@ -726,22 +726,23 @@ firecrawl agent <job-id> --wait
 
 #### Agent Options
 
-| Option                      | Description                                                   |
-| --------------------------- | ------------------------------------------------------------- |
-| `--urls <urls>`             | Comma-separated URLs to focus extraction on                   |
-| `--model <model>`           | `spark-1-mini` (default, cheaper) or `spark-1-pro` (accurate) |
-| `--schema <json>`           | JSON schema for structured output (inline JSON string)        |
-| `--schema-file <path>`      | Path to JSON schema file for structured output                |
-| `--max-credits <number>`    | Maximum credits to spend (job fails if exceeded)              |
-| `--webhook <url-or-json>`   | Webhook URL or configuration                                  |
-| `--status`                  | Check status of existing agent job                            |
-| `--cancel`                  | Cancel an active agent job by job ID                          |
-| `--wait`                    | Wait for agent to complete before returning results           |
-| `--poll-interval <seconds>` | Polling interval in seconds when waiting (default: 5)         |
-| `--timeout <seconds>`       | Timeout in seconds when waiting (default: no timeout)         |
-| `-o, --output <path>`       | Save output to file                                           |
-| `--json`                    | Output as JSON format                                         |
-| `--pretty`                  | Pretty print JSON output                                      |
+| Option                      | Description                                                                            |
+| --------------------------- | -------------------------------------------------------------------------------------- |
+| `--urls <urls>`             | Comma-separated URLs to focus extraction on                                            |
+| `--model <model>`           | `spark-2` (default). `spark-1-mini` and `spark-1-pro` are deprecated and run `spark-2` |
+| `--effort <level>`          | Reasoning effort: `low`, `medium`, or `high`                                           |
+| `--schema <json>`           | JSON schema for structured output (inline JSON string)                                 |
+| `--schema-file <path>`      | Path to JSON schema file for structured output                                         |
+| `--max-credits <number>`    | Maximum credits to spend (job fails if exceeded)                                       |
+| `--webhook <url-or-json>`   | Webhook URL or configuration                                                           |
+| `--status`                  | Check status of existing agent job                                                     |
+| `--cancel`                  | Cancel an active agent job by job ID                                                   |
+| `--wait`                    | Wait for agent to complete before returning results                                    |
+| `--poll-interval <seconds>` | Polling interval in seconds when waiting (default: 5)                                  |
+| `--timeout <seconds>`       | Timeout in seconds when waiting (default: no timeout)                                  |
+| `-o, --output <path>`       | Save output to file                                                                    |
+| `--json`                    | Output as JSON format                                                                  |
+| `--pretty`                  | Pretty print JSON output                                                               |
 
 #### Examples
 
@@ -752,8 +753,8 @@ firecrawl agent "Find the top 5 competitors of Notion and their pricing" --wait 
 # Extract data with cost limit
 firecrawl agent "Get all blog post titles and dates" --urls https://blog.example.com --max-credits 100 --wait
 
-# Use higher accuracy model for complex extraction
-firecrawl agent "Extract detailed technical specifications" --model spark-1-pro --wait --json --pretty
+# Spend more reasoning on a complex extraction
+firecrawl agent "Extract detailed technical specifications" --effort high --wait --json --pretty
 
 # Save structured results to file
 firecrawl agent "Extract contact information" --schema-file ./contact-schema.json --wait --json -o contacts.json --pretty
@@ -1112,7 +1113,8 @@ Report the outcome of a session, missing provider coverage, or capability issues
 firecrawl alexandria feedback --rating partial \
   --url https://example.com \
   --requested-functionality "Find records and download their attachments" \
+  --objective "Compare contract requirements across agencies before bidding" \
   --rationale "Found summaries but could not retrieve attachments" --json
 ```
 
-No job ID is required. Alexandria session feedback has no job-age deadline and does not refund credits. Optional `--provider-feedback` and `--capability-feedback` accept JSON arrays; see `firecrawl alexandria feedback --help` for their fields and issue codes. Capability issue codes are `new_capability_request` (requires `requestedFunctionality`), `missing_capability` (the provider exists but lacks this capability), `insufficient_functionality`, `incorrect_result`, `execution_error`, and `other`. Existing `feedback` and `search-feedback` commands retain their job-specific behavior. Endpoint feedback opt-out environment variables also apply to this command.
+`--objective` is the underlying goal of the session: what you or your user were ultimately trying to accomplish, beyond the single website. No job ID is required. Alexandria session feedback has no job-age deadline and does not refund credits. Optional `--provider-feedback` and `--capability-feedback` accept JSON arrays; see `firecrawl alexandria feedback --help` for their fields and issue codes. Capability issue codes are `new_capability_request` (requires `requestedFunctionality`), `missing_capability` (the provider exists but lacks this capability), `insufficient_functionality`, `incorrect_result`, `execution_error`, and `other`. Existing `feedback` and `search-feedback` commands retain their job-specific behavior. Endpoint feedback opt-out environment variables also apply to this command.

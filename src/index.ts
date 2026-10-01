@@ -6,6 +6,7 @@
  */
 
 import { Command, Option } from 'commander';
+import { createSqlCommand } from './commands/sql';
 import { addFormatsAlias } from './utils/format-option';
 import {
   addAlexandriaScrapeOptions,
@@ -1664,7 +1665,7 @@ function createAgentCommand(): Command {
     .option('--urls <urls>', 'Comma-separated URLs to focus extraction on')
     .option(
       '--model <model>',
-      'Model to use: spark-2 (default), spark-1-mini, or spark-1-pro'
+      'Model to use: spark-2 (default). spark-1-mini and spark-1-pro are deprecated and run spark-2'
     )
     .option(
       '--schema <json>',
@@ -2334,6 +2335,8 @@ Shorthand: "firecrawl x" is an alias for "firecrawl experimental".
 `
   );
 experimental.addCommand(createDownloadCommand());
+program.addCommand(createSqlCommand(), { hidden: true });
+experimental.addCommand(createSqlCommand(), { hidden: true });
 program.addCommand(experimental);
 
 program

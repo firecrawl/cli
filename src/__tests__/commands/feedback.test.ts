@@ -150,6 +150,7 @@ describe('executeEndpointFeedback', () => {
       endpoint: 'alexandria',
       rating: 'partial',
       requestedWebsite,
+      objective: 'Compare contract requirements across agencies',
       rationale: 'Only summaries available',
       capabilityFeedback,
       jobId: 'must-not-be-sent',
@@ -166,6 +167,7 @@ describe('executeEndpointFeedback', () => {
       integration: 'cli',
       requestedWebsite,
       rationale: 'Only summaries available',
+      objective: 'Compare contract requirements across agencies',
       capabilityFeedback,
     });
   });

@@ -21,6 +21,7 @@ export interface EndpointFeedbackOptions {
   jobId?: string;
   requestedWebsite?: { url: string; requestedFunctionality: string };
   rationale?: string;
+  objective?: string;
   providerFeedback?: Record<string, unknown>[];
   capabilityFeedback?: Record<string, unknown>[];
   rating: SearchFeedbackRating;
@@ -287,6 +288,7 @@ export async function executeEndpointFeedback(
         ? [
             ['requestedWebsite', options.requestedWebsite],
             ['rationale', options.rationale],
+            ['objective', options.objective],
             ['providerFeedback', options.providerFeedback],
             ['capabilityFeedback', options.capabilityFeedback],
           ]
