@@ -117,7 +117,7 @@ async function checkAgentStatus(
         return {
           success: false,
           data: toStatusData(jobId, status, normalizedStatus),
-          error: status.error ?? 'Agent failed',
+          error: status.error || 'Agent failed',
         };
       }
 
