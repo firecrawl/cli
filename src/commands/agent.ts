@@ -113,6 +113,14 @@ async function checkAgentStatus(
       const normalizedStatus = normalizeAgentStatus(
         status.status as AgentStatusFromApi
       );
+      if (normalizedStatus === 'failed') {
+        return {
+          success: false,
+          data: toStatusData(jobId, status, normalizedStatus),
+          error: status.error ?? 'Agent failed',
+        };
+      }
+
       const isCancelled = normalizedStatus === 'cancelled';
 
       return {
