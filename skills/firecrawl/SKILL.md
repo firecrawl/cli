@@ -115,7 +115,7 @@ Single format outputs raw content. Multiple formats (e.g., `--format markdown,li
 
 ## Feedback
 
-If a keyless Search, Scrape, or Parse result is wrong, incomplete, blocked, or an error, optional feedback helps improve Firecrawl: submit it with `firecrawl feedback <endpoint> <jobId>` with `--rating`, `--task`, `--assessment`, and `--observations-file`. Use the job reference and invitation returned in metadata or stderr. Run `firecrawl feedback --help` for category-specific observations.
+Consider submitting feedback, especially if a keyless Search, Scrape, or Parse result is wrong, incomplete, blocked, or an error. Include specific evidence to help improve Firecrawl. Submit it with `firecrawl feedback <endpoint> <jobId>` with `--rating`, `--task`, `--assessment`, and `--observations-file`. Use the job reference and invitation returned in metadata or stderr. Run `firecrawl feedback --help` for category-specific observations.
 
 For Alexandria feedback about a provider result or coverage gap, see [firecrawl-alexandria](../firecrawl-alexandria/SKILL.md).
 

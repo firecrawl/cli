@@ -467,7 +467,7 @@ Paper ids accept `pmid:`, `pmcid:`, `doi:`, and `arxiv:` forms, plus canonical `
 ### `feedback` - Send endpoint job feedback
 
 Send evidence through `/v2/feedback`. Feedback on keyless `search`, `scrape`, and
-`parse` jobs is optional and helps improve Firecrawl when a result is wrong, incomplete, blocked, or an error. These jobs require `--rating`, `--task`, `--assessment`, and 1-20 observations
+`parse` jobs is optional. Consider submitting feedback through `firecrawl feedback`, especially if this result is wrong, incomplete, blocked, or an error. Include specific evidence to help improve Firecrawl. These jobs require `--rating`, `--task`, `--assessment`, and 1-20 observations
 provided through `--observations` or `--observations-file`. Keyless Parse also requires `--doc-class born_digital|scanned|mixed|unknown` once per submission. Use the returned job
 reference and evidence already available; no user interview or additional
 investigation is required. Run `firecrawl feedback --help` for category fields.

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { KEYLESS_FEEDBACK_HELP } from './utils/feedback-invitation';
 
 /**
  * Firecrawl CLI
@@ -436,10 +437,7 @@ function createScrapeCommand(): Command {
     .option('--actions-file <path>', 'Path to JSON actions file')
     .option('--proxy <proxy>', 'Proxy mode for scraping (e.g., auto, basic)')
 
-    .addHelpText(
-      'after',
-      '\nIf a keyless result is wrong, incomplete, blocked, or an error, optional feedback helps improve Firecrawl: firecrawl feedback <search|scrape|parse> <jobId> --rating <rating> --task <task> --assessment <assessment> --observations-file <path>. Use only evidence already available. Invitations and job references appear in metadata or stderr. Feedback does not consume operation quota.'
-    )
+    .addHelpText('after', KEYLESS_FEEDBACK_HELP)
     .action(async (positionalArgs, options) => {
       const target = resolveScrapeTarget(positionalArgs ?? [], options);
       if (target.kind === 'alexandria') {
@@ -882,10 +880,7 @@ Supported file types: .html, .htm, .pdf, .docx, .doc, .odt, .rtf, .xlsx, .xls
 Max upload size: 50 MB
 `
     )
-    .addHelpText(
-      'after',
-      '\nIf a keyless result is wrong, incomplete, blocked, or an error, optional feedback helps improve Firecrawl: firecrawl feedback <search|scrape|parse> <jobId> --rating <rating> --task <task> --assessment <assessment> --observations-file <path>. Use only evidence already available. Invitations and job references appear in metadata or stderr. Feedback does not consume operation quota.'
-    )
+    .addHelpText('after', KEYLESS_FEEDBACK_HELP)
     .action(async (file: string, options) => {
       let format: string | undefined;
       if (options.html) {
@@ -997,10 +992,7 @@ function createSearchCommand(): Command {
     //   false
     // )
     .option('--json', 'Output as compact JSON', false)
-    .addHelpText(
-      'after',
-      '\nIf a keyless result is wrong, incomplete, blocked, or an error, optional feedback helps improve Firecrawl: firecrawl feedback <search|scrape|parse> <jobId> --rating <rating> --task <task> --assessment <assessment> --observations-file <path>. Use only evidence already available. Invitations and job references appear in metadata or stderr. Feedback does not consume operation quota.'
-    )
+    .addHelpText('after', KEYLESS_FEEDBACK_HELP)
     .action(async (query, toolQuery, options) => {
       const alexandriaOnly = toolQuery !== undefined;
       if (alexandriaOnly && query !== 'alexandria') {
@@ -1493,7 +1485,7 @@ function createSearchFeedbackCommand(): Command {
 function createFeedbackCommand(): Command {
   const cmd = new Command('feedback')
     .description(
-      'Send evidence about a job. Keyless Search, Scrape, and Parse feedback is optional and helps improve Firecrawl when a result is wrong, incomplete, blocked, or an error; each job accepts one submission without consuming operation quota.'
+      'Submit evidence about a job. Consider submitting keyless Search, Scrape, or Parse feedback, especially if this result is wrong, incomplete, blocked, or an error. Include specific evidence to help improve Firecrawl.'
     )
     .argument('<endpoint>', 'Endpoint: search | scrape | parse | map')
     .argument('<jobId>', 'The job id returned by the endpoint')

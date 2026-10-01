@@ -1,3 +1,6 @@
+export const KEYLESS_FEEDBACK_HELP =
+  '\nConsider submitting feedback through firecrawl feedback, especially if a keyless result is wrong, incomplete, blocked, or an error. Include specific evidence to help improve Firecrawl. Run firecrawl feedback --help for submission fields. Invitations and job references appear in metadata or stderr. Feedback does not consume operation quota.';
+
 export function reportFeedbackInvitation(
   metadata: any,
   endpoint: string
@@ -7,7 +10,7 @@ export function reportFeedbackInvitation(
   }
   if (typeof metadata?.feedback?.jobId === 'string') {
     process.stderr.write(
-      `If this result is wrong, incomplete, blocked, or an error, optional feedback helps improve Firecrawl: firecrawl feedback ${endpoint} ${metadata.feedback.jobId} --help\n`
+      `Consider submitting feedback, especially if this result is wrong, incomplete, blocked, or an error. Include specific evidence to help improve Firecrawl: firecrawl feedback ${endpoint} ${metadata.feedback.jobId} --help\n`
     );
   }
 }

@@ -20,6 +20,7 @@ describe('executeParse', () => {
   let mockFetch: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    vi.stubEnv('FIRECRAWL_API_KEY', undefined);
     setupTest();
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'firecrawl-parse-test-'));
     filePath = path.join(tmpDir, 'page.html');
@@ -78,7 +79,7 @@ describe('executeParse', () => {
     initializeConfig({ apiUrl: 'https://api.firecrawl.dev' });
     const result = await executeParse({ file: filePath });
     expect(result.success).toBe(true);
-    expect(mockFetch.mock.calls[0][1].headers).toEqual({});
+    expect(mockFetch.mock.calls[0][1].headers).toEqual({ 'X-Origin': 'cli' });
   });
 
   it('includes the bearer token when an API key is configured', async () => {
