@@ -13,7 +13,7 @@ export type AgentStatus = 'processing' | 'completed' | 'failed' | 'cancelled';
 export interface AgentOptions {
   /** Natural language prompt describing the data to extract */
   prompt: string;
-  /** Model to use: spark-2 (default), spark-1-mini, or spark-1-pro */
+  /** Model to use: spark-2 (default). spark-1-mini and spark-1-pro are deprecated and run spark-2 */
   model?: AgentModel;
   /** Reasoning effort for the run */
   effort?: AgentEffort;
