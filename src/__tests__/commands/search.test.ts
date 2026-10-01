@@ -103,7 +103,6 @@ describe('executeSearch', () => {
       });
       const body = mockHttpPost.mock.calls[0][1];
       expect(body).not.toHaveProperty('objective');
-      expect(body).not.toHaveProperty('sessionId');
       expect(body).not.toHaveProperty('clientModel');
     });
 
@@ -130,7 +129,6 @@ describe('executeSearch', () => {
       await executeSearch({
         query: 'React memo docs',
         objective: 'Find official guidance on preventing unnecessary rerenders',
-        sessionId: 'task_123',
         clientModel: 'claude-sonnet-4-6',
       });
 
@@ -139,7 +137,6 @@ describe('executeSearch', () => {
         expect.objectContaining({
           objective:
             'Find official guidance on preventing unnecessary rerenders',
-          sessionId: 'task_123',
           clientModel: 'claude-sonnet-4-6',
         })
       );

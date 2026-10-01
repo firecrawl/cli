@@ -926,7 +926,6 @@ function createSearchCommand(): Command {
     .argument('<query>', 'Search query, or alexandria for semantic tool search')
     .argument('[tool-query]', 'Query for search alexandria')
     .option('--objective <goal>', 'Broader task goal behind this search')
-    .option('--session-id <id>', 'Opaque ID to link searches in one agent task')
     .option(
       '--client-model <model>',
       'Model issuing and consuming the results, if known'
@@ -1067,7 +1066,6 @@ function createSearchCommand(): Command {
       const searchOptions = {
         query,
         objective: options.objective,
-        sessionId: options.sessionId,
         clientModel: options.clientModel,
         toolDetail: options.toolDetail,
         domainTools:

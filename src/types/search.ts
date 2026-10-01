@@ -14,8 +14,6 @@ export interface SearchOptions {
   query: string;
   /** Optional broader task goal for this search */
   objective?: string;
-  /** Opaque identifier shared by searches in the same agent task */
-  sessionId?: string;
   /** Model issuing and consuming this search, if known */
   clientModel?: string;
   /** API key for Firecrawl */

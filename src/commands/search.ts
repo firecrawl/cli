@@ -33,7 +33,6 @@ export async function executeSearch(
       integration: 'cli',
     };
     if (options.objective) searchParams.objective = options.objective;
-    if (options.sessionId) searchParams.sessionId = options.sessionId;
     if (options.clientModel) searchParams.clientModel = options.clientModel;
     searchParams.toolDetail = options.toolDetail ?? 'compact';
     if (options.domainTools !== undefined)
