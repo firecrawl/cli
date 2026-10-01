@@ -96,7 +96,7 @@ Keyless feedback is available for successful and failed jobs when the response i
 
 Use `firecrawl feedback search <jobId>` with `--rating`, `--task`, `--assessment`, and `--observations-file`. The task describes what the search needed to answer; the assessment describes how well it answered that task. Supply 1-20 observations:
 
-- Useful or irrelevant results: `kind` and one-based `position` within the delivered group. `source` (`web`, `images`, or `news`) is required for multi-source jobs and otherwise defaults to `web`. Irrelevant results also require `reason`; see command help for allowed values.
+- Useful or irrelevant results: `kind` and one-based `position` within the delivered group. `source` (`web`, `images`, or `news`) is required for multi-source jobs and for images-only or news-only jobs. Only web-only jobs can omit it, defaulting to `web`. Irrelevant results also require `reason`; see command help for allowed values.
 - Missing information: `kind: "missing"` and `vertical`; `topic` is optional. `vertical` is optional on useful and irrelevant results. See command help for allowed verticals.
 - Missing and irrelevant observations may include `knownSources`: up to 20 HTTP(S) URLs, only when already known. These identify absent content or the source that should have ranked instead. Unmentioned results are unassessed; a full ranking is not required.
 - Every observation requires `detail` and `basis`: `output`, `source_comparison`, or `expectation`. A source comparison also requires `comparison: {reference, detail}`, with the correct content in `comparison.detail`. Use expectations for gaps that have not been verified against a source.

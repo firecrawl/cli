@@ -79,6 +79,7 @@ describe('executeEndpointFeedback', () => {
       expect(result.success).toBe(true);
       const [, init] = mockFetch.mock.calls[0];
       expect(init.headers.Authorization).toBeUndefined();
+      expect(init.headers['X-Origin']).toBe('cli');
       expect(JSON.parse(init.body)).toMatchObject({
         endpoint: 'parse',
         docClass: 'born_digital',
@@ -86,6 +87,34 @@ describe('executeEndpointFeedback', () => {
         origin: 'cli',
         integration: 'cli',
       });
+    }
+  );
+
+  it.each(['task', 'assessment', 'observations', 'docClass'] as const)(
+    'rejects missing keyless %s before making a request',
+    async (field) => {
+      vi.stubEnv('FIRECRAWL_API_KEY', '');
+      initializeConfig({ apiUrl: 'https://api.firecrawl.dev' });
+      const options = {
+        endpoint: 'parse' as const,
+        jobId: '00000000-0000-4000-8000-000000000001',
+        rating: 'good' as const,
+        task: 'Read the retry reference',
+        assessment: 'The output preserves the retry interval.',
+        observations: [
+          {
+            kind: 'correct',
+            basis: 'output',
+            detail: 'The retry interval is present.',
+          },
+        ],
+        docClass: 'unknown' as const,
+      };
+      const incomplete = { ...options, [field]: undefined };
+      const result = await executeEndpointFeedback(incomplete);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/Keyless feedback requires/);
+      expect(mockFetch).not.toHaveBeenCalled();
     }
   );
 
@@ -120,6 +149,7 @@ describe('executeEndpointFeedback', () => {
     });
     const [, init] = mockFetch.mock.calls[0];
     expect(init.headers.Authorization).toBeUndefined();
+    expect(init.headers['X-Origin']).toBe('cli');
     expect(JSON.parse(init.body).observations).toEqual(observations);
   });
 

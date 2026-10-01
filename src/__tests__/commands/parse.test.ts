@@ -20,7 +20,7 @@ describe('executeParse', () => {
   let mockFetch: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    vi.stubEnv('FIRECRAWL_API_KEY', undefined);
+    vi.stubEnv('FIRECRAWL_API_KEY', '');
     setupTest();
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'firecrawl-parse-test-'));
     filePath = path.join(tmpDir, 'page.html');

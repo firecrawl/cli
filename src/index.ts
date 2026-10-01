@@ -98,6 +98,7 @@ const AUTH_REQUIRED_COMMANDS = [
   'download',
   'crawl',
   'map',
+  'feedback',
   'search-feedback',
   'agent',
   'browser',
@@ -342,7 +343,10 @@ program
     const commandName = actionCommand.name();
     if (commandName === 'scrape')
       resolveScrapeTarget(actionCommand.args, commandOptions);
-    if (AUTH_REQUIRED_COMMANDS.includes(commandName)) {
+    const keylessFeedback =
+      commandName === 'feedback' &&
+      ['search', 'scrape', 'parse'].includes(actionCommand.args[0]);
+    if (AUTH_REQUIRED_COMMANDS.includes(commandName) && !keylessFeedback) {
       // Skip auth for custom API URLs (e.g., local development)
       // Check both global and command-level options
       const { isCustomApiUrl } = await import('./utils/config');

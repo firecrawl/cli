@@ -5,12 +5,11 @@ export function reportFeedbackInvitation(
   metadata: any,
   endpoint: string
 ): void {
-  if (typeof metadata?.jobId === 'string') {
-    process.stderr.write(`Feedback job (${endpoint}): ${metadata.jobId}\n`);
-  }
-  if (typeof metadata?.feedback?.jobId === 'string') {
+  if (typeof metadata?.jobId !== 'string') return;
+  process.stderr.write(`Feedback job (${endpoint}): ${metadata.jobId}\n`);
+  if (metadata.feedback) {
     process.stderr.write(
-      `Consider submitting feedback, especially if this result is wrong, incomplete, blocked, or an error. Include specific evidence to help improve Firecrawl: firecrawl feedback ${endpoint} ${metadata.feedback.jobId} --help\n`
+      `Consider submitting feedback, especially if this result is wrong, incomplete, blocked, or an error. Include specific evidence to help improve Firecrawl: firecrawl feedback ${endpoint} ${metadata.jobId} --help\n`
     );
   }
 }

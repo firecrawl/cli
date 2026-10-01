@@ -356,7 +356,7 @@ export async function handleSearchCommand(
     (result.data.news && result.data.news.length > 0) ||
     (result.data.developer && result.data.developer.length > 0);
 
-  if (!hasResults && !(result.data.tools && (options.json || options.pretty))) {
+  if (!hasResults && !options.json && !options.pretty) {
     console.log('No results found.');
     return;
   }

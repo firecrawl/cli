@@ -39,6 +39,14 @@ describe('feedback invitation output', () => {
       'firecrawl feedback search job-1'
     );
   });
+  it('prints only the job reference when the API did not issue an invitation', () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    reportFeedbackInvitation({ jobId: 'job-1' }, 'parse');
+    expect(stderr).toHaveBeenCalledExactlyOnceWith(
+      'Feedback job (parse): job-1\n'
+    );
+  });
+
   it('does not invent invitations when metadata is absent', () => {
     const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
     reportFeedbackInvitation(undefined, 'scrape');

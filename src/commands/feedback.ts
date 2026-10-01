@@ -1,3 +1,4 @@
+import { KEYLESS_CLI_HEADERS, isKeylessMode } from '../utils/client';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
 import { getConfig } from '../utils/config';
@@ -211,7 +212,14 @@ export function parseObservations(
   if (raw === undefined && filePath === undefined) return undefined;
   if (raw !== undefined && filePath !== undefined)
     throw new Error('Provide either --observations or --observations-file.');
-  const value: unknown = JSON.parse(raw ?? readFileSync(filePath!, 'utf8'));
+  let value: unknown;
+  try {
+    value = JSON.parse(raw ?? readFileSync(filePath!, 'utf8'));
+  } catch (error) {
+    throw new Error(
+      `${filePath ? '--observations-file' : '--observations'}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
   if (
     !Array.isArray(value) ||
     value.length < 1 ||
@@ -280,6 +288,30 @@ export async function executeEndpointFeedback(
       ''
     );
 
+    if (isKeylessMode(apiKey, apiUrl)) {
+      if (!['search', 'scrape', 'parse'].includes(options.endpoint)) {
+        throw new Error(
+          'Keyless feedback supports Search, Scrape, and Parse. Other endpoints require authentication.'
+        );
+      }
+      const required = {
+        '--task': options.task,
+        '--assessment': options.assessment,
+        '--observations or --observations-file': options.observations,
+        ...(options.endpoint === 'parse'
+          ? { '--doc-class': options.docClass }
+          : {}),
+      };
+      const missing = Object.entries(required)
+        .filter(
+          ([, value]) =>
+            value === undefined || (typeof value === 'string' && !value.trim())
+        )
+        .map(([name]) => name);
+      if (missing.length)
+        throw new Error(`Keyless feedback requires ${missing.join(', ')}.`);
+    }
+
     const body: Record<string, unknown> = {
       endpoint: options.endpoint,
       ...(options.endpoint === 'alexandria' ? {} : { jobId: options.jobId }),
@@ -326,7 +358,9 @@ export async function executeEndpointFeedback(
     const response = await fetch(`${apiUrl}/v2/feedback`, {
       method: 'POST',
       headers: {
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        ...(apiKey
+          ? { Authorization: `Bearer ${apiKey}` }
+          : KEYLESS_CLI_HEADERS),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),

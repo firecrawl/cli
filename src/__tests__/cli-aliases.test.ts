@@ -22,6 +22,7 @@ describe('CLI compatibility aliases', { timeout: 30000 }, () => {
       scrape.handleAllScrapeCommand = (_url, options) => print(options);
       require('./dist/commands/parse').handleParseCommand = print;
       require('./dist/commands/search').handleSearchCommand = print;
+      require('./dist/commands/feedback').handleEndpointFeedbackCommand = print;
       require('./dist/commands/crawl').handleCrawlCommand = print;
       require('./dist/commands/agent').handleAgentCommand = print;
       process.argv = [process.execPath, ${JSON.stringify(cliPath)}, ...${JSON.stringify(args)}];
@@ -50,6 +51,21 @@ describe('CLI compatibility aliases', { timeout: 30000 }, () => {
     expect(JSON.parse(result.stdout).sources).toEqual(sources);
     expect(result.stdout).not.toContain('AUTH_CHECK');
   });
+
+  testWithBuiltCli.each(['search', 'scrape', 'parse', 'map'])(
+    'retains the authentication gate only for Map feedback: %s',
+    (endpoint) => {
+      const result = run([
+        'feedback',
+        endpoint,
+        '00000000-0000-4000-8000-000000000001',
+        '--rating',
+        'good',
+      ]);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout.includes('AUTH_CHECK')).toBe(endpoint === 'map');
+    }
+  );
 
   testWithBuiltCli(
     'sql preserves experimental aliases and execution options',
