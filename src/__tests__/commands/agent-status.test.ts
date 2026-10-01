@@ -10,11 +10,12 @@ const exec = promisify(execFile);
 let server: Server;
 let baseUrl: string;
 let payload: Record<string, unknown> = {};
+let responseStatus = 200;
 const home = mkdtempSync(join(tmpdir(), 'agent-status-cli-'));
 
 beforeAll(async () => {
   server = createServer((req, res) => {
-    res.writeHead(200, { 'content-type': 'application/json' });
+    res.writeHead(responseStatus, { 'content-type': 'application/json' });
     res.end(JSON.stringify(payload));
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -98,14 +99,19 @@ it('keeps success semantics for a cancelled agent status', async () => {
 
 it('keeps failure semantics when the server rejects the status request', async () => {
   payload = { success: false, error: 'Unauthorized: Invalid API key' };
+  responseStatus = 401;
   const result = await cli(['agent', JOB_ID, '--json']);
+  responseStatus = 200;
   expect(result.code).toBe(1);
-  expect(result.stderr).toContain('Error');
+  expect(result.stderr).toContain('Unauthorized: Invalid API key');
 });
 
-it('exits nonzero even when a failed agent carries no error string', async () => {
-  payload = { success: true, status: 'failed', data: null };
-  const result = await cli(['agent', JOB_ID, '--json']);
-  expect(result.code).toBe(1);
-  expect(result.stderr).toContain('Agent failed');
-});
+it.each([undefined, null, ''])(
+  'uses the failure fallback for a missing or empty error (%j)',
+  async (error) => {
+    payload = { success: true, status: 'failed', data: null, error };
+    const result = await cli(['agent', JOB_ID, '--json']);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('Agent failed');
+  }
+);
