@@ -345,7 +345,9 @@ program
       resolveScrapeTarget(actionCommand.args, commandOptions);
     const keylessFeedback =
       commandName === 'feedback' &&
-      ['search', 'scrape', 'parse'].includes(actionCommand.args[0]);
+      ['search', 'scrape', 'parse'].includes(
+        actionCommand.args[0]?.toLowerCase()
+      );
     if (AUTH_REQUIRED_COMMANDS.includes(commandName) && !keylessFeedback) {
       // Skip auth for custom API URLs (e.g., local development)
       // Check both global and command-level options

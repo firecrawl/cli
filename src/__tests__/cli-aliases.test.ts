@@ -52,7 +52,16 @@ describe('CLI compatibility aliases', { timeout: 30000 }, () => {
     expect(result.stdout).not.toContain('AUTH_CHECK');
   });
 
-  testWithBuiltCli.each(['search', 'scrape', 'parse', 'map'])(
+  testWithBuiltCli.each([
+    'search',
+    'scrape',
+    'parse',
+    'map',
+    'Search',
+    'Scrape',
+    'Parse',
+    'Map',
+  ])(
     'retains the authentication gate only for Map feedback: %s',
     (endpoint) => {
       const result = run([
@@ -63,7 +72,9 @@ describe('CLI compatibility aliases', { timeout: 30000 }, () => {
         'good',
       ]);
       expect(result.status, result.stderr).toBe(0);
-      expect(result.stdout.includes('AUTH_CHECK')).toBe(endpoint === 'map');
+      expect(result.stdout.includes('AUTH_CHECK')).toBe(
+        endpoint.toLowerCase() === 'map'
+      );
     }
   );
 
