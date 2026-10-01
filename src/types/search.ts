@@ -14,8 +14,6 @@ export interface SearchOptions {
   query: string;
   /** Optional broader task goal for this search */
   objective?: string;
-  /** Model issuing and consuming this search, if known */
-  clientModel?: string;
   /** API key for Firecrawl */
   apiKey?: string;
   /** API URL for Firecrawl */

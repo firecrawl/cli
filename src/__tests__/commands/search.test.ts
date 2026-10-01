@@ -103,7 +103,6 @@ describe('executeSearch', () => {
       });
       const body = mockHttpPost.mock.calls[0][1];
       expect(body).not.toHaveProperty('objective');
-      expect(body).not.toHaveProperty('clientModel');
     });
 
     it('should allow highlights to be disabled', async () => {
@@ -129,7 +128,6 @@ describe('executeSearch', () => {
       await executeSearch({
         query: 'React memo docs',
         objective: 'Find official guidance on preventing unnecessary rerenders',
-        clientModel: 'claude-sonnet-4-6',
       });
 
       expect(mockHttpPost).toHaveBeenCalledWith(
@@ -137,7 +135,6 @@ describe('executeSearch', () => {
         expect.objectContaining({
           objective:
             'Find official guidance on preventing unnecessary rerenders',
-          clientModel: 'claude-sonnet-4-6',
         })
       );
     });

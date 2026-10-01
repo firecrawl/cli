@@ -18,9 +18,6 @@ For structured records, filterable listings, transcripts, or datasets, first che
 # Basic search
 firecrawl search "your query" -o .firecrawl/result.json --json
 
-# Optional task context, when known
-firecrawl search "React memo docs" --objective "Find official rerender guidance" --client-model claude-sonnet-4-6 -o .firecrawl/search-react-memo.json --json
-
 # Search and scrape full page content from results
 firecrawl search "your query" --scrape -o .firecrawl/scraped.json --json
 
