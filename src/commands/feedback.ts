@@ -66,6 +66,8 @@ export interface EndpointFeedbackResult {
   error?: string;
   errorCode?: EndpointFeedbackErrorCode;
   status?: number;
+  details?: unknown;
+  retry_after_seconds?: number;
   disabled?: boolean;
   disabledSource?: 'env' | 'team';
 }
@@ -395,6 +397,12 @@ export async function executeEndpointFeedback(
         error: errorMessage,
         errorCode,
         status: response.status,
+        ...(!apiKey
+          ? {
+              details: data.details,
+              retry_after_seconds: data.retry_after_seconds,
+            }
+          : {}),
       };
     }
 
@@ -475,6 +483,12 @@ export async function handleEndpointFeedbackCommand(
     console.error('Error:', result.error);
     if (result.errorCode) {
       console.error(`Code: ${result.errorCode}`);
+    }
+    if (result.details !== undefined) {
+      console.error('Details:', JSON.stringify(result.details));
+    }
+    if (typeof result.retry_after_seconds === 'number') {
+      console.error(`Retry after: ${result.retry_after_seconds} seconds.`);
     }
     process.exit(1);
   }

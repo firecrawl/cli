@@ -264,6 +264,75 @@ describe('executeEndpointFeedback', () => {
     });
   });
 
+  it.each([
+    [400, false],
+    [429, false],
+    [400, true],
+    [429, true],
+  ] as const)(
+    'shows API validation details and retry timing only for keyless feedback: HTTP %i, authenticated %s',
+    async (status, authenticated) => {
+      vi.stubEnv('FIRECRAWL_API_KEY', '');
+      initializeConfig({
+        apiKey: authenticated ? 'test-api-key' : undefined,
+        apiUrl: 'https://api.firecrawl.dev',
+      });
+      const details = [
+        {
+          path: ['observations', 0, 'basis'],
+          message: 'Invalid evidence basis',
+        },
+      ];
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status,
+        json: async () => ({
+          success: false,
+          error: 'Feedback rejected',
+          ...(status === 400
+            ? { feedbackErrorCode: 'INVALID_BODY', details }
+            : { retry_after_seconds: 2 }),
+        }),
+      });
+      const exit = vi.spyOn(process, 'exit').mockImplementation(() => {
+        throw new Error('process.exit:1');
+      });
+      const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+      try {
+        await expect(
+          handleEndpointFeedbackCommand({
+            endpoint: 'scrape',
+            jobId: '00000000-0000-4000-8000-000000000001',
+            rating: 'bad',
+            task: 'Retrieve the requested web page.',
+            assessment: 'The page request explicitly returned an error.',
+            observations: [
+              {
+                kind: 'failure',
+                reason: 'other',
+                basis: 'invalid',
+                detail: 'The operation explicitly returned an error.',
+              },
+            ],
+          })
+        ).rejects.toThrow('process.exit:1');
+        const output = stderr.mock.calls.flat().join(' ');
+        expect(output.includes('Invalid evidence basis')).toBe(
+          !authenticated && status === 400
+        );
+        expect(output.includes('Retry after: 2 seconds.')).toBe(
+          !authenticated && status === 429
+        );
+        expect(stdout).not.toHaveBeenCalled();
+      } finally {
+        exit.mockRestore();
+        stderr.mockRestore();
+        stdout.mockRestore();
+      }
+    }
+  );
+
   it('treats team opt-out as a disabled success', async () => {
     mockFetch.mockResolvedValue({
       ok: false,
