@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { KEYLESS_FEEDBACK_HELP } from './utils/feedback-invitation';
+import { isKeylessMode } from './utils/client';
 
 /**
  * Firecrawl CLI
@@ -934,7 +935,7 @@ function createSearchCommand(): Command {
     )
     .option(
       '--sources <sources>',
-      'Comma-separated sources: web, images, news, alexandria (default: web,alexandria; --sources web opts out of tools)'
+      'Comma-separated sources: web, images, news, alexandria (keyless default: web; authenticated default: web,alexandria; --sources web opts out of tools)'
     )
     .option(
       '--categories <categories>',
@@ -1016,7 +1017,9 @@ function createSearchCommand(): Command {
       // Parse sources
       let sources: SearchSource[] = alexandriaOnly
         ? ['alexandria']
-        : ['web', 'alexandria'];
+        : isKeylessMode(options.apiKey, options.apiUrl)
+          ? ['web']
+          : ['web', 'alexandria'];
       if (options.sources) {
         sources = options.sources
           .split(',')

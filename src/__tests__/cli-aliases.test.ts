@@ -21,6 +21,7 @@ describe('CLI compatibility aliases', { timeout: 30000 }, () => {
       scrape.handleScrapeCommand = print;
       scrape.handleAllScrapeCommand = (_url, options) => print(options);
       require('./dist/commands/parse').handleParseCommand = print;
+      require('./dist/commands/search').handleSearchCommand = print;
       require('./dist/commands/crawl').handleCrawlCommand = print;
       require('./dist/commands/agent').handleAgentCommand = print;
       process.argv = [process.execPath, ${JSON.stringify(cliPath)}, ...${JSON.stringify(args)}];
@@ -33,10 +34,22 @@ describe('CLI compatibility aliases', { timeout: 30000 }, () => {
       env: {
         ...process.env,
         FIRECRAWL_API_KEY: '',
+        FIRECRAWL_API_URL: '',
         FIRECRAWL_NO_UPDATE_CHECK: '1',
       },
     });
   }
+
+  testWithBuiltCli.each([
+    { flags: [], sources: ['web'] },
+    { flags: ['--api-key', 'fc-test-key'], sources: ['web', 'alexandria'] },
+    { flags: ['--sources', 'news'], sources: ['news'] },
+  ])('selects usable Search sources with $flags', ({ flags, sources }) => {
+    const result = run(['search', 'retry reference', ...flags]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).sources).toEqual(sources);
+    expect(result.stdout).not.toContain('AUTH_CHECK');
+  });
 
   testWithBuiltCli(
     'sql preserves experimental aliases and execution options',
