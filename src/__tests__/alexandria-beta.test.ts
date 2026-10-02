@@ -1567,14 +1567,20 @@ const sessionFeedbackArgs = [
   'Missing documents',
 ];
 
-it('requires a non-blank objective before sending feedback', async () => {
+it('sends session feedback without an objective', async () => {
+  response = { success: true, feedbackId: 'feedback-1', creditsRefunded: 0 };
   const index = sessionFeedbackArgs.indexOf('--objective');
   const withoutObjective = sessionFeedbackArgs.filter(
     (_, i) => i !== index && i !== index + 1
   );
-  expect((await cli(withoutObjective)).code).not.toBe(0);
+  expect((await cli(withoutObjective)).code).toBe(0);
+  expect(requests).toHaveLength(1);
+  expect(requests[0].body).not.toHaveProperty('objective');
+});
+
+it('rejects a blank objective before sending feedback', async () => {
   const blank = [...sessionFeedbackArgs];
-  blank[index + 1] = '   ';
+  blank[sessionFeedbackArgs.indexOf('--objective') + 1] = '   ';
   expect((await cli(blank)).code).not.toBe(0);
   expect(requests).toHaveLength(0);
 });

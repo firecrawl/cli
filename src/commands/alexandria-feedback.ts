@@ -108,7 +108,7 @@ export function createAlexandriaFeedbackCommand(): Command {
       'What you needed from the website',
       detail
     )
-    .requiredOption(
+    .option(
       '--objective <text>',
       'The underlying goal: what you or your user were ultimately trying to accomplish',
       detail
