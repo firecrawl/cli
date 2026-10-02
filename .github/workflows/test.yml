@@ -43,6 +43,7 @@ jobs:
   # The main test job runs on Linux, where the real cmd.exe spawn tests are
   # skipped. Run them on Windows so command quoting stays covered.
   test-windows-spawn:
+    if: github.event_name == 'pull_request'
     runs-on: windows-latest
 
     steps:
