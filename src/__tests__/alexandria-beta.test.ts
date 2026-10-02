@@ -1161,6 +1161,59 @@ it('returns the partial result when a waited run hits its credit limit', async (
     `firecrawl agent "<follow-up prompt>" --thread ${THREAD_ID} --wait`
   );
   expect(readable.stdout).toContain('higher --max-credits');
+  // The notice is already part of the text on stdout, so stderr stays clear.
+  expect(readable.stderr).not.toContain('Stopped at credit limit');
+});
+
+it('writes a credit-stopped result to --output and points stderr at the file', async () => {
+  runThenPoll(creditStopped);
+  const dir = mkdtempSync(join(tmpdir(), 'agent-output-'));
+  const outputPath = join(dir, 'result.txt');
+  try {
+    const result = await cli([
+      'agent',
+      'Find companies.',
+      '--wait',
+      '--poll-interval',
+      '0.01',
+      '--output',
+      outputPath,
+    ]);
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('Stopped at credit limit');
+    expect(result.stderr).toContain('Only Acme was found.');
+    expect(result.stderr).toContain(
+      `The partial result (incomplete, does not match schema) is in ${outputPath}.`
+    );
+    expect(result.stderr).toContain(`--thread ${THREAD_ID}`);
+    const written = readFileSync(outputPath, 'utf-8');
+    expect(written).toContain(
+      'Partial Result (incomplete, does not match schema):'
+    );
+    expect(written).toContain('"name": "Acme"');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+it('flushes a large credit-stopped JSON result to a pipe before exiting 1', async () => {
+  const companies = Array.from({ length: 5000 }, (_, i) => ({
+    name: `Company ${i}`,
+    website: `https://company-${i}.example.com`,
+  }));
+  runThenPoll({ ...creditStopped, partial: { companies } });
+  const result = await cli([
+    'agent',
+    'Find companies.',
+    '--wait',
+    '--poll-interval',
+    '0.01',
+    '--json',
+  ]);
+  expect(result.code).toBe(1);
+  expect(result.stdout.length).toBeGreaterThan(200_000);
+  expect(JSON.parse(result.stdout).partial.companies).toHaveLength(5000);
 });
 
 it('explains a credit-limit stop that recovered no partial', async () => {
@@ -1248,9 +1301,13 @@ it('shows partials and how to continue on a credit-stopped thread', async () => 
   const json = await cli(['agent', 'thread', THREAD_ID, '--json']);
   expect(json.code).toBe(0);
   expect(JSON.parse(json.stdout)).toEqual(response);
+  // stdout stays pure JSON; the continuation hint goes to stderr.
+  expect(json.stderr).toContain('Turn 1 stopped at its credit limit.');
+  expect(json.stderr).toContain(`--thread ${THREAD_ID} --wait`);
 
   const readable = await cli(['agent', 'thread', THREAD_ID]);
   expect(readable.code).toBe(0);
+  expect(readable.stderr).not.toContain('stopped at its credit limit');
   expect(readable.stdout).toContain('Turn 1 (extract) - credit_limit_reached');
   expect(readable.stdout).toContain(
     'Partial Result (incomplete): {"companies":[{"name":"Acme"}]}'

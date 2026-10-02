@@ -612,23 +612,36 @@ function formatAgentThread(thread: AgentThread): string {
     }
   }
 
-  // Only the latest turn can be continued, so only hint when it is the one
-  // that stopped at its credit limit.
+  const hint = threadCreditLimitHint(thread);
+  if (hint.length) {
+    lines.push('');
+    lines.push(...hint);
+  }
+
+  return lines.join('\n') + '\n';
+}
+
+/**
+ * How to continue a thread whose latest turn stopped at its credit limit.
+ * Only the latest turn can be continued, so only hint when it is the one
+ * that stopped. Empty when there is nothing to hint.
+ */
+function threadCreditLimitHint(thread: AgentThread): string[] {
   const latest = thread.runs[thread.runs.length - 1];
   if (
-    latest &&
-    thread.status !== 'running' &&
-    isCreditLimitStop({
+    !latest ||
+    thread.status === 'running' ||
+    !isCreditLimitStop({
       status: latest.status,
       ...readIncompleteFields(latest),
     })
   ) {
-    lines.push('');
-    lines.push(`Turn ${latest.turn} stopped at its credit limit.`);
-    lines.push(...creditLimitNextSteps(thread.id));
+    return [];
   }
-
-  return lines.join('\n') + '\n';
+  return [
+    `Turn ${latest.turn} stopped at its credit limit.`,
+    ...creditLimitNextSteps(thread.id),
+  ];
 }
 
 /**
@@ -656,6 +669,13 @@ export async function handleAgentThreadCommand(
   const outputContent = options.json
     ? JSON.stringify({ success: true, thread }, null, options.pretty ? 2 : 0)
     : formatAgentThread(thread);
+
+  // As with status output, keep the continuation hint visible on stderr when
+  // the listing itself is not printed as text on the terminal.
+  const hint = threadCreditLimitHint(thread);
+  if (hint.length && (options.json || options.output)) {
+    process.stderr.write(hint.join('\n') + '\n');
+  }
 
   writeOutput(outputContent, options.output, !!options.output);
 }
@@ -707,7 +727,10 @@ export async function handleAgentCommand(options: AgentOptions): Promise<void> {
         success: false,
         error: result.error,
       });
-      process.exit(1);
+      // Set the exit code instead of calling process.exit() so the result
+      // written above is flushed to a piped stdout before the process ends.
+      process.exitCode = 1;
+      return;
     }
     console.error('Error:', result.error);
     process.exit(1);
