@@ -5,7 +5,7 @@
  * Entry point for the CLI application
  */
 
-import { Command, Option } from 'commander';
+import { Command, InvalidArgumentError, Option } from 'commander';
 import { createSqlCommand } from './commands/sql';
 import { addFormatsAlias } from './utils/format-option';
 import {
@@ -1401,6 +1401,13 @@ Examples:
   return researchCmd;
 }
 
+function searchFeedbackObjective(value: string): string {
+  const text = value.trim();
+  if (!text || text.length > 2000)
+    throw new InvalidArgumentError('Use 1–2000 characters.');
+  return text;
+}
+
 /**
  * Create the search-feedback command. Used by agents (CLI, MCP, skills) to
  * report search-result quality after a `firecrawl search` call. The first
@@ -1428,6 +1435,11 @@ function createSearchFeedbackCommand(): Command {
     .option(
       '--query-suggestions <text>',
       'How the query or result set could be improved'
+    )
+    .requiredOption(
+      '--objective <text>',
+      'The underlying goal: what you or your user were ultimately trying to accomplish',
+      searchFeedbackObjective
     )
     .option(
       '-k, --api-key <key>',
@@ -1471,6 +1483,7 @@ function createSearchFeedbackCommand(): Command {
         valuableSources,
         missingContent,
         querySuggestions: options.querySuggestions,
+        objective: options.objective,
         apiKey: options.apiKey,
         apiUrl: options.apiUrl,
         output: options.output,

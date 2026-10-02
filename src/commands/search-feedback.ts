@@ -19,6 +19,7 @@ export interface SearchFeedbackOptions {
   valuableSources?: ValuableSourceInput[];
   missingContent?: MissingContentInput[];
   querySuggestions?: string;
+  objective?: string;
   apiKey?: string;
   apiUrl?: string;
   output?: string;
@@ -128,6 +129,9 @@ export async function executeSearchFeedback(
     }
     if (options.querySuggestions) {
       body.querySuggestions = options.querySuggestions;
+    }
+    if (options.objective) {
+      body.objective = options.objective;
     }
 
     const response = await fetch(url, {
