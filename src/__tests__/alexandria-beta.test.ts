@@ -1124,6 +1124,24 @@ function runThenPoll(statusResponse: Record<string, any>) {
       : statusResponse;
 }
 
+it('does not report 0 credits for a refunded credit stop', async () => {
+  runThenPoll({ ...creditStopped, creditsUsed: 0 });
+  const result = await cli([
+    'agent',
+    'Find companies.',
+    '--max-credits',
+    '25',
+    '--wait',
+    '--poll-interval',
+    '0.01',
+  ]);
+  expect(result.code).toBe(1);
+  expect(result.stdout).toContain(
+    'Stopped at credit limit: the agent reached its credit limit before finishing.'
+  );
+  expect(result.stdout).not.toContain('used 0 credits');
+});
+
 it('returns the partial result when a waited run hits its credit limit', async () => {
   runThenPoll(creditStopped);
   const args = ['agent', 'Find companies.', '--max-credits', '25', '--wait'];

@@ -460,8 +460,9 @@ function partialHeading(data: AgentIncompleteFields): string {
  * First line of the credit-limit notice.
  */
 function creditLimitHeadline(data: { creditsUsed?: number | null }): string {
+  // Failed runs are refunded, so the API can report 0 for a run that did work.
   const used =
-    data.creditsUsed !== undefined && data.creditsUsed !== null
+    typeof data.creditsUsed === 'number' && data.creditsUsed > 0
       ? `used ${data.creditsUsed} credits and `
       : '';
   return `Stopped at credit limit: the agent ${used}reached its credit limit before finishing.`;
