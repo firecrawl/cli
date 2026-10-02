@@ -4,6 +4,7 @@
 
 import type {
   AgentEffort,
+  AgentIncompleteFields,
   AgentModel,
   AgentOptions,
   AgentResult,
@@ -78,6 +79,42 @@ function normalizeAgentStatus(status: AgentStatusFromApi): AgentStatus {
   return status as AgentStatus;
 }
 
+const CREDIT_LIMIT_REACHED = 'credit_limit_reached';
+
+/**
+ * Read the incomplete-result fields from a status response or thread run.
+ * The pinned SDK does not type them yet and older APIs never send them, so
+ * each field is copied only when it is present and well-formed.
+ */
+function readIncompleteFields(source: unknown): AgentIncompleteFields {
+  const raw = (source ?? {}) as Record<string, unknown>;
+  return {
+    ...(raw.partial !== undefined &&
+      raw.partial !== null && { partial: raw.partial }),
+    ...(typeof raw.partialSchemaValid === 'boolean' && {
+      partialSchemaValid: raw.partialSchemaValid,
+    }),
+    ...(typeof raw.stopReason === 'string' && {
+      stopReason: raw.stopReason,
+    }),
+  };
+}
+
+function isCreditLimitStop(
+  data: { status?: string; stopReason?: string } | undefined
+): boolean {
+  return (
+    data?.stopReason === CREDIT_LIMIT_REACHED ||
+    data?.status === CREDIT_LIMIT_REACHED
+  );
+}
+
+function failureLabel(status: AgentStatusResponse): string {
+  return isCreditLimitStop(readIncompleteFields(status))
+    ? 'Agent stopped at credit limit'
+    : 'Agent failed';
+}
+
 function toStatusData(
   jobId: string,
   status: AgentStatusResponse,
@@ -94,6 +131,7 @@ function toStatusData(
     ...(status.mode !== undefined && { mode: status.mode }),
     ...(status.message !== undefined && { message: status.message }),
     ...(status.suggestions?.length && { suggestions: status.suggestions }),
+    ...readIncompleteFields(status),
   };
 }
 
@@ -164,7 +202,7 @@ async function checkAgentStatus(
       }
 
       if (currentNormalizedStatus === 'failed') {
-        spinner.fail('Agent failed');
+        spinner.fail(failureLabel(agentStatus));
         return {
           success: false,
           data: toStatusData(jobId, agentStatus, currentNormalizedStatus),
@@ -344,7 +382,7 @@ export async function executeAgent(
 
           if (normalizedStatus === 'failed') {
             process.removeListener('SIGINT', handleInterrupt);
-            spinner.fail('Agent failed');
+            spinner.fail(failureLabel(agentStatus));
             return {
               success: false,
               data: toStatusData(jobId, agentStatus, normalizedStatus),
@@ -406,12 +444,81 @@ export async function executeAgent(
 }
 
 /**
+ * Heading for a partial result, e.g. "Partial Result (incomplete, matches schema)".
+ */
+function partialHeading(data: AgentIncompleteFields): string {
+  const schemaNote =
+    data.partialSchemaValid === true
+      ? ', matches schema'
+      : data.partialSchemaValid === false
+        ? ', does not match schema'
+        : '';
+  return `Partial Result (incomplete${schemaNote})`;
+}
+
+/**
+ * First line of the credit-limit notice.
+ */
+function creditLimitHeadline(data: { creditsUsed?: number | null }): string {
+  const used =
+    data.creditsUsed !== undefined && data.creditsUsed !== null
+      ? `used ${data.creditsUsed} credits and `
+      : '';
+  return `Stopped at credit limit: the agent ${used}reached its credit limit before finishing.`;
+}
+
+/**
+ * How to pick up a run that stopped at its credit limit.
+ */
+function creditLimitNextSteps(threadId?: string): string[] {
+  const lines = ['To continue:'];
+  if (threadId) {
+    lines.push(
+      '  - Send a follow-up on the thread (it continues from the partial result):',
+      `      firecrawl agent "<follow-up prompt>" --thread ${threadId} --wait`
+    );
+  }
+  lines.push('  - Or rerun the prompt with a higher --max-credits.');
+  return lines;
+}
+
+/**
+ * Short credit-limit notice for stderr, used when the result itself goes to
+ * JSON or to a file and so is not shown on the terminal.
+ */
+function formatCreditLimitNotice(
+  data: NonNullable<AgentStatusResult['data']>,
+  outputPath?: string
+): string {
+  const lines = [creditLimitHeadline(data)];
+  if (data.message) {
+    lines.push(data.message);
+  }
+  const where = outputPath ? ` in ${outputPath}` : ' under "partial"';
+  lines.push(
+    data.partial !== undefined
+      ? `The ${partialHeading(data).toLowerCase()} is${where}.`
+      : 'No partial result was recovered.'
+  );
+  lines.push(...creditLimitNextSteps(data.threadId));
+  return lines.join('\n') + '\n';
+}
+
+/**
  * Format agent status in human-readable way
  */
 function formatAgentStatus(data: AgentStatusResult['data']): string {
   if (!data) return '';
 
   const lines: string[] = [];
+  const creditLimited = isCreditLimitStop(data);
+  if (creditLimited) {
+    lines.push(creditLimitHeadline(data));
+    if (data.partial === undefined) {
+      lines.push('No partial result was recovered.');
+    }
+    lines.push('');
+  }
   lines.push(`Job ID: ${data.id}`);
   lines.push(`Status: ${data.status}`);
 
@@ -454,12 +561,23 @@ function formatAgentStatus(data: AgentStatusResult['data']): string {
     lines.push(JSON.stringify(data.data, null, 2));
   }
 
+  if (data.partial !== undefined) {
+    lines.push('');
+    lines.push(`${partialHeading(data)}:`);
+    lines.push(JSON.stringify(data.partial, null, 2));
+  }
+
   if (data.suggestions?.length) {
     lines.push('');
     lines.push('Suggestions:');
     for (const suggestion of data.suggestions) {
       lines.push(`  - ${suggestion.label}: ${suggestion.prompt}`);
     }
+  }
+
+  if (creditLimited) {
+    lines.push('');
+    lines.push(...creditLimitNextSteps(data.threadId));
   }
 
   return lines.join('\n') + '\n';
@@ -486,9 +604,44 @@ function formatAgentThread(thread: AgentThread): string {
     if (run.data !== undefined) {
       lines.push(`  Result: ${JSON.stringify(run.data)}`);
     }
+    const incomplete = readIncompleteFields(run);
+    if (incomplete.partial !== undefined) {
+      lines.push(
+        `  ${partialHeading(incomplete)}: ${JSON.stringify(incomplete.partial)}`
+      );
+    }
+  }
+
+  const hint = threadCreditLimitHint(thread);
+  if (hint.length) {
+    lines.push('');
+    lines.push(...hint);
   }
 
   return lines.join('\n') + '\n';
+}
+
+/**
+ * How to continue a thread whose latest turn stopped at its credit limit.
+ * Only the latest turn can be continued, so only hint when it is the one
+ * that stopped. Empty when there is nothing to hint.
+ */
+function threadCreditLimitHint(thread: AgentThread): string[] {
+  const latest = thread.runs[thread.runs.length - 1];
+  if (
+    !latest ||
+    thread.status === 'running' ||
+    !isCreditLimitStop({
+      status: latest.status,
+      ...readIncompleteFields(latest),
+    })
+  ) {
+    return [];
+  }
+  return [
+    `Turn ${latest.turn} stopped at its credit limit.`,
+    ...creditLimitNextSteps(thread.id),
+  ];
 }
 
 /**
@@ -517,6 +670,45 @@ export async function handleAgentThreadCommand(
     ? JSON.stringify({ success: true, thread }, null, options.pretty ? 2 : 0)
     : formatAgentThread(thread);
 
+  // As with status output, keep the continuation hint visible on stderr when
+  // the listing itself is not printed as text on the terminal.
+  const hint = threadCreditLimitHint(thread);
+  if (hint.length && (options.json || options.output)) {
+    process.stderr.write(hint.join('\n') + '\n');
+  }
+
+  writeOutput(outputContent, options.output, !!options.output);
+}
+
+/**
+ * Write a status result as JSON or human-readable text. A credit-limit stop
+ * also gets a stderr notice whenever the result is not printed as text on
+ * the terminal (JSON mode or --output), so the stop is never silent.
+ */
+function writeAgentStatusOutput(
+  data: NonNullable<AgentStatusResult['data']>,
+  options: AgentOptions,
+  envelope: { success: boolean; error?: string }
+): void {
+  let outputContent: string;
+
+  if (options.json) {
+    const payload = {
+      success: envelope.success,
+      ...(envelope.error !== undefined && { error: envelope.error }),
+      ...data,
+    };
+    outputContent = options.pretty
+      ? JSON.stringify(payload, null, 2)
+      : JSON.stringify(payload);
+  } else {
+    outputContent = formatAgentStatus(data);
+  }
+
+  if (isCreditLimitStop(data) && (options.json || options.output)) {
+    process.stderr.write(formatCreditLimitNotice(data, options.output));
+  }
+
   writeOutput(outputContent, options.output, !!options.output);
 }
 
@@ -527,6 +719,19 @@ export async function handleAgentCommand(options: AgentOptions): Promise<void> {
   const result = await executeAgent(options);
 
   if (!result.success) {
+    // A run that stopped at its credit limit still has a result worth showing
+    // (the partial, its message, how to continue). It is still a failure.
+    const failedData = (result as AgentStatusResult).data;
+    if (failedData && 'id' in failedData && isCreditLimitStop(failedData)) {
+      writeAgentStatusOutput(failedData, options, {
+        success: false,
+        error: result.error,
+      });
+      // Set the exit code instead of calling process.exit() so the result
+      // written above is flushed to a piped stdout before the process ends.
+      process.exitCode = 1;
+      return;
+    }
     console.error('Error:', result.error);
     process.exit(1);
   }
@@ -535,19 +740,7 @@ export async function handleAgentCommand(options: AgentOptions): Promise<void> {
   if ('data' in result && result.data && 'data' in result.data) {
     const statusResult = result as AgentStatusResult;
     if (statusResult.data) {
-      let outputContent: string;
-
-      if (options.json) {
-        // JSON format
-        outputContent = options.pretty
-          ? JSON.stringify({ success: true, ...statusResult.data }, null, 2)
-          : JSON.stringify({ success: true, ...statusResult.data });
-      } else {
-        // Human-readable format
-        outputContent = formatAgentStatus(statusResult.data);
-      }
-
-      writeOutput(outputContent, options.output, !!options.output);
+      writeAgentStatusOutput(statusResult.data, options, { success: true });
       return;
     }
   }
