@@ -1436,7 +1436,7 @@ function createSearchFeedbackCommand(): Command {
       '--query-suggestions <text>',
       'How the query or result set could be improved'
     )
-    .requiredOption(
+    .option(
       '--objective <text>',
       'The underlying goal: what you or your user were ultimately trying to accomplish',
       searchFeedbackObjective

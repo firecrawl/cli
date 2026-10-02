@@ -96,7 +96,7 @@ Search costs 2 credits. After you've actually used the results (or decided they 
 
 - **Time window:** must be sent within ~2 minutes of the search. Late feedback is rejected.
 - **`--missing-content` is the most important field.** It's a list of _specific pieces_ of content you expected but did not find. One topic per entry, each in its own string. These aggregate across teams and tell us what to index next.
-- **`--objective` is required:** the underlying goal behind the search, in one sentence — what you or your user were ultimately trying to accomplish, not only what the query looked for.
+- **Include `--objective`:** the underlying goal behind the search, in one sentence — what you or your user were ultimately trying to accomplish, not only what the query looked for.
 - **Substantive content required** (zero-effort feedback is rejected with HTTP 400):
   - `good` → must include at least one `--valuable-sources` entry.
   - `partial` → must include `--valuable-sources` or `--missing-content`.

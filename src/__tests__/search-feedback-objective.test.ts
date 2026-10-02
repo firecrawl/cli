@@ -81,16 +81,21 @@ it('sends the trimmed objective with search feedback', async () => {
   });
 });
 
-it('requires a non-blank objective before sending feedback', async () => {
+it('still sends feedback without an objective', async () => {
   const index = feedbackArgs.indexOf('--objective');
   const withoutObjective = feedbackArgs.filter(
     (_, i) => i !== index && i !== index + 1
   );
-  expect((await cli(withoutObjective)).code).not.toBe(0);
 
+  expect((await cli(withoutObjective)).code).toBe(0);
+  expect(requests).toHaveLength(1);
+  expect(requests[0].body).not.toHaveProperty('objective');
+});
+
+it('rejects a blank objective before sending feedback', async () => {
   const blank = [...feedbackArgs];
-  blank[index + 1] = '   ';
-  expect((await cli(blank)).code).not.toBe(0);
+  blank[feedbackArgs.indexOf('--objective') + 1] = '   ';
 
+  expect((await cli(blank)).code).not.toBe(0);
   expect(requests).toHaveLength(0);
 });
