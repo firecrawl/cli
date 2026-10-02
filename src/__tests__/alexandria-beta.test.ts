@@ -1102,6 +1102,163 @@ it('surfaces chat replies and thread position on status', async () => {
   expect(readable.stdout).toContain('Dig deeper: List every link.');
 });
 
+const creditStopped = {
+  success: true,
+  status: 'failed',
+  error: 'Agent reached max credits',
+  expiresAt: '2026-09-17T00:00:00.000Z',
+  creditsUsed: 25,
+  threadId: THREAD_ID,
+  threadTurn: 1,
+  stopReason: 'credit_limit_reached',
+  message: 'Only Acme was found.',
+  partial: { companies: [{ name: 'Acme' }] },
+  partialSchemaValid: false,
+};
+
+// POST /v2/agent starts the run; every GET poll returns `status`.
+function runThenPoll(statusResponse: Record<string, any>) {
+  responseFor = (body) =>
+    body
+      ? { success: true, id: RUN_ID, threadId: THREAD_ID, threadTurn: 1 }
+      : statusResponse;
+}
+
+it('returns the partial result when a waited run hits its credit limit', async () => {
+  runThenPoll(creditStopped);
+  const args = ['agent', 'Find companies.', '--max-credits', '25', '--wait'];
+  const json = await cli([...args, '--poll-interval', '0.01', '--json']);
+  expect(json.code).toBe(1);
+  expect(requests[0].body.maxCredits).toBe(25);
+  expect(JSON.parse(json.stdout)).toMatchObject({
+    success: false,
+    error: 'Agent reached max credits',
+    id: RUN_ID,
+    status: 'failed',
+    stopReason: 'credit_limit_reached',
+    partial: { companies: [{ name: 'Acme' }] },
+    partialSchemaValid: false,
+    message: 'Only Acme was found.',
+    threadId: THREAD_ID,
+    creditsUsed: 25,
+  });
+  expect(json.stderr).toContain('Stopped at credit limit');
+  expect(json.stderr).toContain('Only Acme was found.');
+  expect(json.stderr).toContain(`--thread ${THREAD_ID}`);
+  expect(json.stderr).toContain('--max-credits');
+
+  const readable = await cli([...args, '--poll-interval', '0.01']);
+  expect(readable.code).toBe(1);
+  expect(readable.stdout).toContain(
+    'Stopped at credit limit: the agent used 25 credits and reached its credit limit before finishing.'
+  );
+  expect(readable.stdout).toContain('Only Acme was found.');
+  expect(readable.stdout).toContain(
+    'Partial Result (incomplete, does not match schema):'
+  );
+  expect(readable.stdout).toContain('"name": "Acme"');
+  expect(readable.stdout).toContain(
+    `firecrawl agent "<follow-up prompt>" --thread ${THREAD_ID} --wait`
+  );
+  expect(readable.stdout).toContain('higher --max-credits');
+});
+
+it('explains a credit-limit stop that recovered no partial', async () => {
+  const { partial, partialSchemaValid, ...noPartial } = creditStopped;
+  runThenPoll(noPartial);
+  const result = await cli([
+    'agent',
+    'Find companies.',
+    '--wait',
+    '--poll-interval',
+    '0.01',
+  ]);
+  expect(result.code).toBe(1);
+  expect(result.stdout).toContain('Stopped at credit limit');
+  expect(result.stdout).toContain('No partial result was recovered.');
+  expect(result.stdout).not.toContain('Partial Result');
+});
+
+it('keeps other failed runs unchanged', async () => {
+  runThenPoll({
+    success: true,
+    status: 'failed',
+    error: 'Agent crashed',
+    expiresAt: '2026-09-17T00:00:00.000Z',
+  });
+  const result = await cli([
+    'agent',
+    'Find companies.',
+    '--wait',
+    '--poll-interval',
+    '0.01',
+    '--json',
+  ]);
+  expect(result.code).toBe(1);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toContain('Error: Agent crashed');
+  expect(result.stderr).not.toContain('credit limit');
+});
+
+it('shows the partial on a status check of a credit-stopped run', async () => {
+  response = { ...creditStopped, partialSchemaValid: true };
+  const json = await cli(['agent', RUN_ID, '--json']);
+  // A status check reports the run's state; failed runs exit 0 here as before.
+  expect(json.code).toBe(0);
+  expect(JSON.parse(json.stdout)).toMatchObject({
+    success: true,
+    status: 'failed',
+    stopReason: 'credit_limit_reached',
+    partial: { companies: [{ name: 'Acme' }] },
+    partialSchemaValid: true,
+  });
+  expect(json.stderr).toContain('Stopped at credit limit');
+
+  const readable = await cli(['agent', RUN_ID]);
+  expect(readable.stdout).toContain(
+    'Partial Result (incomplete, matches schema):'
+  );
+});
+
+it('shows partials and how to continue on a credit-stopped thread', async () => {
+  response = {
+    success: true,
+    thread: {
+      id: THREAD_ID,
+      createdAt: '2026-09-16T10:00:00.000Z',
+      updatedAt: '2026-09-16T10:05:00.000Z',
+      status: 'idle',
+      runs: [
+        {
+          id: RUN_ID,
+          turn: 1,
+          mode: 'extract',
+          prompt: 'Find companies.',
+          status: 'credit_limit_reached',
+          createdAt: '2026-09-16T10:00:00.000Z',
+          finishedAt: '2026-09-16T10:01:00.000Z',
+          creditsUsed: 25,
+          message: 'Only Acme was found.',
+          stopReason: 'credit_limit_reached',
+          partial: { companies: [{ name: 'Acme' }] },
+        },
+      ],
+    },
+  };
+  const json = await cli(['agent', 'thread', THREAD_ID, '--json']);
+  expect(json.code).toBe(0);
+  expect(JSON.parse(json.stdout)).toEqual(response);
+
+  const readable = await cli(['agent', 'thread', THREAD_ID]);
+  expect(readable.code).toBe(0);
+  expect(readable.stdout).toContain('Turn 1 (extract) - credit_limit_reached');
+  expect(readable.stdout).toContain(
+    'Partial Result (incomplete): {"companies":[{"name":"Acme"}]}'
+  );
+  expect(readable.stdout).toContain('Turn 1 stopped at its credit limit.');
+  expect(readable.stdout).toContain(`--thread ${THREAD_ID} --wait`);
+});
+
 it('relays thread_busy conflicts when a turn is still running', async () => {
   status = 409;
   response = {
@@ -1161,6 +1318,7 @@ it('lists a thread through the thread endpoint', async () => {
   expect(readable.stdout).toContain('Turn 1 (extract) - succeeded');
   expect(readable.stdout).toContain('Extract the page title.');
   expect(readable.stdout).toContain('"title":"Example Domain"');
+  expect(readable.stdout).not.toContain('credit limit');
 });
 
 it('fails clearly on an unknown thread', async () => {
