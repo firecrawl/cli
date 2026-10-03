@@ -10,6 +10,24 @@ export type AgentEffort = 'low' | 'medium' | 'high';
 
 export type AgentStatus = 'processing' | 'completed' | 'failed' | 'cancelled';
 
+/**
+ * Why a failed run stopped early. The API currently sends only
+ * "credit_limit_reached"; other values are passed through untouched.
+ */
+export type AgentStopReason = 'credit_limit_reached' | (string & {});
+
+/**
+ * Incomplete-result fields the API adds to a failed run (and to thread runs).
+ * The pinned SDK does not type these yet, so they are read defensively.
+ */
+export interface AgentIncompleteFields {
+  /** Best-effort JSON from an incomplete run; `data` stays completed-only */
+  partial?: unknown;
+  /** Whether `partial` matches the supplied schema (only sent with a schema) */
+  partialSchemaValid?: boolean;
+  stopReason?: AgentStopReason;
+}
+
 export interface AgentOptions {
   /** Natural language prompt describing the data to extract */
   prompt: string;
@@ -66,7 +84,7 @@ export interface AgentResult {
 
 export interface AgentStatusResult {
   success: boolean;
-  data?: {
+  data?: AgentIncompleteFields & {
     id: string;
     status: AgentStatus;
     data?: any;

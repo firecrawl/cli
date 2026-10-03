@@ -105,6 +105,9 @@ describe('executeSearch', () => {
         integration: 'cli',
         toolDetail: 'compact',
       });
+      const body = mockHttpPost.mock.calls[0][1];
+      expect(body).not.toHaveProperty('objective');
+      expect(body).not.toHaveProperty('clientModel');
     });
 
     it('should allow highlights to be disabled', async () => {
@@ -120,6 +123,25 @@ describe('executeSearch', () => {
         expect.objectContaining({
           highlights: false,
           query: 'test query',
+        })
+      );
+    });
+
+    it('forwards optional task context with the search request', async () => {
+      mockHttpPost.mockResolvedValue(mockSearchResponse({ web: [] }));
+
+      await executeSearch({
+        query: 'React memo docs',
+        objective: 'Find official guidance on preventing unnecessary rerenders',
+        clientModel: 'claude-sonnet-4-6',
+      });
+
+      expect(mockHttpPost).toHaveBeenCalledWith(
+        '/v2/search',
+        expect.objectContaining({
+          objective:
+            'Find official guidance on preventing unnecessary rerenders',
+          clientModel: 'claude-sonnet-4-6',
         })
       );
     });

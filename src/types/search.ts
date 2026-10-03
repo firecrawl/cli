@@ -12,6 +12,10 @@ export interface SearchOptions {
   toolDetail?: 'compact' | 'summary' | 'full';
   /** Search query (required) */
   query: string;
+  /** Optional broader task goal for this search */
+  objective?: string;
+  /** Model issuing and consuming this search, if known */
+  clientModel?: string;
   /** API key for Firecrawl */
   apiKey?: string;
   /** API URL for Firecrawl */
