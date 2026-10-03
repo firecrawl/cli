@@ -119,7 +119,7 @@ Consider submitting feedback, especially if a keyless Search, Scrape, or Parse r
 
 For Alexandria feedback about a provider result or coverage gap, see [firecrawl-alexandria](../firecrawl-alexandria/SKILL.md).
 
-Use only evidence already available, without interviewing the user or doing extra investigation. Each keyless job accepts one submission, and job references expire after 24 hours. Feedback does not consume or restore operation allowance. Do not send legacy issue/note fields as a substitute for keyless observations.
+Use only evidence already available, without interviewing the user or doing extra investigation. Each keyless job accepts one submission. Submit from the same caller IP before the invitation's `expiresAt` deadline, which provides a 24-hour feedback window for the job. Feedback does not consume or restore operation allowance. Do not send legacy issue/note fields as a substitute for keyless observations.
 
 Authenticated Search callers can continue using `firecrawl search-feedback` with its existing fields and policy. The two authentication modes use different request contracts; do not add credentials to submit feedback for a keyless job. Details live in [firecrawl-search](../firecrawl-search/SKILL.md).
 

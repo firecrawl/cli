@@ -103,7 +103,7 @@ Use `firecrawl feedback search <jobId>` with `--rating`, `--task`, `--assessment
 
 Task, assessment, and observation detail each require 10-2000 characters. Use only evidence already available. Do not ask the user to complete an interview, investigate further, guess missing content, or diagnose causes merely to submit feedback. An empty result set can support a missing-information observation if the response includes an eligible job reference.
 
-Each job accepts one submission, and retrying returns the original feedback ID. Job references expire after 24 hours. Feedback does not consume or restore operation allowance. Consider submitting feedback, especially if a keyless result is wrong, incomplete, blocked, or an error. Include specific evidence to help improve Firecrawl; do not retry a rate-limit rejection in a loop. Client feedback flags do not suppress keyless invitations or submissions.
+Each job accepts one submission, and retrying returns the original feedback ID. Submit from the same caller IP before the invitation's `expiresAt` deadline, which provides a 24-hour feedback window for the job. Feedback does not consume or restore operation allowance. Consider submitting feedback, especially if a keyless result is wrong, incomplete, blocked, or an error. Include specific evidence to help improve Firecrawl; do not retry a rate-limit rejection in a loop. Client feedback flags do not suppress keyless invitations or submissions.
 
 Run `firecrawl feedback --help` for the full evidence contract. Old instructions using `firecrawl search-feedback` require authentication and do not work for keyless jobs.
 

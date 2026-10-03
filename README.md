@@ -467,13 +467,14 @@ Paper ids accept `pmid:`, `pmcid:`, `doi:`, and `arxiv:` forms, plus canonical `
 ### `feedback` - Send endpoint job feedback
 
 Send evidence through `/v2/feedback`. Feedback on keyless `search`, `scrape`, and
-`parse` jobs is optional. Consider submitting feedback through `firecrawl feedback`, especially if this result is wrong, incomplete, blocked, or an error. Include specific evidence to help improve Firecrawl. These jobs require `--rating`, `--task`, `--assessment`, and 1-20 observations
+`parse` jobs is optional. Consider submitting feedback through `firecrawl feedback`, especially if this result is wrong, incomplete, blocked, or an error. Include specific evidence to help improve Firecrawl. Keyless feedback submissions require `--rating`, `--task`, `--assessment`, and 1-20 observations
 provided through `--observations` or `--observations-file`. Task, assessment, and each observation detail require 10-2000 characters after trimming whitespace. Keyless Parse also requires `--doc-class born_digital|scanned|mixed|unknown` once per submission. Use the returned job
 reference and evidence already available; no user interview or additional
 investigation is required. Run `firecrawl feedback --help` for category fields.
 
 Each keyless job accepts one submission; retrying returns the original feedback
-ID. References expire after 24 hours.
+ID. Submit from the same caller IP before the invitation's `expiresAt` deadline,
+which provides a 24-hour feedback window for the job.
 Submitting feedback does not consume or restore operation allowance. Invitations
 and references appear in metadata or stderr, preserving ordinary stdout.
 

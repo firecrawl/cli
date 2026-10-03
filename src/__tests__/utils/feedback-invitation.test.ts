@@ -4,7 +4,7 @@ import { reportFeedbackInvitation } from '../../utils/feedback-invitation';
 describe('feedback invitation output', () => {
   afterEach(() => {
     vi.restoreAllMocks();
-    delete process.env.FIRECRAWL_NO_ENDPOINT_FEEDBACK;
+    vi.unstubAllEnvs();
   });
   it('keeps content stdout unchanged and writes a short optional reminder to stderr', () => {
     const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
@@ -26,7 +26,7 @@ describe('feedback invitation output', () => {
     expect(printed).not.toContain('--observations-file');
   });
   it('retains keyless invitations despite authenticated feedback preferences', () => {
-    process.env.FIRECRAWL_NO_ENDPOINT_FEEDBACK = 'true';
+    vi.stubEnv('FIRECRAWL_NO_ENDPOINT_FEEDBACK', 'true');
     const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
     reportFeedbackInvitation(
       {
