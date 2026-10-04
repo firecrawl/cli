@@ -15,6 +15,9 @@ let statuses: string[];
 let polls: number;
 
 beforeAll(async () => {
+  await exec(process.execPath, [
+    join(process.cwd(), 'node_modules/typescript/bin/tsc'),
+  ]);
   server = createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
     if (req.method === 'POST') {
@@ -35,7 +38,7 @@ beforeAll(async () => {
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-});
+}, 30000);
 
 afterAll(async () => {
   await new Promise<void>((resolve, reject) =>
