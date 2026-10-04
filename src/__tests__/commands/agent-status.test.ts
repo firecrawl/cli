@@ -14,13 +14,16 @@ let responseStatus = 200;
 const home = mkdtempSync(join(tmpdir(), 'agent-status-cli-'));
 
 beforeAll(async () => {
+  await exec(process.execPath, [
+    join(process.cwd(), 'node_modules/typescript/bin/tsc'),
+  ]);
   server = createServer((req, res) => {
     res.writeHead(responseStatus, { 'content-type': 'application/json' });
     res.end(JSON.stringify(payload));
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-});
+}, 30000);
 
 afterAll(async () => {
   await new Promise<void>((resolve, reject) =>
