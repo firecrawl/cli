@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -14,8 +14,11 @@ let responseStatus = 200;
 const home = mkdtempSync(join(tmpdir(), 'agent-status-cli-'));
 
 beforeAll(async () => {
+  copyFileSync(join(process.cwd(), 'package.json'), join(home, 'package.json'));
   await exec(process.execPath, [
     join(process.cwd(), 'node_modules/typescript/bin/tsc'),
+    '--outDir',
+    join(home, 'dist'),
   ]);
   server = createServer((req, res) => {
     res.writeHead(responseStatus, { 'content-type': 'application/json' });
@@ -26,9 +29,11 @@ beforeAll(async () => {
 }, 30000);
 
 afterAll(async () => {
-  await new Promise<void>((resolve, reject) =>
-    server.close((error) => (error ? reject(error) : resolve()))
-  );
+  if (server) {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve()))
+    );
+  }
   rmSync(home, { recursive: true, force: true });
 });
 
@@ -36,10 +41,11 @@ async function cli(args: string[]) {
   try {
     return {
       code: 0,
-      ...(await exec(process.execPath, ['dist/index.js', ...args], {
+      ...(await exec(process.execPath, [join(home, 'dist/index.js'), ...args], {
         timeout: 10000,
         env: {
           ...process.env,
+          NODE_PATH: join(process.cwd(), 'node_modules'),
           HOME: home,
           USERPROFILE: home,
           FIRECRAWL_API_KEY: 'fc-test',
