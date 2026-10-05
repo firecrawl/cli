@@ -1,6 +1,6 @@
 # 🔥 Firecrawl CLI
 
-Command-line interface for Firecrawl. Search, scrape, interact, crawl, map, search research papers and developer sources, and run agent jobs directly from your terminal.
+Command-line interface for Firecrawl. Search, scrape, interact, crawl, map, search research papers, developer sources, and legal and regulatory sources, and run agent jobs directly from your terminal.
 
 ## Installation
 
@@ -405,6 +405,35 @@ firecrawl developer "tokio select cancellation safety in tokio-rs/tokio issues a
 
 # Keep the full response, including passages, citations, and licenses
 firecrawl developer "tokio select cancellation safety" --json -o results.json
+```
+
+---
+
+### `legal-regulatory` - Search legal and regulatory sources
+
+Search the Legal and Regulatory Index: primary law and regulatory material from US federal, state, and local government sources, including statutes, regulations, codes, court opinions, and other government publications.
+
+```bash
+firecrawl legal-regulatory "food labeling requirements for allergens"
+```
+
+#### Options
+
+| Option                | Description                               |
+| --------------------- | ----------------------------------------- |
+| `--limit <n>`         | Number of results (default: 10, max: 100) |
+| `-o, --output <path>` | Save to file                              |
+| `--json`              | Output the raw response as JSON           |
+| `--pretty`            | Pretty print JSON output                  |
+
+#### Examples
+
+```bash
+# Find state statutes on a topic
+firecrawl legal-regulatory "California data breach notification statute" --limit 10
+
+# Keep the raw response
+firecrawl legal-regulatory "FDA food labeling regulations" --json -o results.json
 ```
 
 ---

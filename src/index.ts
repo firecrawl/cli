@@ -28,6 +28,7 @@ import { handleParseCommand } from './commands/parse';
 import { createMonitorCommand } from './commands/monitor';
 import { handleSearchCommand } from './commands/search';
 import { handleDeveloperSearchCommand } from './commands/developer';
+import { handleLegalRegulatorySearchCommand } from './commands/legal-regulatory';
 import {
   handleInspectPaperCommand,
   handleReadPaperCommand,
@@ -1164,6 +1165,52 @@ Examples:
 }
 
 /**
+ * Create and configure the legal-regulatory command
+ */
+function createLegalRegulatoryCommand(): Command {
+  const legalRegulatoryCmd = new Command('legal-regulatory')
+    .description(
+      'Search the Legal and Regulatory Index: primary law and regulatory material from US federal, state, and local government sources, including statutes, regulations, codes, court opinions, and other government publications.'
+    )
+    .argument('<query>', 'Natural-language legal question or search phrase')
+    .option(
+      '--limit <number>',
+      'Number of results to return (default: 10, max: 100)',
+      parseInt
+    )
+    .addOption(new Option('--k <number>').argParser(parseInt).hideHelp())
+    .option(
+      '-k, --api-key <key>',
+      'Firecrawl API key (overrides global --api-key)'
+    )
+    .option('--api-url <url>', 'API URL (overrides global --api-url)')
+    .option('-o, --output <path>', 'Output file path (default: stdout)')
+    .option('--json', 'Output as compact JSON', false)
+    .option('--pretty', 'Pretty print JSON output', false)
+    .addHelpText(
+      'after',
+      `
+Examples:
+  $ firecrawl legal-regulatory "food labeling requirements for allergens" --limit 10
+  $ firecrawl legal-regulatory "California data breach notification statute" --json
+`
+    )
+    .action(async (query, options) => {
+      await handleLegalRegulatorySearchCommand({
+        query,
+        k: researchLimit(options),
+        apiKey: options.apiKey,
+        apiUrl: options.apiUrl,
+        output: options.output,
+        json: options.json,
+        pretty: options.pretty,
+      });
+    });
+
+  return legalRegulatoryCmd;
+}
+
+/**
  * Create and configure the research command group
  */
 function createResearchCommand(): Command {
@@ -2235,6 +2282,7 @@ program.addCommand(createFindToolsCommand());
 program.addCommand(createListCommand());
 program.addCommand(createAlexandriaCommand());
 program.addCommand(createDeveloperCommand());
+program.addCommand(createLegalRegulatoryCommand());
 program.addCommand(createResearchCommand());
 program.addCommand(createFeedbackCommand());
 program.addCommand(createSearchFeedbackCommand());
