@@ -89,6 +89,40 @@ describe('CLI argv parsing', () => {
   });
 
   testWithBuiltCli(
+    'lists the legal-regulatory command in root help output',
+    () => {
+      const result = spawnSync(process.execPath, [cliPath, '--help'], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toMatch(/^\s*legal-regulatory\b/m);
+    }
+  );
+
+  testWithBuiltCli(
+    'parses the legal-regulatory command and shows its help',
+    () => {
+      const result = spawnSync(
+        process.execPath,
+        [cliPath, 'legal-regulatory', '--help'],
+        {
+          cwd: process.cwd(),
+          encoding: 'utf8',
+        }
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Usage: firecrawl legal-regulatory');
+      expect(result.stdout).toContain('--limit');
+      expect(result.stdout).toContain('--json');
+      expect(result.stdout).toContain('--output');
+      expect(result.stderr).not.toContain('unknown command');
+    }
+  );
+
+  testWithBuiltCli(
     'describes default search highlights and public developer coverage',
     () => {
       const result = spawnSync(
