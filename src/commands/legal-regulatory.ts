@@ -6,7 +6,7 @@ import type {
   LegalRegulatorySearchResponse,
 } from '../types/legal-regulatory';
 
-const BASE = '/v2/search/legal-regulatory';
+const BASE = '/v2/search/gov';
 
 async function getLegalRegulatory<T>(
   path: string,

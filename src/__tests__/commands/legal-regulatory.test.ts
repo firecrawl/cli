@@ -53,7 +53,7 @@ describe('handleLegalRegulatorySearchCommand', () => {
   });
 
   describe('API call generation', () => {
-    it('calls /v2/search/legal-regulatory with the query', async () => {
+    it('calls /v2/search/gov with the query', async () => {
       mockHttpGet.mockResolvedValue(
         mockLegalRegulatoryResponse([sampleResult])
       );
@@ -62,7 +62,7 @@ describe('handleLegalRegulatorySearchCommand', () => {
 
       expect(mockHttpGet).toHaveBeenCalledTimes(1);
       expect(mockHttpGet).toHaveBeenCalledWith(
-        '/v2/search/legal-regulatory?query=food+labeling&integration=cli'
+        '/v2/search/gov?query=food+labeling&integration=cli'
       );
     });
 
@@ -77,7 +77,7 @@ describe('handleLegalRegulatorySearchCommand', () => {
       });
 
       expect(mockHttpGet).toHaveBeenCalledWith(
-        '/v2/search/legal-regulatory?query=food+labeling&k=5&integration=cli'
+        '/v2/search/gov?query=food+labeling&k=5&integration=cli'
       );
     });
 
