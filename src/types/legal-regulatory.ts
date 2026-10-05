@@ -17,5 +17,6 @@ export interface LegalRegulatoryResult {
 
 export interface LegalRegulatorySearchResponse {
   success: boolean;
+  error?: string;
   data?: { web?: LegalRegulatoryResult[] };
 }
