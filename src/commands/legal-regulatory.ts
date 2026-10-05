@@ -71,6 +71,9 @@ export async function handleLegalRegulatorySearchCommand(
       `${BASE}?${params.toString()}`,
       options
     );
+    if (data.success === false) {
+      throw new Error(data.error ?? 'Legal and regulatory search failed');
+    }
     writeLegalRegulatoryOutput(data, fmtLegalRegulatory(data), options);
   } catch (error) {
     handleError(error);

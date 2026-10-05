@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { handleLegalRegulatorySearchCommand } from '../../commands/legal-regulatory';
-import { getClient } from '../../utils/client';
+import { getClient, isKeylessMode } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { writeOutput } from '../../utils/output';
 import { setupTest, teardownTest } from '../utils/mock-client';
@@ -16,6 +16,7 @@ vi.mock('../../utils/client', async () => {
   return {
     ...actual,
     getClient: vi.fn(),
+    isKeylessMode: vi.fn(() => false),
   };
 });
 
@@ -50,6 +51,7 @@ describe('handleLegalRegulatorySearchCommand', () => {
   afterEach(() => {
     teardownTest();
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   describe('API call generation', () => {
@@ -178,7 +180,53 @@ describe('handleLegalRegulatorySearchCommand', () => {
     });
   });
 
+  describe('keyless mode', () => {
+    it('calls the endpoint directly and renders the results', async () => {
+      vi.mocked(isKeylessMode).mockReturnValueOnce(true);
+      const fetchMock = vi.fn(
+        async (_url: string, _init?: RequestInit) =>
+          new Response(
+            JSON.stringify({ success: true, data: { web: [sampleResult] } }),
+            { status: 200 }
+          )
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      await handleLegalRegulatorySearchCommand({ query: 'food labeling' });
+
+      expect(mockHttpGet).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.firecrawl.dev/v2/search/gov?query=food+labeling&integration=cli',
+        expect.objectContaining({ method: 'GET' })
+      );
+      expect(vi.mocked(writeOutput).mock.calls[0][0]).toContain(
+        sampleResult.title
+      );
+    });
+  });
+
   describe('error handling', () => {
+    it('exits with code 1 when the response reports a failure', async () => {
+      mockHttpGet.mockResolvedValue({
+        data: { success: false, error: 'Search failed' },
+      });
+      const exitSpy = vi
+        .spyOn(process, 'exit')
+        .mockImplementation((() => undefined) as any);
+      const errorSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined);
+
+      await handleLegalRegulatorySearchCommand({ query: 'test' });
+
+      expect(errorSpy).toHaveBeenCalledWith('Error:', 'Search failed');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(writeOutput).not.toHaveBeenCalled();
+
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    });
+
     it('exits with code 1 when the request fails', async () => {
       mockHttpGet.mockRejectedValue(new Error('boom'));
       const exitSpy = vi
