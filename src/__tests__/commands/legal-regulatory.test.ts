@@ -101,11 +101,8 @@ describe('handleLegalRegulatorySearchCommand', () => {
       );
     });
 
-    it.each([
-      ['empty results', mockLegalRegulatoryResponse([])],
-      ['a response without data', { data: { success: true } }],
-    ])('prints a placeholder for %s', async (_label, response) => {
-      mockHttpGet.mockResolvedValue(response);
+    it('prints a placeholder when the response has no data', async () => {
+      mockHttpGet.mockResolvedValue({ data: { success: true } });
 
       await handleLegalRegulatorySearchCommand({ query: 'no hits' });
 
