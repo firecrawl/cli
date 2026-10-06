@@ -357,10 +357,17 @@ export async function executeEndpointFeedback(
   }
 }
 
-function formatReadable(result: EndpointFeedbackResult): string {
+function formatReadable(
+  result: EndpointFeedbackResult,
+  endpoint: EndpointFeedbackOptions['endpoint']
+): string {
   const lines: string[] = [];
   if (result.alreadySubmitted) {
-    lines.push('Feedback already submitted for this job.');
+    lines.push(
+      endpoint === 'alexandria'
+        ? 'Feedback recorded; this website was already refunded today.'
+        : 'Feedback already submitted for this job.'
+    );
   } else {
     lines.push('Feedback recorded.');
   }
@@ -438,7 +445,7 @@ export async function handleEndpointFeedbackCommand(
       ? JSON.stringify(json, null, 2)
       : JSON.stringify(json);
   } else {
-    outputContent = formatReadable(result);
+    outputContent = formatReadable(result, options.endpoint);
   }
 
   if (options.output) {

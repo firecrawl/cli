@@ -95,7 +95,7 @@ export function parseAlexandriaFeedbackArray(
 export function createAlexandriaFeedbackCommand(): Command {
   return new Command('feedback')
     .description(
-      'Report Alexandria session results, provider gaps, or capability issues. No job ID, job-age limit, or credit refund.'
+      'Report Alexandria session results, provider gaps, or capability issues. No job ID or job-age limit. Refunds 1 credit for the first feedback per website each UTC day.'
     )
     .requiredOption(
       '--rating <rating>',

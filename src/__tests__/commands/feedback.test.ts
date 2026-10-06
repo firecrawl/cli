@@ -236,6 +236,54 @@ describe('executeEndpointFeedback', () => {
       stdoutSpy.mockRestore();
     }
   });
+
+  it.each([
+    [
+      { creditsRefunded: 1, creditsRefundedToday: 1, dailyRefundCap: 10 },
+      ['Feedback recorded.', 'Credits refunded: 1', 'Refunds today: 1 / 10'],
+    ],
+    [
+      {
+        creditsRefunded: 0,
+        creditsRefundedToday: 1,
+        dailyRefundCap: 10,
+        alreadySubmitted: true,
+        warning: 'Alexandria feedback for example.com was already refunded.',
+      },
+      [
+        'this website was already refunded today',
+        'Credits refunded: 0',
+        'Warning: Alexandria feedback for example.com',
+      ],
+    ],
+  ])(
+    'prints the Alexandria feedback refund outcome %#',
+    async (body, expected) => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, feedbackId: 'fb', ...body }),
+      });
+      const stdoutSpy = vi
+        .spyOn(process.stdout, 'write')
+        .mockImplementation(() => true);
+      try {
+        await handleEndpointFeedbackCommand({
+          endpoint: 'alexandria',
+          rating: 'partial',
+          requestedWebsite: {
+            url: 'https://example.com',
+            requestedFunctionality: 'Download attachments',
+          },
+          rationale: 'Only summaries available',
+        });
+        const output = stdoutSpy.mock.calls.map(([chunk]) => chunk).join('');
+        for (const line of expected) expect(output).toContain(line);
+      } finally {
+        stdoutSpy.mockRestore();
+      }
+    }
+  );
 });
 
 describe('feedback parsing', () => {
