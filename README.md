@@ -704,6 +704,8 @@ firecrawl agent <job-id> --wait
 | `--schema-file <path>`         | Path to JSON schema file for structured output                                                            |
 | `--max-credits <number>`       | Maximum credits to spend (job fails if exceeded)                                                          |
 | `--webhook <url-or-json>`      | Webhook URL or configuration                                                                              |
+| `--thread <threadId>`          | Continue an existing thread with this prompt as the next turn                                             |
+| `--mode <mode>`                | `extract` returns structured data; `chat` returns a text message                                          |
 | `--alexandria`                 | Let the agent call Alexandria providers (implied by the flags below); `--no-alexandria` keeps it off them |
 | `--toolkits <slugs>`           | Comma-separated provider slugs the agent may use (up to 5; default: the whole catalog)                    |
 | `--max-calls <n>`              | Most provider calls the agent may make this turn (1-30)                                                   |

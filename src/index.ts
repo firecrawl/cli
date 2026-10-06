@@ -1710,8 +1710,7 @@ function createAgentCommand(): Command {
     )
     .option(
       '--max-calls <n>',
-      'Most provider calls the agent may make this turn (1-30)',
-      parseInt
+      'Most provider calls the agent may make this turn (1-30)'
     )
     .option(
       '--require-approval',
@@ -1764,6 +1763,12 @@ function createAgentCommand(): Command {
       if (options.approve && options.decline) {
         console.error(
           'Error: use --approve or --decline, not both: each answers the pending approval one way.'
+        );
+        process.exit(1);
+      }
+      if ((options.callIds || options.always) && !options.approve) {
+        console.error(
+          'Error: --call-ids and --always only apply with --approve.'
         );
         process.exit(1);
       }
@@ -1826,10 +1831,27 @@ function createAgentCommand(): Command {
         process.exit(1);
       }
 
+      const toolkits = parseCommaList(options.toolkits);
+      if (toolkits && toolkits.length > 5) {
+        console.error('Error: --toolkits takes at most 5 provider slugs.');
+        process.exit(1);
+      }
+      const maxCalls =
+        options.maxCalls === undefined ? undefined : Number(options.maxCalls);
+      if (
+        maxCalls !== undefined &&
+        !(Number.isInteger(maxCalls) && maxCalls >= 1 && maxCalls <= 30)
+      ) {
+        console.error(
+          'Error: --max-calls must be a whole number from 1 to 30.'
+        );
+        process.exit(1);
+      }
+
       const exchange: AgentExchangeOptions = {
         enabled: options.alexandria,
-        toolkits: parseCommaList(options.toolkits),
-        maxCalls: options.maxCalls,
+        toolkits,
+        maxCalls,
         requireApproval: options.requireApproval,
         approve: options.approve && {
           approvalId: options.approve,

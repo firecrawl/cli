@@ -523,10 +523,10 @@ function pendingApprovalLines(
   const lines = [`Pending approval ${approval.id}: ${approval.reason}`];
   if (approval.kind === 'terms') {
     lines.push(
-      'Approving does not accept terms; accept them in the Firecrawl dashboard first:'
+      'Approving does not accept terms. Accept them first with firecrawl alexandria terms accept <provider>, or in the dashboard:'
     );
     for (const gate of approval.terms) {
-      lines.push(`  - ${gate.name}: ${gate.url}`);
+      lines.push(`  - ${gate.name} (${gate.provider}): ${gate.url}`);
     }
   } else {
     for (const call of approval.calls) {

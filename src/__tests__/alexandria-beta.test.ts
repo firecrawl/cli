@@ -1138,7 +1138,7 @@ it('sends no exchange without an Alexandria flag', async () => {
   expect(requests[0].body).not.toHaveProperty('exchange');
 });
 
-it('rejects approval flags the API cannot honor before calling it', async () => {
+it('rejects Alexandria flags the API cannot honor before calling it', async () => {
   const both = await cli([
     'agent',
     'Go ahead.',
@@ -1152,6 +1152,21 @@ it('rejects approval flags the API cannot honor before calling it', async () => 
   expect(both.code).toBe(1);
   expect(both.stderr).toContain('use --approve or --decline, not both');
 
+  const declineWithCallIds = await cli([
+    'agent',
+    'Never mind.',
+    '--thread',
+    THREAD_ID,
+    '--decline',
+    APPROVAL_ID,
+    '--call-ids',
+    'call-1',
+  ]);
+  expect(declineWithCallIds.code).toBe(1);
+  expect(declineWithCallIds.stderr).toContain(
+    '--call-ids and --always only apply with --approve'
+  );
+
   const noThread = await cli(['agent', 'Go ahead.', '--decline', APPROVAL_ID]);
   expect(noThread.code).toBe(1);
   expect(noThread.stderr).toContain('pass that thread with --thread');
@@ -1159,6 +1174,30 @@ it('rejects approval flags the API cannot honor before calling it', async () => 
   const noChat = await cli(['agent', 'Find contacts.', '--require-approval']);
   expect(noChat.code).toBe(1);
   expect(noChat.stderr).toContain('--require-approval needs --mode chat');
+
+  for (const value of ['12o', '0', '31', '2.5']) {
+    const maxCalls = await cli([
+      'agent',
+      'Find contacts.',
+      '--max-calls',
+      value,
+    ]);
+    expect(maxCalls.code).toBe(1);
+    expect(maxCalls.stderr).toContain(
+      '--max-calls must be a whole number from 1 to 30'
+    );
+  }
+
+  const toolkits = await cli([
+    'agent',
+    'Find contacts.',
+    '--toolkits',
+    'a,b,c,d,e,f',
+  ]);
+  expect(toolkits.code).toBe(1);
+  expect(toolkits.stderr).toContain(
+    '--toolkits takes at most 5 provider slugs'
+  );
   expect(requests).toHaveLength(0);
 });
 
@@ -1266,7 +1305,10 @@ it('shows a pending approval and how to answer it', async () => {
   };
   responseFor = undefined;
   const terms = await cli(['agent', RUN_ID]);
-  expect(terms.stdout).toContain('accept them in the Firecrawl dashboard');
+  expect(terms.stdout).toContain('Approving does not accept terms.');
+  expect(terms.stdout).toContain(
+    '  - Crunchbase (crunchbase): https://example.com/terms/crunchbase'
+  );
   expect(terms.stdout).toContain(`--approve ${APPROVAL_ID}`);
 });
 
