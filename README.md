@@ -299,7 +299,7 @@ firecrawl search "landscape photography" --sources images
 # Multiple sources
 firecrawl search "machine learning" --sources web,news,images
 
-# Filter by category (research-affiliated websites, PDFs, developer index)
+# Filter by category (research-affiliated websites, PDFs, developer index, gov index)
 firecrawl search "transformer architecture" --categories research
 firecrawl search "machine learning" --categories pdf,research
 
@@ -308,6 +308,9 @@ firecrawl search "machine learning" --categories pdf,research
 
 # Developer search: public repositories, GitHub issues, merged PRs, READMEs, and docs
 firecrawl search "axum middleware ordering" --categories developer
+
+# Legal and regulatory search: US government sources (cannot be combined with other categories)
+firecrawl search "California data breach notification statute" --categories gov
 
 # Time-based search
 firecrawl search "AI announcements" --tbs qdr:d   # Past day
@@ -327,23 +330,23 @@ firecrawl search "AI data tools"
 
 #### Search Options
 
-| Option                       | Description                                                                                                                                                     |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--limit <n>`                | Maximum results (default: 5, max: 100)                                                                                                                          |
-| `--sources <sources>`        | Comma-separated: `web`, `images`, `news` (default: web)                                                                                                         |
-| `--categories <categories>`  | Comma-separated: `research` (research-affiliated websites -- for papers use [`research search-papers`](#research---search-research-papers)), `pdf`, `developer` |
-| `--tbs <value>`              | Time filter: `qdr:h` (hour), `qdr:d` (day), `qdr:w` (week), `qdr:m` (month), `qdr:y` (year)                                                                     |
-| `--location <location>`      | Geo-targeting (e.g., "Germany", "San Francisco,California,United States")                                                                                       |
-| `--country <code>`           | ISO country code (default: US)                                                                                                                                  |
-| `--timeout <ms>`             | Timeout in milliseconds (default: 60000)                                                                                                                        |
-| `--highlights`               | Query-relevant highlights for web and news when available (default)                                                                                             |
-| `--no-highlights`            | Keep the original search snippets                                                                                                                               |
-| `--ignore-invalid-urls`      | Exclude URLs invalid for other Firecrawl endpoints                                                                                                              |
-| `--scrape`                   | Enable scraping of search results                                                                                                                               |
-| `--scrape-formats <formats>` | Scrape formats when `--scrape` enabled (default: markdown)                                                                                                      |
-| `--only-main-content`        | Include only main content when scraping (default: true)                                                                                                         |
-| `-o, --output <path>`        | Save to file                                                                                                                                                    |
-| `--json`                     | Output as compact JSON                                                                                                                                          |
+| Option                       | Description                                                                                                                                                                                                       |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--limit <n>`                | Maximum results (default: 5, max: 100)                                                                                                                                                                            |
+| `--sources <sources>`        | Comma-separated: `web`, `images`, `news` (default: web)                                                                                                                                                           |
+| `--categories <categories>`  | Comma-separated: `research` (research-affiliated websites -- for papers use [`research search-papers`](#research---search-research-papers)), `pdf`, `developer`, `gov` (cannot be combined with other categories) |
+| `--tbs <value>`              | Time filter: `qdr:h` (hour), `qdr:d` (day), `qdr:w` (week), `qdr:m` (month), `qdr:y` (year)                                                                                                                       |
+| `--location <location>`      | Geo-targeting (e.g., "Germany", "San Francisco,California,United States")                                                                                                                                         |
+| `--country <code>`           | ISO country code (default: US)                                                                                                                                                                                    |
+| `--timeout <ms>`             | Timeout in milliseconds (default: 60000)                                                                                                                                                                          |
+| `--highlights`               | Query-relevant highlights for web and news when available (default)                                                                                                                                               |
+| `--no-highlights`            | Keep the original search snippets                                                                                                                                                                                 |
+| `--ignore-invalid-urls`      | Exclude URLs invalid for other Firecrawl endpoints                                                                                                                                                                |
+| `--scrape`                   | Enable scraping of search results                                                                                                                                                                                 |
+| `--scrape-formats <formats>` | Scrape formats when `--scrape` enabled (default: markdown)                                                                                                                                                        |
+| `--only-main-content`        | Include only main content when scraping (default: true)                                                                                                                                                           |
+| `-o, --output <path>`        | Save to file                                                                                                                                                                                                      |
+| `--json`                     | Output as compact JSON                                                                                                                                                                                            |
 
 #### Examples
 
