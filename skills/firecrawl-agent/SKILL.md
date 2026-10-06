@@ -37,7 +37,7 @@ A run uses connected Alexandria data providers only when it starts with an Alexa
 firecrawl agent "find the head of sales at <company>" --toolkits apollo,crunchbase --wait --json -o .firecrawl/contacts.json
 ```
 
-With `--require-approval` (needs `--mode chat`), a run can end on a `pendingApproval` instead of making a paid call. Ask the user, then answer it on the same thread with `--thread <threadId> --mode chat --approve <approvalId>` (or `--decline <approvalId>`). A `terms` approval only continues after an organization admin has accepted the provider's terms in the Firecrawl dashboard; approving does not accept them.
+With `--require-approval` (needs `--mode chat`), a run can end on a `pendingApproval` instead of making a paid call. Ask the user, then answer it on the same thread with `firecrawl agent "<follow-up prompt>" --thread <threadId> --mode chat --approve <approvalId>` (or `--decline <approvalId>`). A `terms` approval only continues once the provider's terms are accepted for the organization, either in the dashboard or by showing the user `firecrawl alexandria terms show <provider>` and, only after they explicitly agree, running `firecrawl alexandria terms accept <provider> --terms-version <version> --digest <digest> --confirm` with the version and digest it returned. Approving does not accept them.
 
 ## Job IDs
 
