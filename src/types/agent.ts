@@ -2,7 +2,14 @@
  * Types and interfaces for the agent command
  */
 
-import type { AgentMode, AgentSuggestion, AgentWebhookConfig } from 'firecrawl';
+import type {
+  AgentExchangeOptions,
+  AgentExchangeSummary,
+  AgentMode,
+  AgentSuggestion,
+  AgentWebhookConfig,
+  PendingApproval,
+} from 'firecrawl';
 
 export type AgentModel = 'spark-1-pro' | 'spark-1-mini' | 'spark-2';
 
@@ -47,6 +54,8 @@ export interface AgentOptions {
   schemaFile?: string;
   /** Webhook URL or webhook config */
   webhook?: string | AgentWebhookConfig;
+  /** Alexandria provider settings, sent only when an Alexandria flag is given */
+  exchange?: AgentExchangeOptions;
   /** Cancel active agent job by ID */
   cancel?: boolean;
   /** Maximum credits to spend (job fails if exceeded) */
@@ -95,6 +104,8 @@ export interface AgentStatusResult {
     mode?: AgentMode;
     message?: string;
     suggestions?: AgentSuggestion[];
+    pendingApproval?: PendingApproval;
+    exchange?: AgentExchangeSummary;
   };
   error?: string;
 }

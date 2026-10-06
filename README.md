@@ -695,23 +695,32 @@ firecrawl agent <job-id> --wait
 
 #### Agent Options
 
-| Option                      | Description                                                                            |
-| --------------------------- | -------------------------------------------------------------------------------------- |
-| `--urls <urls>`             | Comma-separated URLs to focus extraction on                                            |
-| `--model <model>`           | `spark-2` (default). `spark-1-mini` and `spark-1-pro` are deprecated and run `spark-2` |
-| `--effort <level>`          | Reasoning effort: `low`, `medium`, or `high`                                           |
-| `--schema <json>`           | JSON schema for structured output (inline JSON string)                                 |
-| `--schema-file <path>`      | Path to JSON schema file for structured output                                         |
-| `--max-credits <number>`    | Maximum credits to spend (job fails if exceeded)                                       |
-| `--webhook <url-or-json>`   | Webhook URL or configuration                                                           |
-| `--status`                  | Check status of existing agent job                                                     |
-| `--cancel`                  | Cancel an active agent job by job ID                                                   |
-| `--wait`                    | Wait for agent to complete before returning results                                    |
-| `--poll-interval <seconds>` | Polling interval in seconds when waiting (default: 5)                                  |
-| `--timeout <seconds>`       | Timeout in seconds when waiting (default: no timeout)                                  |
-| `-o, --output <path>`       | Save output to file                                                                    |
-| `--json`                    | Output as JSON format                                                                  |
-| `--pretty`                  | Pretty print JSON output                                                               |
+| Option                         | Description                                                                                               |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `--urls <urls>`                | Comma-separated URLs to focus extraction on                                                               |
+| `--model <model>`              | `spark-2` (default). `spark-1-mini` and `spark-1-pro` are deprecated and run `spark-2`                    |
+| `--effort <level>`             | Reasoning effort: `low`, `medium`, or `high`                                                              |
+| `--schema <json>`              | JSON schema for structured output (inline JSON string)                                                    |
+| `--schema-file <path>`         | Path to JSON schema file for structured output                                                            |
+| `--max-credits <number>`       | Maximum credits to spend (job fails if exceeded)                                                          |
+| `--webhook <url-or-json>`      | Webhook URL or configuration                                                                              |
+| `--alexandria`                 | Let the agent call Alexandria providers (implied by the flags below); `--no-alexandria` keeps it off them |
+| `--toolkits <slugs>`           | Comma-separated provider slugs the agent may use (up to 5; default: the whole catalog)                    |
+| `--max-calls <n>`              | Most provider calls the agent may make this turn (1-30)                                                   |
+| `--require-approval`           | Stop for approval before any paid provider call (needs `--mode chat`)                                     |
+| `--approve <approvalId>`       | Approve the previous turn's pending approval (needs `--thread`)                                           |
+| `--call-ids <ids>`             | With `--approve`: comma-separated call IDs to approve (default: all)                                      |
+| `--always`                     | With `--approve`: stop asking for the rest of the thread                                                  |
+| `--decline <approvalId>`       | Decline the previous turn's pending approval (needs `--thread`)                                           |
+| `--on-terms-required <action>` | When a provider needs data terms the team has not accepted: `skip` it (default) or `ask`                  |
+| `--status`                     | Check status of existing agent job                                                                        |
+| `--cancel`                     | Cancel an active agent job by job ID                                                                      |
+| `--wait`                       | Wait for agent to complete before returning results                                                       |
+| `--poll-interval <seconds>`    | Polling interval in seconds when waiting (default: 5)                                                     |
+| `--timeout <seconds>`          | Timeout in seconds when waiting (default: no timeout)                                                     |
+| `-o, --output <path>`          | Save output to file                                                                                       |
+| `--json`                       | Output as JSON format                                                                                     |
+| `--pretty`                     | Pretty print JSON output                                                                                  |
 
 #### Examples
 
@@ -734,6 +743,21 @@ firecrawl agent abc123-def456-... --json
 # Poll a running job until completion
 firecrawl agent abc123-def456-... --wait --poll-interval 10
 ```
+
+#### Alexandria providers
+
+A run uses Alexandria providers only when it starts with an Alexandria flag. A follow-up turn (`--thread`) keeps the previous turn's setting for every Alexandria flag it omits.
+
+```bash
+# Let the agent use two providers
+firecrawl agent "Find the head of sales at example.com" --toolkits apollo,crunchbase --wait
+
+# Ask before any paid provider call, then answer the approval on the next turn
+firecrawl agent "Find the head of sales at example.com" --mode chat --require-approval --wait
+firecrawl agent "Go ahead" --thread <thread-id> --mode chat --approve <approval-id> --wait
+```
+
+A run that stops for approval prints its approval ID and the exact `--approve` / `--decline` follow-up commands. With `--json`, read `pendingApproval` and `exchange` from the output.
 
 ---
 
