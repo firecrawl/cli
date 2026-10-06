@@ -239,21 +239,22 @@ describe('executeEndpointFeedback', () => {
 
   it.each([
     [
-      { creditsRefunded: 1, creditsRefundedToday: 1, dailyRefundCap: 10 },
-      ['Feedback recorded.', 'Credits refunded: 1', 'Refunds today: 1 / 10'],
+      { creditsRefunded: 1, creditsRefundedToday: 1, dailyRefundCap: 100 },
+      ['Feedback recorded.', 'Credits refunded: 1', 'Refunds today: 1 / 100'],
     ],
     [
       {
         creditsRefunded: 0,
-        creditsRefundedToday: 1,
-        dailyRefundCap: 10,
-        alreadySubmitted: true,
-        warning: 'Alexandria feedback for example.com was already refunded.',
+        creditsRefundedToday: 10,
+        dailyRefundCap: 100,
+        websiteCapReached: true,
+        warning: 'Daily refund cap reached for feedback about example.com.',
       },
       [
-        'this website was already refunded today',
+        'Feedback recorded.',
         'Credits refunded: 0',
-        'Warning: Alexandria feedback for example.com',
+        'Daily refund cap reached for this website',
+        'Warning: Daily refund cap reached for feedback about example.com.',
       ],
     ],
   ])(
@@ -284,6 +285,41 @@ describe('executeEndpointFeedback', () => {
       }
     }
   );
+
+  it('keeps websiteCapReached in JSON output', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        feedbackId: 'fb',
+        creditsRefunded: 0,
+        websiteCapReached: true,
+      }),
+    });
+    const stdoutSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+    try {
+      await handleEndpointFeedbackCommand({
+        endpoint: 'alexandria',
+        rating: 'good',
+        requestedWebsite: {
+          url: 'https://example.com',
+          requestedFunctionality: 'Download attachments',
+        },
+        rationale: 'All attachments returned',
+        json: true,
+      });
+      const output = stdoutSpy.mock.calls.map(([chunk]) => chunk).join('');
+      expect(JSON.parse(output)).toMatchObject({
+        creditsRefunded: 0,
+        websiteCapReached: true,
+      });
+    } finally {
+      stdoutSpy.mockRestore();
+    }
+  });
 });
 
 describe('feedback parsing', () => {

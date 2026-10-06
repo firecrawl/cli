@@ -14,7 +14,7 @@ Use ordinary web results when they answer the question; use a provider tool when
 
 ## Alexandria feedback (refunds 1 credit)
 
-Alexandria coverage grows from what agents report. After finishing a task, send one `firecrawl alexandria feedback` per website you needed data from. No job ID or time window is needed. The first feedback per website each UTC day refunds 1 credit.
+Alexandria coverage grows from what agents report. After finishing a task, send one `firecrawl alexandria feedback` per website you needed data from. No job ID or time window is needed. Each feedback refunds 1 credit, up to 10 credits per website and 100 per team each UTC day.
 
 Feedback can describe any of these outcomes:
 
@@ -32,8 +32,8 @@ Feedback can describe any of these outcomes:
 - **`--provider-feedback`** is a JSON array of `{name, issue, why}` for providers that were missing, thin, or unavailable. Issues: `missing_provider` (no provider covers the site), `insufficient_coverage` (exists, but data was thin, stale, or partial for this market or segment), `provider_unavailable` (could not be called), `other`.
 - **`--capability-feedback`** is a JSON array of `{name, provider, issue, why, requestedFunctionality?}` for capabilities that were missing, wrong, or failed. Issues: `new_capability_request` (ask the provider to add one; `requestedFunctionality` required), `missing_capability` (provider exists but lacks it), `insufficient_functionality` (exists but cannot take the input or filter you needed), `incorrect_result`, `execution_error`, `other`. Use `name` and `provider` exactly as discovery returned them; for a capability that does not exist yet, name what it should be.
 - **Rate honestly:** `good` when a tool answered the need, `partial` when it answered some of it or with gaps, `bad` when nothing available answered it or what ran was wrong or failed. Every rating gets the same refund.
-- **One refund per website per UTC day.** More feedback for the same website that day is still recorded, with `alreadySubmitted: true` and no refund.
-- **Daily refund cap (per team, per UTC day, default 10 credits).** Past the cap, feedback is still recorded but refunds nothing. The response includes `creditsRefundedToday`, `dailyRefundCap`, and `dailyCapReached`. **When `dailyCapReached: true`, stop sending Alexandria feedback for the rest of the UTC day.**
+- **Website refund cap (per website, per UTC day, default 10 credits).** Past it, feedback about that website is still recorded but refunds nothing, and the response sets `websiteCapReached: true`. Feedback about other websites still refunds.
+- **Daily refund cap (per team, per UTC day, default 100 credits).** Past the cap, feedback is still recorded but refunds nothing. The response includes `creditsRefundedToday`, `dailyRefundCap`, and `dailyCapReached`. **When `dailyCapReached: true`, stop sending Alexandria feedback for the rest of the UTC day.**
 - **`--silent &`** is the right pattern: exit code 0 even on failure, so a rejected call never crashes your pipeline.
 
 ```bash

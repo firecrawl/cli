@@ -53,7 +53,7 @@ Use `list` for category/provider browsing and selected contracts. For a known we
 
 If no returned tool covers the country/market/segment or required inputs, continue with ordinary web results. Do not exhaust the catalogue or pay for adjacent tools just to probe coverage. `--sources web` explicitly opts out of Alexandria; `--sources web --domain-tools` retains domain matches only.
 
-For Alexandria feedback about a provider result or coverage gap (the first feedback per website each UTC day refunds 1 credit), see [firecrawl-alexandria](../firecrawl-alexandria/SKILL.md).
+For Alexandria feedback about a provider result or coverage gap (each refunds 1 credit, up to 10 per website and 100 per team each UTC day), see [firecrawl-alexandria](../firecrawl-alexandria/SKILL.md).
 
 ## Progressive discovery and output handling
 

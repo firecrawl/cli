@@ -56,6 +56,7 @@ export interface EndpointFeedbackResult {
   creditsRefundedToday?: number;
   dailyRefundCap?: number;
   dailyCapReached?: boolean;
+  websiteCapReached?: boolean;
   alreadySubmitted?: boolean;
   warning?: string;
   error?: string;
@@ -346,6 +347,7 @@ export async function executeEndpointFeedback(
           ? data.dailyRefundCap
           : undefined,
       dailyCapReached: data.dailyCapReached === true,
+      ...(data.websiteCapReached === true ? { websiteCapReached: true } : {}),
       alreadySubmitted: data.alreadySubmitted,
       warning: data.warning,
     };
@@ -357,17 +359,10 @@ export async function executeEndpointFeedback(
   }
 }
 
-function formatReadable(
-  result: EndpointFeedbackResult,
-  endpoint: EndpointFeedbackOptions['endpoint']
-): string {
+function formatReadable(result: EndpointFeedbackResult): string {
   const lines: string[] = [];
   if (result.alreadySubmitted) {
-    lines.push(
-      endpoint === 'alexandria'
-        ? 'Feedback recorded; this website was already refunded today.'
-        : 'Feedback already submitted for this job.'
-    );
+    lines.push('Feedback already submitted for this job.');
   } else {
     lines.push('Feedback recorded.');
   }
@@ -386,6 +381,10 @@ function formatReadable(
   if (result.dailyCapReached) {
     lines.push(
       'Daily refund cap reached; further feedback calls today will not refund credits.'
+    );
+  } else if (result.websiteCapReached) {
+    lines.push(
+      'Daily refund cap reached for this website; feedback about other websites can still refund credits.'
     );
   }
   if (result.warning) {
@@ -438,6 +437,7 @@ export async function handleEndpointFeedbackCommand(
         ? { dailyRefundCap: result.dailyRefundCap }
         : {}),
       ...(result.dailyCapReached ? { dailyCapReached: true } : {}),
+      ...(result.websiteCapReached ? { websiteCapReached: true } : {}),
       ...(result.alreadySubmitted ? { alreadySubmitted: true } : {}),
       ...(result.warning ? { warning: result.warning } : {}),
     };
@@ -445,7 +445,7 @@ export async function handleEndpointFeedbackCommand(
       ? JSON.stringify(json, null, 2)
       : JSON.stringify(json);
   } else {
-    outputContent = formatReadable(result, options.endpoint);
+    outputContent = formatReadable(result);
   }
 
   if (options.output) {
