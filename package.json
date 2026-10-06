@@ -1,6 +1,6 @@
 {
   "name": "firecrawl-cli",
-  "version": "1.26.1",
+  "version": "1.26.2",
   "publishConfig": {
     "tag": "latest"
   },

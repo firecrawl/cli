@@ -26,7 +26,7 @@ Feedback can describe any of these outcomes:
 
 **Rules to know before you call this:**
 
-- **Time window:** must be sent within ~2 minutes of your team's most recent Alexandria search, discovery, or execution. Each Alexandria call restarts the window. Late feedback is rejected (`feedbackErrorCode: "FEEDBACK_WINDOW_EXPIRED"`).
+- **Time window:** must be sent within 20 minutes of your team's most recent Alexandria search, discovery, or execution. Each Alexandria call restarts the window. Late feedback is rejected (`feedbackErrorCode: "FEEDBACK_WINDOW_EXPIRED"`).
 - **`--url` is the website the user needed data from**, not the provider and not a Firecrawl page. `--requested-functionality` is what they needed from it, in one sentence. These two fields are the most important: they aggregate across teams and tell us which sites and workflows to add next.
 - **`--objective` is the underlying goal** behind the session: what you or your user were ultimately trying to accomplish, in one sentence (for example, "Shortlist federal IT contracts to bid on this quarter"). It is broader than `--requested-functionality`, which covers only this website.
 - **`--rationale` explains the rating** from observed results: which provider or capability served or failed the need, and how. Two or three sentences, no raw results pasted in.
@@ -38,7 +38,7 @@ Feedback can describe any of these outcomes:
 - **`--silent &`** is the right pattern: exit code 0 even on failure, so a rejected call never crashes your pipeline.
 
 ```bash
-# Example: send once per website, within ~2 minutes of your last Alexandria call. Replace the
+# Example: send once per website, within 20 minutes of your last Alexandria call. Replace the
 # placeholders with what actually happened; drop --provider-feedback or
 # --capability-feedback when there is nothing to report at that level.
 firecrawl alexandria feedback \
