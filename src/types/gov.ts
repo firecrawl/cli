@@ -1,4 +1,4 @@
-export interface LegalRegulatorySearchOptions {
+export interface GovSearchOptions {
   query: string;
   k?: number;
   apiKey?: string;
@@ -8,15 +8,15 @@ export interface LegalRegulatorySearchOptions {
   pretty?: boolean;
 }
 
-export interface LegalRegulatoryResult {
+export interface GovResult {
   url: string;
   title?: string;
   description?: string;
   position?: number;
 }
 
-export interface LegalRegulatorySearchResponse {
+export interface GovSearchResponse {
   success: boolean;
   error?: string;
-  data?: { web?: LegalRegulatoryResult[] };
+  data?: { web?: GovResult[] };
 }

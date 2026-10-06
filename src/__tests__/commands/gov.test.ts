@@ -1,9 +1,9 @@
 /**
- * Tests for legal-regulatory command
+ * Tests for gov command
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { handleLegalRegulatorySearchCommand } from '../../commands/legal-regulatory';
+import { handleGovSearchCommand } from '../../commands/gov';
 import { getClient, isKeylessMode } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { writeOutput } from '../../utils/output';
@@ -20,11 +20,11 @@ vi.mock('../../utils/client', async () => {
   };
 });
 
-describe('handleLegalRegulatorySearchCommand', () => {
+describe('handleGovSearchCommand', () => {
   let mockHttpGet: ReturnType<typeof vi.fn>;
 
   // Wrap a payload in the axios envelope returned by `client.http.get`.
-  const mockLegalRegulatoryResponse = (web: any[]) => ({
+  const mockGovResponse = (web: any[]) => ({
     data: { success: true, data: { web } },
   });
 
@@ -59,11 +59,9 @@ describe('handleLegalRegulatorySearchCommand', () => {
       [{}, '/v2/search/gov?query=food+labeling&integration=cli'],
       [{ k: 5 }, '/v2/search/gov?query=food+labeling&k=5&integration=cli'],
     ])('calls /v2/search/gov with %o', async (extra, expectedUrl) => {
-      mockHttpGet.mockResolvedValue(
-        mockLegalRegulatoryResponse([sampleResult])
-      );
+      mockHttpGet.mockResolvedValue(mockGovResponse([sampleResult]));
 
-      await handleLegalRegulatorySearchCommand({
+      await handleGovSearchCommand({
         query: 'food labeling',
         ...extra,
       });
@@ -76,7 +74,7 @@ describe('handleLegalRegulatorySearchCommand', () => {
   describe('output', () => {
     it('renders numbered title, url, and description blocks', async () => {
       mockHttpGet.mockResolvedValue(
-        mockLegalRegulatoryResponse([
+        mockGovResponse([
           sampleResult,
           {
             url: 'https://www.ecfr.gov/current/title-21/part-102',
@@ -86,7 +84,7 @@ describe('handleLegalRegulatorySearchCommand', () => {
         ])
       );
 
-      await handleLegalRegulatorySearchCommand({ query: 'food labeling' });
+      await handleGovSearchCommand({ query: 'food labeling' });
 
       const [content] = vi.mocked(writeOutput).mock.calls[0];
       expect(content).toBe(
@@ -104,18 +102,16 @@ describe('handleLegalRegulatorySearchCommand', () => {
     it('prints a placeholder when the response has no data', async () => {
       mockHttpGet.mockResolvedValue({ data: { success: true } });
 
-      await handleLegalRegulatorySearchCommand({ query: 'no hits' });
+      await handleGovSearchCommand({ query: 'no hits' });
 
       const [content] = vi.mocked(writeOutput).mock.calls[0];
       expect(content).toBe('(no results)');
     });
 
     it('outputs the raw response as JSON with --json', async () => {
-      mockHttpGet.mockResolvedValue(
-        mockLegalRegulatoryResponse([sampleResult])
-      );
+      mockHttpGet.mockResolvedValue(mockGovResponse([sampleResult]));
 
-      await handleLegalRegulatorySearchCommand({
+      await handleGovSearchCommand({
         query: 'food labeling',
         json: true,
       });
@@ -140,7 +136,7 @@ describe('handleLegalRegulatorySearchCommand', () => {
       );
       vi.stubGlobal('fetch', fetchMock);
 
-      await handleLegalRegulatorySearchCommand({ query: 'food labeling' });
+      await handleGovSearchCommand({ query: 'food labeling' });
 
       expect(mockHttpGet).not.toHaveBeenCalled();
       expect(fetchMock).toHaveBeenCalledWith(
@@ -177,7 +173,7 @@ describe('handleLegalRegulatorySearchCommand', () => {
         .spyOn(console, 'error')
         .mockImplementation(() => undefined);
 
-      await handleLegalRegulatorySearchCommand({ query: 'test' });
+      await handleGovSearchCommand({ query: 'test' });
 
       expect(errorSpy).toHaveBeenCalledWith('Error:', message);
       expect(exitSpy).toHaveBeenCalledWith(1);

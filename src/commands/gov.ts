@@ -1,17 +1,14 @@
 import { getClient, isKeylessMode, keylessGet } from '../utils/client';
 import { writeOutput } from '../utils/output';
 import type {
-  LegalRegulatoryResult,
-  LegalRegulatorySearchOptions,
-  LegalRegulatorySearchResponse,
-} from '../types/legal-regulatory';
+  GovResult,
+  GovSearchOptions,
+  GovSearchResponse,
+} from '../types/gov';
 
 const BASE = '/v2/search/gov';
 
-async function getLegalRegulatory<T>(
-  path: string,
-  options: LegalRegulatorySearchOptions
-): Promise<T> {
+async function getGov<T>(path: string, options: GovSearchOptions): Promise<T> {
   const url = `${path}${path.includes('?') ? '&' : '?'}integration=cli`;
 
   if (isKeylessMode(options.apiKey, options.apiUrl)) {
@@ -23,7 +20,7 @@ async function getLegalRegulatory<T>(
   return (response?.data ?? {}) as T;
 }
 
-function fmtResult(item: LegalRegulatoryResult, index: number): string {
+function fmtResult(item: GovResult, index: number): string {
   const lines = [
     `## ${item.position ?? index + 1}. ${item.title ?? '(untitled)'}`,
     item.url,
@@ -32,16 +29,16 @@ function fmtResult(item: LegalRegulatoryResult, index: number): string {
   return lines.join('\n');
 }
 
-function fmtLegalRegulatory(data: LegalRegulatorySearchResponse): string {
+function fmtGov(data: GovSearchResponse): string {
   const results = data.data?.web ?? [];
   if (results.length === 0) return '(no results)';
   return results.map(fmtResult).join('\n\n');
 }
 
-function writeLegalRegulatoryOutput(
-  data: LegalRegulatorySearchResponse,
+function writeGovOutput(
+  data: GovSearchResponse,
   readable: string,
-  options: LegalRegulatorySearchOptions
+  options: GovSearchOptions
 ): void {
   const content =
     options.json || options.pretty
@@ -60,21 +57,21 @@ function handleError(error: unknown): never {
   process.exit(1);
 }
 
-export async function handleLegalRegulatorySearchCommand(
-  options: LegalRegulatorySearchOptions
+export async function handleGovSearchCommand(
+  options: GovSearchOptions
 ): Promise<void> {
   try {
     const params = new URLSearchParams();
     params.append('query', options.query);
     if (options.k != null) params.append('k', String(options.k));
-    const data = await getLegalRegulatory<LegalRegulatorySearchResponse>(
+    const data = await getGov<GovSearchResponse>(
       `${BASE}?${params.toString()}`,
       options
     );
     if (data.success === false) {
       throw new Error(data.error ?? 'Government search failed');
     }
-    writeLegalRegulatoryOutput(data, fmtLegalRegulatory(data), options);
+    writeGovOutput(data, fmtGov(data), options);
   } catch (error) {
     handleError(error);
   }

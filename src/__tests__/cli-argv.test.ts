@@ -88,22 +88,15 @@ describe('CLI argv parsing', () => {
     expect(result.stderr).not.toContain('unknown command');
   });
 
-  testWithBuiltCli(
-    'parses the legal-regulatory command and shows its help',
-    () => {
-      const result = spawnSync(
-        process.execPath,
-        [cliPath, 'legal-regulatory', '--help'],
-        {
-          cwd: process.cwd(),
-          encoding: 'utf8',
-        }
-      );
+  testWithBuiltCli('parses the gov command and shows its help', () => {
+    const result = spawnSync(process.execPath, [cliPath, 'gov', '--help'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
 
-      expect(result.status).toBe(0);
-      expect(result.stdout).toContain('Usage: firecrawl legal-regulatory');
-    }
-  );
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Usage: firecrawl gov');
+  });
 
   testWithBuiltCli(
     'describes default search highlights and public developer coverage',
