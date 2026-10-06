@@ -258,6 +258,23 @@ describe('executeSearch', () => {
       );
     });
 
+    it('should include the gov category when provided', async () => {
+      mockHttpPost.mockResolvedValue(mockSearchResponse({ web: [] }));
+
+      await executeSearch({
+        query: 'food labeling requirements',
+        categories: ['gov'],
+      });
+
+      expect(mockHttpPost).toHaveBeenCalledWith(
+        '/v2/search',
+        expect.objectContaining({
+          query: 'food labeling requirements',
+          categories: [{ type: 'gov' }],
+        })
+      );
+    });
+
     it('should include multiple categories correctly', async () => {
       mockHttpPost.mockResolvedValue(mockSearchResponse({ web: [] }));
 
