@@ -1170,7 +1170,7 @@ Examples:
 function createLegalRegulatoryCommand(): Command {
   const legalRegulatoryCmd = new Command('legal-regulatory')
     .description(
-      'Search the Legal and Regulatory Index: primary law and regulatory material from US federal, state, and local government sources, including statutes, regulations, codes, court opinions, and other government publications.'
+      'Search the Firecrawl Government Index: primary law and regulatory material from US federal, state, and local government sources, including statutes, regulations, codes, court opinions, and other government publications.'
     )
     .argument('<query>', 'Natural-language legal question or search phrase')
     .option(

@@ -72,7 +72,7 @@ export async function handleLegalRegulatorySearchCommand(
       options
     );
     if (data.success === false) {
-      throw new Error(data.error ?? 'Legal and regulatory search failed');
+      throw new Error(data.error ?? 'Government search failed');
     }
     writeLegalRegulatoryOutput(data, fmtLegalRegulatory(data), options);
   } catch (error) {

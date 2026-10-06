@@ -175,7 +175,7 @@ function renderCategories(items: Category[]): string {
     ...items.map((item) => `  ${item.name} (${item.id}): ${item.description}`),
     ...(!items.length ? ['  No categories are currently visible.'] : []),
     '',
-    'Developer, Legal and Regulatory, and Research indexes have native commands:',
+    'Developer, Government, and Research indexes have native commands:',
     '  firecrawl developer --help',
     '  firecrawl legal-regulatory --help',
     '  firecrawl research --help',
