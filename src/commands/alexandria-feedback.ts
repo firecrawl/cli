@@ -95,7 +95,7 @@ export function parseAlexandriaFeedbackArray(
 export function createAlexandriaFeedbackCommand(): Command {
   return new Command('feedback')
     .description(
-      'Report Alexandria session results, provider gaps, or capability issues. No job ID, job-age limit, or credit refund.'
+      'Report Alexandria session results, provider gaps, or capability issues. No job ID needed; send within about 2 minutes of your last Alexandria search, discovery, or execution. Refunds 1 credit per submission, up to 10 per website and 100 per team each UTC day.'
     )
     .requiredOption(
       '--rating <rating>',

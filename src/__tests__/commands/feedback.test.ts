@@ -236,6 +236,90 @@ describe('executeEndpointFeedback', () => {
       stdoutSpy.mockRestore();
     }
   });
+
+  it.each([
+    [
+      { creditsRefunded: 1, creditsRefundedToday: 1, dailyRefundCap: 100 },
+      ['Feedback recorded.', 'Credits refunded: 1', 'Refunds today: 1 / 100'],
+    ],
+    [
+      {
+        creditsRefunded: 0,
+        creditsRefundedToday: 10,
+        dailyRefundCap: 100,
+        websiteCapReached: true,
+        warning: 'Daily refund cap reached for feedback about example.com.',
+      },
+      [
+        'Feedback recorded.',
+        'Credits refunded: 0',
+        'Daily refund cap reached for this website',
+        'Warning: Daily refund cap reached for feedback about example.com.',
+      ],
+    ],
+  ])(
+    'prints the Alexandria feedback refund outcome %#',
+    async (body, expected) => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, feedbackId: 'fb', ...body }),
+      });
+      const stdoutSpy = vi
+        .spyOn(process.stdout, 'write')
+        .mockImplementation(() => true);
+      try {
+        await handleEndpointFeedbackCommand({
+          endpoint: 'alexandria',
+          rating: 'partial',
+          requestedWebsite: {
+            url: 'https://example.com',
+            requestedFunctionality: 'Download attachments',
+          },
+          rationale: 'Only summaries available',
+        });
+        const output = stdoutSpy.mock.calls.map(([chunk]) => chunk).join('');
+        for (const line of expected) expect(output).toContain(line);
+      } finally {
+        stdoutSpy.mockRestore();
+      }
+    }
+  );
+
+  it('keeps websiteCapReached in JSON output', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        feedbackId: 'fb',
+        creditsRefunded: 0,
+        websiteCapReached: true,
+      }),
+    });
+    const stdoutSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+    try {
+      await handleEndpointFeedbackCommand({
+        endpoint: 'alexandria',
+        rating: 'good',
+        requestedWebsite: {
+          url: 'https://example.com',
+          requestedFunctionality: 'Download attachments',
+        },
+        rationale: 'All attachments returned',
+        json: true,
+      });
+      const output = stdoutSpy.mock.calls.map(([chunk]) => chunk).join('');
+      expect(JSON.parse(output)).toMatchObject({
+        creditsRefunded: 0,
+        websiteCapReached: true,
+      });
+    } finally {
+      stdoutSpy.mockRestore();
+    }
+  });
 });
 
 describe('feedback parsing', () => {
