@@ -29,6 +29,16 @@ Run `firecrawl agent --help` for the full option list.
 
 **Done when:** the output file contains valid JSON answering the request — or a job ID was intentionally returned for later polling.
 
+## Alexandria providers
+
+A run uses connected Alexandria data providers only when it starts with an Alexandria flag: `--alexandria`, `--toolkits <slugs>` (up to 5), `--max-calls <n>`, `--require-approval`, or `--on-terms-required skip|ask`. Follow-ups on its thread keep those settings.
+
+```bash
+firecrawl agent "find the head of sales at <company>" --toolkits apollo,crunchbase --wait --json -o .firecrawl/contacts.json
+```
+
+With `--require-approval` (needs `--mode chat`), a run can end on a `pendingApproval` instead of making a paid call. Ask the user, then answer it on the same thread with `--thread <threadId> --mode chat --approve <approvalId>` (or `--decline <approvalId>`). A `terms` approval only continues after an organization admin has accepted the provider's terms in the Firecrawl dashboard; approving does not accept them.
+
 ## Job IDs
 
 Omitting `--wait` returns a job ID. A UUID positional argument is auto-detected as a status check:

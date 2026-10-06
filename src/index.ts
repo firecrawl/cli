@@ -81,7 +81,7 @@ import packageJson from '../package.json';
 import type { SearchSource, SearchCategory } from './types/search';
 import type { ScrapeFormat } from './types/scrape';
 import type { RelatedPapersOptions } from './types/research';
-import type { AgentWebhookConfig } from 'firecrawl';
+import type { AgentExchangeOptions, AgentWebhookConfig } from 'firecrawl';
 import { createCreateCommand } from './commands/create';
 import { createListCommand, createAlexandriaCommand } from './commands/list';
 
@@ -1698,6 +1698,47 @@ function createAgentCommand(): Command {
         'high',
       ])
     )
+    // Alexandria providers: each flag maps onto one field of `exchange`.
+    .option(
+      '--alexandria',
+      'Let the agent call Alexandria providers (implied by the flags below)'
+    )
+    .option('--no-alexandria', 'Keep the agent off Alexandria providers')
+    .option(
+      '--toolkits <slugs>',
+      'Comma-separated provider slugs the agent may use (up to 5; default: the whole catalog)'
+    )
+    .option(
+      '--max-calls <n>',
+      'Most provider calls the agent may make this turn (1-30)',
+      parseInt
+    )
+    .option(
+      '--require-approval',
+      'Stop for approval before any paid provider call (needs --mode chat)'
+    )
+    .option(
+      '--approve <approvalId>',
+      "Approve the previous turn's pending approval (needs --thread)"
+    )
+    .option(
+      '--call-ids <ids>',
+      'With --approve: comma-separated call IDs to approve (default: all)'
+    )
+    .option(
+      '--always',
+      'With --approve: stop asking for the rest of the thread'
+    )
+    .option(
+      '--decline <approvalId>',
+      "Decline the previous turn's pending approval (needs --thread)"
+    )
+    .addOption(
+      new Option(
+        '--on-terms-required <action>',
+        'When a provider needs data terms the team has not accepted: skip it (default) or ask'
+      ).choices(['skip', 'ask'])
+    )
     .action(async (promptOrJobId, options) => {
       // Auto-detect if it's a job ID (UUID format)
       const isStatusCheck = options.status || isJobId(promptOrJobId);
@@ -1717,6 +1758,24 @@ function createAgentCommand(): Command {
       if (options.thread && (isStatusCheck || isCancel)) {
         console.error(
           'Error: --thread continues a thread with a new prompt; it cannot be combined with --status or --cancel.'
+        );
+        process.exit(1);
+      }
+      if (options.approve && options.decline) {
+        console.error(
+          'Error: use --approve or --decline, not both: each answers the pending approval one way.'
+        );
+        process.exit(1);
+      }
+      if ((options.approve || options.decline) && !options.thread) {
+        console.error(
+          "Error: --approve and --decline answer a thread's pending approval; pass that thread with --thread."
+        );
+        process.exit(1);
+      }
+      if (options.requireApproval && options.mode !== 'chat') {
+        console.error(
+          'Error: --require-approval needs --mode chat on the same request, including follow-ups.'
         );
         process.exit(1);
       }
@@ -1767,6 +1826,20 @@ function createAgentCommand(): Command {
         process.exit(1);
       }
 
+      const exchange: AgentExchangeOptions = {
+        enabled: options.alexandria,
+        toolkits: parseCommaList(options.toolkits),
+        maxCalls: options.maxCalls,
+        requireApproval: options.requireApproval,
+        approve: options.approve && {
+          approvalId: options.approve,
+          callIds: parseCommaList(options.callIds),
+          always: options.always,
+        },
+        decline: options.decline && { approvalId: options.decline },
+        onTermsRequired: options.onTermsRequired,
+      };
+
       const agentOptions = {
         prompt: promptOrJobId,
         urls,
@@ -1787,6 +1860,9 @@ function createAgentCommand(): Command {
         json: options.json,
         pretty: options.pretty,
         webhook,
+        exchange: Object.values(exchange).some((value) => value !== undefined)
+          ? exchange
+          : undefined,
       };
 
       await handleAgentCommand(agentOptions);
