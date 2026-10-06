@@ -1152,6 +1152,18 @@ it('rejects Alexandria flags the API cannot honor before calling it', async () =
   expect(both.code).toBe(1);
   expect(both.stderr).toContain('use --approve or --decline, not both');
 
+  const alwaysWithoutApprove = await cli([
+    'agent',
+    'Keep going.',
+    '--thread',
+    THREAD_ID,
+    '--always',
+  ]);
+  expect(alwaysWithoutApprove.code).toBe(1);
+  expect(alwaysWithoutApprove.stderr).toContain(
+    '--call-ids and --always only apply with --approve'
+  );
+
   const declineWithCallIds = await cli([
     'agent',
     'Never mind.',
@@ -1159,8 +1171,7 @@ it('rejects Alexandria flags the API cannot honor before calling it', async () =
     THREAD_ID,
     '--decline',
     APPROVAL_ID,
-    '--call-ids',
-    'call-1',
+    '--call-ids=',
   ]);
   expect(declineWithCallIds.code).toBe(1);
   expect(declineWithCallIds.stderr).toContain(
@@ -1307,8 +1318,9 @@ it('shows a pending approval and how to answer it', async () => {
   const terms = await cli(['agent', RUN_ID]);
   expect(terms.stdout).toContain('Approving does not accept terms.');
   expect(terms.stdout).toContain(
-    '  - Crunchbase (crunchbase): https://example.com/terms/crunchbase'
+    '  - Crunchbase: https://example.com/terms/crunchbase'
   );
+  expect(terms.stdout).toContain('firecrawl alexandria terms show crunchbase');
   expect(terms.stdout).toContain(`--approve ${APPROVAL_ID}`);
 });
 

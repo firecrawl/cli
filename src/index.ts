@@ -1766,7 +1766,10 @@ function createAgentCommand(): Command {
         );
         process.exit(1);
       }
-      if ((options.callIds || options.always) && !options.approve) {
+      if (
+        (options.callIds !== undefined || options.always) &&
+        !options.approve
+      ) {
         console.error(
           'Error: --call-ids and --always only apply with --approve.'
         );
