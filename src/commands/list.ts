@@ -177,7 +177,7 @@ function renderCategories(items: Category[]): string {
     '',
     'Developer, Government, and Research indexes have native commands:',
     '  firecrawl developer --help',
-    '  firecrawl legal-regulatory --help',
+    '  firecrawl gov --help',
     '  firecrawl research --help',
     '',
     'All providers: firecrawl alexandria list --providers',

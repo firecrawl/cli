@@ -412,14 +412,14 @@ firecrawl developer "tokio select cancellation safety" --json -o results.json
 
 ---
 
-### `legal-regulatory` - Search the Firecrawl Government Index
+### `gov` - Search the Firecrawl Government Index
 
 Search the Government Index: primary law and regulatory material from US federal, state, and local government sources, including statutes, regulations, codes, court opinions, and other government publications.
 
-For the request and response schema, see the [Government Index REST API](https://docs.firecrawl.dev/features/legal-regulatory).
+For the request and response schema, see the [Government Index REST API](https://docs.firecrawl.dev/features/gov).
 
 ```bash
-firecrawl legal-regulatory "food labeling requirements for allergens"
+firecrawl gov "food labeling requirements for allergens"
 ```
 
 #### Options
@@ -435,10 +435,10 @@ firecrawl legal-regulatory "food labeling requirements for allergens"
 
 ```bash
 # Find state statutes on a topic
-firecrawl legal-regulatory "California data breach notification statute" --limit 10
+firecrawl gov "California data breach notification statute" --limit 10
 
 # Keep the raw response
-firecrawl legal-regulatory "FDA food labeling regulations" --json -o results.json
+firecrawl gov "FDA food labeling regulations" --json -o results.json
 ```
 
 ---

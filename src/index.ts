@@ -28,7 +28,7 @@ import { handleParseCommand } from './commands/parse';
 import { createMonitorCommand } from './commands/monitor';
 import { handleSearchCommand } from './commands/search';
 import { handleDeveloperSearchCommand } from './commands/developer';
-import { handleLegalRegulatorySearchCommand } from './commands/legal-regulatory';
+import { handleGovSearchCommand } from './commands/gov';
 import {
   handleInspectPaperCommand,
   handleReadPaperCommand,
@@ -1165,10 +1165,10 @@ Examples:
 }
 
 /**
- * Create and configure the legal-regulatory command
+ * Create and configure the gov command
  */
-function createLegalRegulatoryCommand(): Command {
-  const legalRegulatoryCmd = new Command('legal-regulatory')
+function createGovCommand(): Command {
+  const govCmd = new Command('gov')
     .description(
       'Search the Firecrawl Government Index: primary law and regulatory material from US federal, state, and local government sources, including statutes, regulations, codes, court opinions, and other government publications.'
     )
@@ -1191,12 +1191,12 @@ function createLegalRegulatoryCommand(): Command {
       'after',
       `
 Examples:
-  $ firecrawl legal-regulatory "food labeling requirements for allergens" --limit 10
-  $ firecrawl legal-regulatory "California data breach notification statute" --json
+  $ firecrawl gov "food labeling requirements for allergens" --limit 10
+  $ firecrawl gov "California data breach notification statute" --json
 `
     )
     .action(async (query, options) => {
-      await handleLegalRegulatorySearchCommand({
+      await handleGovSearchCommand({
         query,
         k: researchLimit(options),
         apiKey: options.apiKey,
@@ -1207,7 +1207,7 @@ Examples:
       });
     });
 
-  return legalRegulatoryCmd;
+  return govCmd;
 }
 
 /**
@@ -2282,7 +2282,7 @@ program.addCommand(createFindToolsCommand());
 program.addCommand(createListCommand());
 program.addCommand(createAlexandriaCommand());
 program.addCommand(createDeveloperCommand());
-program.addCommand(createLegalRegulatoryCommand());
+program.addCommand(createGovCommand());
 program.addCommand(createResearchCommand());
 program.addCommand(createFeedbackCommand());
 program.addCommand(createSearchFeedbackCommand());
