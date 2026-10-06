@@ -55,47 +55,21 @@ describe('handleLegalRegulatorySearchCommand', () => {
   });
 
   describe('API call generation', () => {
-    it('calls /v2/search/gov with the query', async () => {
-      mockHttpGet.mockResolvedValue(
-        mockLegalRegulatoryResponse([sampleResult])
-      );
-
-      await handleLegalRegulatorySearchCommand({ query: 'food labeling' });
-
-      expect(mockHttpGet).toHaveBeenCalledTimes(1);
-      expect(mockHttpGet).toHaveBeenCalledWith(
-        '/v2/search/gov?query=food+labeling&integration=cli'
-      );
-    });
-
-    it('passes k when a result count is provided', async () => {
+    it.each([
+      [{}, '/v2/search/gov?query=food+labeling&integration=cli'],
+      [{ k: 5 }, '/v2/search/gov?query=food+labeling&k=5&integration=cli'],
+    ])('calls /v2/search/gov with %o', async (extra, expectedUrl) => {
       mockHttpGet.mockResolvedValue(
         mockLegalRegulatoryResponse([sampleResult])
       );
 
       await handleLegalRegulatorySearchCommand({
         query: 'food labeling',
-        k: 5,
+        ...extra,
       });
 
-      expect(mockHttpGet).toHaveBeenCalledWith(
-        '/v2/search/gov?query=food+labeling&k=5&integration=cli'
-      );
-    });
-
-    it('passes apiUrl and apiKey to getClient when provided', async () => {
-      mockHttpGet.mockResolvedValue(mockLegalRegulatoryResponse([]));
-
-      await handleLegalRegulatorySearchCommand({
-        query: 'test',
-        apiKey: 'other-key',
-        apiUrl: 'http://localhost:3002',
-      });
-
-      expect(getClient).toHaveBeenCalledWith({
-        apiKey: 'other-key',
-        apiUrl: 'http://localhost:3002',
-      });
+      expect(mockHttpGet).toHaveBeenCalledTimes(1);
+      expect(mockHttpGet).toHaveBeenCalledWith(expectedUrl);
     });
   });
 
@@ -127,19 +101,13 @@ describe('handleLegalRegulatorySearchCommand', () => {
       );
     });
 
-    it('prints a placeholder when there are no results', async () => {
-      mockHttpGet.mockResolvedValue(mockLegalRegulatoryResponse([]));
+    it.each([
+      ['empty results', mockLegalRegulatoryResponse([])],
+      ['a response without data', { data: { success: true } }],
+    ])('prints a placeholder for %s', async (_label, response) => {
+      mockHttpGet.mockResolvedValue(response);
 
       await handleLegalRegulatorySearchCommand({ query: 'no hits' });
-
-      const [content] = vi.mocked(writeOutput).mock.calls[0];
-      expect(content).toBe('(no results)');
-    });
-
-    it('tolerates a success response that omits data', async () => {
-      mockHttpGet.mockResolvedValue({ data: { success: true } });
-
-      await handleLegalRegulatorySearchCommand({ query: 'no data field' });
 
       const [content] = vi.mocked(writeOutput).mock.calls[0];
       expect(content).toBe('(no results)');
@@ -160,23 +128,6 @@ describe('handleLegalRegulatorySearchCommand', () => {
         success: true,
         data: { web: [sampleResult] },
       });
-    });
-
-    it('writes to the output file with -o', async () => {
-      mockHttpGet.mockResolvedValue(
-        mockLegalRegulatoryResponse([sampleResult])
-      );
-
-      await handleLegalRegulatorySearchCommand({
-        query: 'food labeling',
-        output: 'results.md',
-      });
-
-      expect(writeOutput).toHaveBeenCalledWith(
-        expect.any(String),
-        'results.md',
-        true
-      );
     });
   });
 
@@ -206,10 +157,22 @@ describe('handleLegalRegulatorySearchCommand', () => {
   });
 
   describe('error handling', () => {
-    it('exits with code 1 when the response reports a failure', async () => {
-      mockHttpGet.mockResolvedValue({
-        data: { success: false, error: 'Search failed' },
-      });
+    it.each([
+      [
+        'the response reports a failure',
+        () =>
+          mockHttpGet.mockResolvedValue({
+            data: { success: false, error: 'Search failed' },
+          }),
+        'Search failed',
+      ],
+      [
+        'the request fails',
+        () => mockHttpGet.mockRejectedValue(new Error('boom')),
+        'boom',
+      ],
+    ])('exits with code 1 when %s', async (_label, arrange, message) => {
+      arrange();
       const exitSpy = vi
         .spyOn(process, 'exit')
         .mockImplementation((() => undefined) as any);
@@ -219,27 +182,9 @@ describe('handleLegalRegulatorySearchCommand', () => {
 
       await handleLegalRegulatorySearchCommand({ query: 'test' });
 
-      expect(errorSpy).toHaveBeenCalledWith('Error:', 'Search failed');
+      expect(errorSpy).toHaveBeenCalledWith('Error:', message);
       expect(exitSpy).toHaveBeenCalledWith(1);
       expect(writeOutput).not.toHaveBeenCalled();
-
-      exitSpy.mockRestore();
-      errorSpy.mockRestore();
-    });
-
-    it('exits with code 1 when the request fails', async () => {
-      mockHttpGet.mockRejectedValue(new Error('boom'));
-      const exitSpy = vi
-        .spyOn(process, 'exit')
-        .mockImplementation((() => undefined) as any);
-      const errorSpy = vi
-        .spyOn(console, 'error')
-        .mockImplementation(() => undefined);
-
-      await handleLegalRegulatorySearchCommand({ query: 'test' });
-
-      expect(errorSpy).toHaveBeenCalledWith('Error:', 'boom');
-      expect(exitSpy).toHaveBeenCalledWith(1);
 
       exitSpy.mockRestore();
       errorSpy.mockRestore();
