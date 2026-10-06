@@ -413,6 +413,8 @@ firecrawl developer "tokio select cancellation safety" --json -o results.json
 
 Search the Legal and Regulatory Index: primary law and regulatory material from US federal, state, and local government sources, including statutes, regulations, codes, court opinions, and other government publications.
 
+For the request and response schema, see the [Legal and Regulatory Index REST API](https://docs.firecrawl.dev/features/legal-regulatory).
+
 ```bash
 firecrawl legal-regulatory "food labeling requirements for allergens"
 ```
