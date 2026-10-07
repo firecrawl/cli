@@ -2,7 +2,14 @@
  * Types and interfaces for the agent command
  */
 
-import type { AgentMode, AgentSuggestion, AgentWebhookConfig } from 'firecrawl';
+import type {
+  AgentExchangeOptions,
+  AgentExchangeSummary,
+  AgentMode,
+  AgentSuggestion,
+  AgentWebhookConfig,
+  PendingApproval,
+} from 'firecrawl';
 
 export type AgentModel = 'spark-1-pro' | 'spark-1-mini' | 'spark-2';
 
@@ -10,10 +17,28 @@ export type AgentEffort = 'low' | 'medium' | 'high';
 
 export type AgentStatus = 'processing' | 'completed' | 'failed' | 'cancelled';
 
+/**
+ * Why a failed run stopped early. The API currently sends only
+ * "credit_limit_reached"; other values are passed through untouched.
+ */
+export type AgentStopReason = 'credit_limit_reached' | (string & {});
+
+/**
+ * Incomplete-result fields the API adds to a failed run (and to thread runs).
+ * The pinned SDK does not type these yet, so they are read defensively.
+ */
+export interface AgentIncompleteFields {
+  /** Best-effort JSON from an incomplete run; `data` stays completed-only */
+  partial?: unknown;
+  /** Whether `partial` matches the supplied schema (only sent with a schema) */
+  partialSchemaValid?: boolean;
+  stopReason?: AgentStopReason;
+}
+
 export interface AgentOptions {
   /** Natural language prompt describing the data to extract */
   prompt: string;
-  /** Model to use: spark-2 (default), spark-1-mini, or spark-1-pro */
+  /** Model to use: spark-2 (default). spark-1-mini and spark-1-pro are deprecated and run spark-2 */
   model?: AgentModel;
   /** Reasoning effort for the run */
   effort?: AgentEffort;
@@ -29,6 +54,8 @@ export interface AgentOptions {
   schemaFile?: string;
   /** Webhook URL or webhook config */
   webhook?: string | AgentWebhookConfig;
+  /** Alexandria provider settings, sent only when an Alexandria flag is given */
+  exchange?: AgentExchangeOptions;
   /** Cancel active agent job by ID */
   cancel?: boolean;
   /** Maximum credits to spend (job fails if exceeded) */
@@ -66,7 +93,7 @@ export interface AgentResult {
 
 export interface AgentStatusResult {
   success: boolean;
-  data?: {
+  data?: AgentIncompleteFields & {
     id: string;
     status: AgentStatus;
     data?: any;
@@ -77,6 +104,8 @@ export interface AgentStatusResult {
     mode?: AgentMode;
     message?: string;
     suggestions?: AgentSuggestion[];
+    pendingApproval?: PendingApproval;
+    exchange?: AgentExchangeSummary;
   };
   error?: string;
 }

@@ -61,7 +61,8 @@ describe('executeParse', () => {
     ];
     expect(url).toBe('https://api.firecrawl.dev/v2/parse');
     expect(init.method).toBe('POST');
-    expect(init.headers).toBeUndefined();
+    // No Authorization; X-Origin attributes the keyless call to the CLI.
+    expect(init.headers).toEqual({ 'X-Origin': 'cli' });
 
     const options = JSON.parse(init.body.get('options') as string);
     expect(options).toEqual({

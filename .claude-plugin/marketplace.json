@@ -7,9 +7,10 @@
     {
       "name": "firecrawl",
       "source": "./",
-      "description": "Scrape, search, crawl, and map the web with a single command.",
+      "description": "Search, scrape, crawl, and map the web, and reach Alexandria's data providers, with a single command.",
       "skills": [
         "./skills/firecrawl-agent",
+        "./skills/firecrawl-alexandria",
         "./skills/firecrawl",
         "./skills/firecrawl-crawl",
         "./skills/firecrawl-download",

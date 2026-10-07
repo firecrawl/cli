@@ -101,6 +101,9 @@ describe('executeSearch', () => {
         integration: 'cli',
         toolDetail: 'compact',
       });
+      const body = mockHttpPost.mock.calls[0][1];
+      expect(body).not.toHaveProperty('objective');
+      expect(body).not.toHaveProperty('clientModel');
     });
 
     it('should allow highlights to be disabled', async () => {
@@ -116,6 +119,25 @@ describe('executeSearch', () => {
         expect.objectContaining({
           highlights: false,
           query: 'test query',
+        })
+      );
+    });
+
+    it('forwards optional task context with the search request', async () => {
+      mockHttpPost.mockResolvedValue(mockSearchResponse({ web: [] }));
+
+      await executeSearch({
+        query: 'React memo docs',
+        objective: 'Find official guidance on preventing unnecessary rerenders',
+        clientModel: 'claude-sonnet-4-6',
+      });
+
+      expect(mockHttpPost).toHaveBeenCalledWith(
+        '/v2/search',
+        expect.objectContaining({
+          objective:
+            'Find official guidance on preventing unnecessary rerenders',
+          clientModel: 'claude-sonnet-4-6',
         })
       );
     });
@@ -207,14 +229,14 @@ describe('executeSearch', () => {
 
       await executeSearch({
         query: 'web scraping python',
-        categories: ['github'],
+        categories: ['pdf'],
       });
 
       expect(mockHttpPost).toHaveBeenCalledWith(
         '/v2/search',
         expect.objectContaining({
           query: 'web scraping python',
-          categories: [{ type: 'github' }],
+          categories: [{ type: 'pdf' }],
         })
       );
     });
@@ -422,7 +444,7 @@ describe('executeSearch', () => {
         query: 'comprehensive test',
         limit: 20,
         sources: ['web', 'news'],
-        categories: ['github'],
+        categories: ['developer'],
         tbs: 'qdr:w',
         location: 'Germany',
         country: 'DE',
@@ -438,7 +460,7 @@ describe('executeSearch', () => {
         integration: 'cli',
         toolDetail: 'compact',
         sources: [{ type: 'web' }, { type: 'news' }],
-        categories: [{ type: 'github' }],
+        categories: [{ type: 'developer' }],
         tbs: 'qdr:w',
         location: 'Germany',
         country: 'DE',
@@ -762,8 +784,7 @@ describe('executeSearch', () => {
     });
 
     it('should accept valid category types', async () => {
-      const categoryList: Array<'github' | 'research' | 'pdf' | 'developer'> = [
-        'github',
+      const categoryList: Array<'research' | 'pdf' | 'developer'> = [
         'research',
         'pdf',
         'developer',

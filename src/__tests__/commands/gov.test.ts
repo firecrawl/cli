@@ -1,0 +1,186 @@
+/**
+ * Tests for gov command
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { handleGovSearchCommand } from '../../commands/gov';
+import { getClient, isKeylessMode } from '../../utils/client';
+import { initializeConfig } from '../../utils/config';
+import { writeOutput } from '../../utils/output';
+import { setupTest, teardownTest } from '../utils/mock-client';
+
+vi.mock('../../utils/output', () => ({ writeOutput: vi.fn() }));
+
+vi.mock('../../utils/client', async () => {
+  const actual = await vi.importActual('../../utils/client');
+  return {
+    ...actual,
+    getClient: vi.fn(),
+    isKeylessMode: vi.fn(() => false),
+  };
+});
+
+describe('handleGovSearchCommand', () => {
+  let mockHttpGet: ReturnType<typeof vi.fn>;
+
+  // Wrap a payload in the axios envelope returned by `client.http.get`.
+  const mockGovResponse = (web: any[]) => ({
+    data: { success: true, data: { web } },
+  });
+
+  const sampleResult = {
+    url: 'https://www.ecfr.gov/current/title-21/chapter-I/subchapter-B/part-101',
+    title: '21 CFR Part 101 -- Food Labeling',
+    description: 'Food labeling requirements for packaged foods.',
+    position: 1,
+  };
+
+  beforeEach(() => {
+    setupTest();
+    initializeConfig({
+      apiKey: 'test-api-key',
+      apiUrl: 'https://api.firecrawl.dev',
+    });
+
+    mockHttpGet = vi.fn();
+    vi.mocked(getClient).mockReturnValue({
+      http: { get: mockHttpGet },
+    } as any);
+  });
+
+  afterEach(() => {
+    teardownTest();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  describe('API call generation', () => {
+    it.each([
+      [{}, '/v2/search/gov?query=food+labeling&integration=cli'],
+      [{ k: 5 }, '/v2/search/gov?query=food+labeling&k=5&integration=cli'],
+    ])('calls /v2/search/gov with %o', async (extra, expectedUrl) => {
+      mockHttpGet.mockResolvedValue(mockGovResponse([sampleResult]));
+
+      await handleGovSearchCommand({
+        query: 'food labeling',
+        ...extra,
+      });
+
+      expect(mockHttpGet).toHaveBeenCalledTimes(1);
+      expect(mockHttpGet).toHaveBeenCalledWith(expectedUrl);
+    });
+  });
+
+  describe('output', () => {
+    it('renders numbered title, url, and description blocks', async () => {
+      mockHttpGet.mockResolvedValue(
+        mockGovResponse([
+          sampleResult,
+          {
+            url: 'https://www.ecfr.gov/current/title-21/part-102',
+            title: '21 CFR Part 102',
+            position: 2,
+          },
+        ])
+      );
+
+      await handleGovSearchCommand({ query: 'food labeling' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0];
+      expect(content).toBe(
+        [
+          '## 1. 21 CFR Part 101 -- Food Labeling',
+          sampleResult.url,
+          'Food labeling requirements for packaged foods.',
+          '',
+          '## 2. 21 CFR Part 102',
+          'https://www.ecfr.gov/current/title-21/part-102',
+        ].join('\n')
+      );
+    });
+
+    it('prints a placeholder when the response has no data', async () => {
+      mockHttpGet.mockResolvedValue({ data: { success: true } });
+
+      await handleGovSearchCommand({ query: 'no hits' });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0];
+      expect(content).toBe('(no results)');
+    });
+
+    it('outputs the raw response as JSON with --json', async () => {
+      mockHttpGet.mockResolvedValue(mockGovResponse([sampleResult]));
+
+      await handleGovSearchCommand({
+        query: 'food labeling',
+        json: true,
+      });
+
+      const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
+      expect(JSON.parse(content)).toEqual({
+        success: true,
+        data: { web: [sampleResult] },
+      });
+    });
+  });
+
+  describe('keyless mode', () => {
+    it('calls the endpoint directly and renders the results', async () => {
+      vi.mocked(isKeylessMode).mockReturnValueOnce(true);
+      const fetchMock = vi.fn(
+        async (_url: string, _init?: RequestInit) =>
+          new Response(
+            JSON.stringify({ success: true, data: { web: [sampleResult] } }),
+            { status: 200 }
+          )
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      await handleGovSearchCommand({ query: 'food labeling' });
+
+      expect(mockHttpGet).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.firecrawl.dev/v2/search/gov?query=food+labeling&integration=cli',
+        expect.objectContaining({ method: 'GET' })
+      );
+      expect(vi.mocked(writeOutput).mock.calls[0][0]).toContain(
+        sampleResult.title
+      );
+    });
+  });
+
+  describe('error handling', () => {
+    it.each([
+      [
+        'the response reports a failure',
+        () =>
+          mockHttpGet.mockResolvedValue({
+            data: { success: false, error: 'Search failed' },
+          }),
+        'Search failed',
+      ],
+      [
+        'the request fails',
+        () => mockHttpGet.mockRejectedValue(new Error('boom')),
+        'boom',
+      ],
+    ])('exits with code 1 when %s', async (_label, arrange, message) => {
+      arrange();
+      const exitSpy = vi
+        .spyOn(process, 'exit')
+        .mockImplementation((() => undefined) as any);
+      const errorSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined);
+
+      await handleGovSearchCommand({ query: 'test' });
+
+      expect(errorSpy).toHaveBeenCalledWith('Error:', message);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(writeOutput).not.toHaveBeenCalled();
+
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    });
+  });
+});

@@ -32,6 +32,78 @@ export function parseToolOptions(raw = '{}'): Record<string, unknown> {
   return value;
 }
 
+const FIND_TOOLS_LIST_SELECTORS = [
+  'providers',
+  'categories',
+  'groups',
+  'capabilities',
+  'expand',
+];
+
+/**
+ * Find Tools list selectors take arrays; also accept the comma-separated form.
+ * `urls` is never comma-split (a comma is legal inside a URL); a single string is wrapped.
+ */
+export function normalizeFindToolsOptions(
+  options: Record<string, unknown>
+): Record<string, unknown> {
+  const next = { ...options };
+  for (const key of FIND_TOOLS_LIST_SELECTORS) {
+    const value = next[key];
+    if (typeof value === 'string')
+      next[key] = value
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
+  }
+  if (typeof next.urls === 'string') next.urls = [next.urls.trim()];
+  return next;
+}
+
+const ADDRESS_HINT =
+  'Use a provider/capability address, or a JSON object {"provider":"...","capability":"...","options":{...}}.';
+
+/** Accept both the bare `provider/capability` form and the HTTP contract's object form. */
+function parseAddress(address: string): AlexandriaCall {
+  const trimmed = address.trim();
+  if (trimmed.startsWith('{')) {
+    let value: any;
+    try {
+      value = JSON.parse(trimmed);
+    } catch {
+      throw new Error(ADDRESS_HINT);
+    }
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      Array.isArray(value) ||
+      typeof value.provider !== 'string' ||
+      !value.provider.trim() ||
+      typeof value.capability !== 'string' ||
+      !value.capability.trim() ||
+      (value.options !== undefined &&
+        (!value.options ||
+          typeof value.options !== 'object' ||
+          Array.isArray(value.options))) ||
+      Object.keys(value).some(
+        (key) => !['provider', 'capability', 'options'].includes(key)
+      )
+    )
+      throw new Error(ADDRESS_HINT);
+    return {
+      provider: value.provider.trim(),
+      capability: value.capability.trim(),
+      ...(value.options !== undefined && { options: value.options }),
+    };
+  }
+  const slash = trimmed.indexOf('/');
+  if (slash < 0) throw new Error(ADDRESS_HINT);
+  const provider = trimmed.slice(0, slash).trim();
+  const capability = trimmed.slice(slash + 1).trim();
+  if (!provider || !capability) throw new Error(ADDRESS_HINT);
+  return { provider, capability };
+}
+
 export function buildCalls(addresses: string[], values: string[] = []): Call[] {
   if (
     !addresses.length ||
@@ -42,13 +114,19 @@ export function buildCalls(addresses: string[], values: string[] = []): Call[] {
       'Provide 1-10 capabilities, with at most one --options value per capability.'
     );
   return addresses.map((address, i) => {
-    const slash = address.indexOf('/');
-    if (slash < 1 || slash === address.length - 1)
-      throw new Error('Use a provider/capability address.');
+    const call = parseAddress(address);
+    if (call.options !== undefined && values[i] !== undefined)
+      throw new Error(
+        `Provide options for ${call.provider}/${call.capability} either inside the object or with --options, not both.`
+      );
+    const options = call.options ?? parseToolOptions(values[i]);
     return {
-      provider: address.slice(0, slash),
-      capability: address.slice(slash + 1),
-      options: parseToolOptions(values[i]),
+      provider: call.provider,
+      capability: call.capability,
+      options:
+        call.provider === 'firecrawl' && call.capability === 'find-tools'
+          ? normalizeFindToolsOptions(options)
+          : options,
     };
   });
 }
@@ -187,7 +265,9 @@ export function parseFindToolsRequest(raw: string): Call {
   return {
     provider: 'firecrawl',
     capability: 'find-tools',
-    options: parseToolOptions(JSON.stringify(next.options)),
+    options: normalizeFindToolsOptions(
+      parseToolOptions(JSON.stringify(next.options))
+    ),
   };
 }
 
@@ -199,7 +279,7 @@ export function createFindToolsCommand(): Command {
     .argument('[urls...]', 'Known HTTP(S) URLs to find tools for')
     .option(
       '--options <json>',
-      'Discovery options: query, urls, providers, categories, groups, capabilities; level: providers|groups|tools; limit: 1-100; expand: options,response,examples. Use provider and capability IDs returned by discovery.'
+      'Discovery options: query, urls, providers, categories, groups, capabilities; level: providers|groups|tools; limit: 1-100; expand: ["options","response","examples"] (a comma-separated string is also accepted for list selectors other than urls). Use provider and capability IDs returned by discovery.'
     )
     .option(
       '--request <json>',
@@ -218,7 +298,7 @@ export function createFindToolsCommand(): Command {
       let call: Call = {
         provider: 'firecrawl',
         capability: 'find-tools',
-        options: parseToolOptions(options.options),
+        options: normalizeFindToolsOptions(parseToolOptions(options.options)),
       };
       if (options.request) {
         if (urls.length || options.options)
@@ -236,7 +316,7 @@ export function addAlexandriaScrapeOptions(command: Command): void {
     .addOption(
       new Option(
         '--alexandria <provider/capability>',
-        'Execute a discovered tool through Scrape (repeat for batches)'
+        'Execute a discovered tool through Scrape; also accepts a {"provider","capability","options"} JSON object (repeat for batches)'
       ).argParser((value: string, previous: string[] = []) => [
         ...previous,
         value,
