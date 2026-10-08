@@ -29,6 +29,12 @@ Use `firecrawl search --help` for search options, `firecrawl list --help` for co
 
 `--categories developer` searches an index of public repositories, GitHub issues, merged pull requests, repository READMEs, and curated documentation sites. `--categories gov` searches US federal, state, and local government legal and regulatory sources and cannot be combined with other categories. `--categories research` is a website filter, not the paper index. Dedicated skills: [firecrawl-developer-index](../firecrawl-developer-index/SKILL.md) and [firecrawl-research-index](../firecrawl-research-index/SKILL.md).
 
+## Government Index
+
+For US legal or regulatory source discovery, use `firecrawl gov "<question, jurisdiction, and date>" --limit 10`. Use `--limit` for result count; `-k` is the API-key option. `search --categories gov` also uses `--limit` and returns results in `data.web`; run other categories separately rather than combining them with `gov`.
+
+Read a supplied source URL directly with `scrape`. Before citing current governing law, verify the source's issuer, jurisdiction, enacted/effective status, and version. Bill text, agency guidance, historical versions, and third-party reproductions need that verification too. Ask for a missing jurisdiction before selecting a rule; use general search for non-US questions or missing coverage. No hits does not prove that no applicable law exists.
+
 **Done when:** relevant results have been inspected, per-call errors and empty results have been checked, the request has been answered with source links, and feedback is sent within the time window unless opted out.
 
 ## Go beyond page content with Alexandria

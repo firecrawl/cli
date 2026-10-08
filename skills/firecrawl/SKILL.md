@@ -1,7 +1,7 @@
 ---
 name: firecrawl
 description: |
-  Any live-web task via the Firecrawl CLI — including ordinary web research: searching the web, reading or extracting pages, gathering sources, discovering site URLs, bulk extraction, downloading a site, change alerts, or pages needing clicks/login — web only; local files route to firecrawl-parse. For papers use firecrawl-research-index; for library, API, error, or bug questions use firecrawl-developer-index.
+  Any live-web task via the Firecrawl CLI — including ordinary web research: searching the web, reading or extracting pages, gathering sources, discovering site URLs, bulk extraction, downloading a site, change alerts, or pages needing clicks/login — web only; local files route to firecrawl-parse. For US legal or regulatory questions use gov; for papers use firecrawl-research-index; for library, API, error, or bug questions use firecrawl-developer-index.
 allowed-tools:
   - Bash(firecrawl *)
   - Bash(npx firecrawl-cli *)
@@ -37,6 +37,7 @@ Follow this escalation pattern:
 | Find pages on a topic       | `search`              | No specific URL yet                                             |
 | Find research papers        | `research`            | Biomedical/clinical/scientific literature — use the paper index |
 | Answer a coding question    | `developer`           | Issues, merged PRs, READMEs, and docs — not a general web page  |
+| Find US law or regulation   | `gov`                 | US statutes, regulations, codes, and court opinions             |
 | Get a page's content        | `scrape`              | Have a URL, page is static or JS-rendered                       |
 | Find URLs within a site     | `map`                 | Need to locate a specific subpage                               |
 | Bulk extract a site section | `crawl`               | Need many pages (e.g., all /docs/)                              |
@@ -47,6 +48,8 @@ Follow this escalation pattern:
 | Watch pages for changes     | `monitor`             | Schedule recurring scrapes/crawls, diff against snapshots       |
 
 For detailed command reference, run `firecrawl <command> --help`.
+
+For US legal or regulatory source discovery, start with `firecrawl gov "<question, jurisdiction, and date>" --limit 10`. If the user supplies a source URL, read it directly with `scrape`. Results are excerpts, not a guarantee of official-only sources or current governing law: verify the issuer, jurisdiction, enacted/effective status, and version before citing a controlling section and supporting passage. Ask for a missing jurisdiction before identifying the governing rule. Use general search for non-US questions or missing coverage; no hits does not establish that no applicable law exists.
 
 **Done when:** the narrowest suitable command has completed the request, its output was inspected, and the answer cites the saved source files.
 
