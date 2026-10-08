@@ -64,6 +64,29 @@ describe('keyless requests', () => {
     ).rejects.toThrow(LEGACY_LIMIT_MESSAGE);
   });
 
+  it.each([false, true])(
+    'preserves failed-job invitations with nested metadata: %s',
+    async (nested) => {
+      const metadata = { jobId: 'job-1', feedback: { jobId: 'job-1' } };
+      stubFetch(200, {
+        success: false,
+        error: 'Scrape failed',
+        ...(nested ? { data: { metadata } } : { metadata }),
+      });
+      const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+      try {
+        await expect(keylessRequest('/v2/scrape', {})).rejects.toThrow(
+          'Scrape failed'
+        );
+        expect(stderr.mock.calls.flat().join('')).toContain(
+          'firecrawl feedback scrape job-1 --help'
+        );
+      } finally {
+        stderr.mockRestore();
+      }
+    }
+  );
+
   it('identifies the CLI with X-Origin on POST and GET requests', async () => {
     const fetchMock = stubFetch(200, { success: true });
 

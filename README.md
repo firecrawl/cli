@@ -500,9 +500,22 @@ Paper ids accept `pmid:`, `pmcid:`, `doi:`, and `arxiv:` forms, plus canonical `
 
 ### `feedback` - Send endpoint job feedback
 
-Send concise feedback for a completed v2 `search`, `scrape`, `parse`, or `map`
-job. For search-result quality, `search-feedback` is still the most guided
-command; `feedback` is the generic endpoint/job surface.
+Send evidence through `/v2/feedback`. Feedback on keyless `search`, `scrape`, and
+`parse` jobs is optional. Keyless guidance asks agents to submit concise feedback on observed result quality or missing coverage when the host permits it, especially if a result is wrong, incomplete, blocked, or an error. Feedback does not determine whether a task is complete. Keyless feedback submissions require `--rating`, `--task`, `--assessment`, and 1-20 observations
+provided through `--observations` or `--observations-file`. Task, assessment, and each observation detail require 10-2000 characters after trimming whitespace. Keyless Parse also requires `--doc-class born_digital|scanned|mixed|unknown` once per submission. Use the returned job
+reference and evidence already available; no user interview or additional
+investigation is required. Run `firecrawl feedback --help` for category fields.
+
+Each keyless job accepts one submission; retrying a successful submission within
+the feedback window returns its original feedback ID. Submit from the same caller
+IP before the invitation's `expiresAt` deadline,
+which provides a 24-hour feedback window for the job.
+Submitting feedback does not consume or restore operation allowance. Invitations
+and references appear in metadata or stderr, preserving ordinary stdout.
+
+Authenticated callers retain the existing fields. `search-feedback` remains an
+authenticated Search command and cannot submit feedback for keyless jobs. The
+following example uses the authenticated endpoint feedback contract:
 
 ```bash
 firecrawl feedback scrape 0193f6c5-1234-7890-abcd-1234567890ab \
@@ -517,25 +530,33 @@ firecrawl feedback scrape 0193f6c5-1234-7890-abcd-1234567890ab \
 Keep notes and metadata small. Do not send raw scrape or parse outputs as
 feedback.
 
-Set `FIRECRAWL_NO_ENDPOINT_FEEDBACK=1` to make `firecrawl feedback` skip
-endpoint feedback calls silently.
+Search observations identify delivered result positions or missing information. Scrape and Parse observations describe the requested output formats. Failed jobs use a `failure` observation based on the returned error.
+
+Run `firecrawl feedback --help` for endpoint-specific categories, fields and reason codes. Stored keyless feedback must fit within 8 KiB, including server defaults and verification flags. Submit from the same caller IP; attempts are rate limited. See the [API feedback contract](https://docs.firecrawl.dev/api-reference/endpoint/feedback) for examples, format constraints, and Parse retention behavior.
+
+Set `FIRECRAWL_NO_ENDPOINT_FEEDBACK=1` or `FIRECRAWL_DISABLE_ENDPOINT_FEEDBACK=1` to skip authenticated endpoint feedback calls. These flags do not suppress keyless invitations or submissions. The API includes a pointer on every eligible keyless job response. Feedback is optional and helps improve Firecrawl when a result is wrong, incomplete, blocked, or an error; keyless access does not depend on it.
 
 #### Feedback Options
 
-| Option                           | Description                                  |
-| -------------------------------- | -------------------------------------------- |
-| `--rating <rating>`              | Required: `good`, `partial`, or `bad`        |
-| `--issues <codesOrJson>`         | Comma-separated issue codes or JSON array    |
-| `--tags <codesOrJson>`           | Comma-separated tags or JSON array           |
-| `--note <text>`                  | Short human-readable feedback                |
-| `--valuable-sources <json>`      | JSON array of `{url, reason}` entries        |
-| `--missing-content <json>`       | JSON array of `{topic, description}` entries |
-| `--query-suggestions <text>`     | Search/query improvement notes               |
-| `--url <url>`                    | Relevant URL for scrape or parse feedback    |
-| `--page-numbers <numbersOrJson>` | Comma-separated page numbers or JSON array   |
-| `--metadata <json>`              | Small JSON object with extra context         |
-| `--metadata-file <path>`         | Path to small metadata JSON object           |
-| `--silent`                       | Suppress output for background agent calls   |
+| Option                           | Description                                          |
+| -------------------------------- | ---------------------------------------------------- |
+| `--rating <rating>`              | Required: `good`, `partial`, or `bad`                |
+| `--task <text>`                  | Task intent, required for keyless feedback           |
+| `--doc-class <class>`            | Document class, required for keyless Parse           |
+| `--assessment <text>`            | Assessment, required for keyless feedback            |
+| `--observations <json>`          | JSON array of category-specific keyless observations |
+| `--observations-file <path>`     | File containing the observations JSON array          |
+| `--issues <codesOrJson>`         | Comma-separated issue codes or JSON array            |
+| `--tags <codesOrJson>`           | Comma-separated tags or JSON array                   |
+| `--note <text>`                  | Short human-readable feedback                        |
+| `--valuable-sources <json>`      | JSON array of `{url, reason}` entries                |
+| `--missing-content <json>`       | JSON array of `{topic, description}` entries         |
+| `--query-suggestions <text>`     | Search/query improvement notes                       |
+| `--url <url>`                    | Relevant URL for scrape or parse feedback            |
+| `--page-numbers <numbersOrJson>` | Comma-separated page numbers or JSON array           |
+| `--metadata <json>`              | Small JSON object with extra context                 |
+| `--metadata-file <path>`         | Path to small metadata JSON object                   |
+| `--silent`                       | Suppress output for background agent calls           |
 
 ---
 

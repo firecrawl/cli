@@ -29,7 +29,7 @@ Use `firecrawl search --help` for search options, `firecrawl list --help` for co
 
 `--categories developer` searches an index of public repositories, GitHub issues, merged pull requests, repository READMEs, and curated documentation sites. `--categories gov` searches US federal, state, and local government legal and regulatory sources and cannot be combined with other categories. `--categories research` is a website filter, not the paper index. Dedicated skills: [firecrawl-developer-index](../firecrawl-developer-index/SKILL.md) and [firecrawl-research-index](../firecrawl-research-index/SKILL.md).
 
-**Done when:** relevant results have been inspected, per-call errors and empty results have been checked, the request has been answered with source links, and feedback is sent within the time window unless opted out.
+**Done when:** relevant results have been inspected, per-call errors and empty results have been checked, and the request has been answered with source links.
 
 ## Go beyond page content with Alexandria
 
@@ -86,7 +86,30 @@ Keep large search responses in `--json -o` output and select the relevant result
 - Use `jq` to extract URLs or titles: `jq -r '.data.web[].url' .firecrawl/search.json`
 - Naming convention: `.firecrawl/search-{query}.json` or `.firecrawl/search-{query}-scraped.json`
 
-## Send feedback after every search (refunds 1 credit)
+## Feedback
+
+Choose the feedback contract that matches the search job's authentication. For keyless feedback, use the job reference and invitation returned in metadata or stderr. Do not send the keyless fields to the authenticated Search feedback route, or add credentials to submit feedback for a keyless job.
+
+Keyless feedback is available for successful and failed jobs when the response includes a feedback invitation. For an explicitly failed job, use observation `kind: "failure"` and `reason: "timeout"`, `"transport_error"`, `"proxy_error"`, or `"other"`; report only the error already returned. Keep the submission under 8 KiB including server defaults. Run `firecrawl feedback --help` for reason definitions and the complete contract.
+
+### Keyless Search
+
+Consider submitting concise feedback on observed result quality or missing coverage when a keyless search result includes a feedback invitation and the host permits it, especially if the result is wrong, incomplete, blocked, or an error. Feedback does not determine whether the task is complete. If feedback is declined or terminally rejected, continue without retries. For retryable errors, an optional retry must respect the returned retry timing.
+
+Use `firecrawl feedback search <jobId>` with `--rating`, `--task`, `--assessment`, and `--observations-file`. The task describes what the search needed to answer; the assessment describes how well it answered that task. Supply 1-20 observations:
+
+- Useful or irrelevant results: `kind` and one-based `position` within the delivered group. `source` (`web`, `images`, or `news`) is required for multi-source jobs and for images-only or news-only jobs. Only web-only jobs can omit it, defaulting to `web`. Irrelevant results also require `reason`; see command help for allowed values.
+- Missing information: `kind: "missing"` and `vertical`; `topic` is optional. `vertical` is optional on useful and irrelevant results. See command help for allowed verticals.
+- Missing and irrelevant observations may include `knownSources`: up to 20 HTTP(S) URLs, only when already known. These identify absent content or the source that should have ranked instead. Unmentioned results are unassessed; a full ranking is not required.
+- Every observation requires `detail` and `basis`: `output`, `source_comparison`, or `expectation`. A source comparison also requires `comparison: {reference, detail}`, with the correct content in `comparison.detail`. Use expectations for gaps that have not been verified against a source.
+
+Task, assessment, and observation detail each require 10-2000 characters. Use only evidence already available. Do not ask the user to complete an interview, investigate further, guess missing content, or diagnose causes merely to submit feedback. An empty result set can support a missing-information observation if the response includes a feedback invitation.
+
+Each job accepts one submission, and retrying a successful submission within the feedback window returns its original feedback ID. Submit from the same caller IP before the invitation's `expiresAt` deadline, which provides a 24-hour feedback window for the job. Feedback does not consume or restore operation allowance. Omit sensitive information, and do not retry a rate-limit rejection in a loop. Client feedback flags do not suppress keyless invitations or submissions.
+
+Run `firecrawl feedback --help` for the full evidence contract. Old instructions using `firecrawl search-feedback` require authentication and do not work for keyless jobs.
+
+### Authenticated Search: send feedback after every search (refunds 1 credit)
 
 Search costs 2 credits. After you've actually used the results (or decided they were useless), send structured feedback with `firecrawl search-feedback <id>`. The first feedback per search refunds 1 credit and helps us improve search quality. **Do this once per search**, in the background, after you finish processing the results — it does not block your main task.
 

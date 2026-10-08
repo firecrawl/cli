@@ -9,6 +9,10 @@ import { initializeConfig } from '../../utils/config';
 import { writeOutput } from '../../utils/output';
 import { setupTest, teardownTest } from '../utils/mock-client';
 
+vi.mock('../../utils/credentials', () => ({
+  loadCredentials: vi.fn(() => null),
+}));
+
 vi.mock('../../utils/output', () => ({ writeOutput: vi.fn() }));
 
 // Mock the Firecrawl client module
@@ -822,6 +826,23 @@ describe('executeSearch', () => {
     });
   });
 
+  it.each([{ json: true }, { pretty: true }])(
+    'preserves empty Search JSON and its feedback reference with %j',
+    async (format) => {
+      const metadata = {
+        jobId: '00000000-0000-4000-8000-000000000001',
+        feedback: { jobId: '00000000-0000-4000-8000-000000000001' },
+      };
+      mockHttpPost.mockResolvedValue(
+        mockSearchResponse({ web: [] }, { metadata })
+      );
+      await handleSearchCommand({ query: 'empty reference', ...format });
+      expect(
+        JSON.parse(vi.mocked(writeOutput).mock.calls.at(-1)?.[0] as string)
+      ).toEqual({ success: true, data: { web: [] }, metadata });
+    }
+  );
+
   describe('Developer results in the readable output', () => {
     // Read the text that `handleSearchCommand` sent to the writer.
     const writtenOutput = () =>
@@ -896,4 +917,54 @@ describe('executeSearch', () => {
       );
     });
   });
+});
+
+describe('keyless Search failure feedback', () => {
+  it.each([200, 500])(
+    'prints the returned job and invitation when Search fails with HTTP %i',
+    async (status) => {
+      setupTest();
+      vi.stubEnv('FIRECRAWL_API_KEY', '');
+      initializeConfig({
+        apiKey: undefined,
+        apiUrl: 'https://api.firecrawl.dev',
+      });
+      const stderr = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation(() => true);
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: status === 200,
+          status,
+          json: async () => ({
+            success: false,
+            error: 'Search transport failed',
+            metadata: {
+              jobId: 'failed-search-job',
+              feedback: {
+                jobId: 'failed-search-job',
+                message: 'Optional feedback is available.',
+              },
+            },
+          }),
+        })
+      );
+      try {
+        const result = await executeSearch({ query: 'retry reference' });
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('Search transport failed');
+        const printed = stderr.mock.calls.map((call) => call[0]).join('');
+        expect(printed).toContain('Feedback job (search): failed-search-job');
+        expect(printed).toContain(
+          'firecrawl feedback search failed-search-job'
+        );
+      } finally {
+        vi.unstubAllGlobals();
+        vi.unstubAllEnvs();
+        stderr.mockRestore();
+        teardownTest();
+      }
+    }
+  );
 });

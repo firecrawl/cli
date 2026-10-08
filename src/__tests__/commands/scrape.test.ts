@@ -44,6 +44,32 @@ describe('executeScrape', () => {
     vi.clearAllMocks();
   });
 
+  it('preserves keyless content and writes the API feedback invitation only to stderr', async () => {
+    const metadata = { jobId: 'job-1', feedback: { jobId: 'job-1' } };
+    vi.mocked(isKeylessMode).mockReturnValue(true);
+    vi.mocked(keylessRequest).mockResolvedValueOnce({
+      success: true,
+      data: { markdown: 'Observed content', metadata },
+    });
+    const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    try {
+      const result = await executeScrape({ url: 'https://example.com/' });
+      expect(result).toMatchObject({
+        success: true,
+        data: { markdown: 'Observed content', metadata },
+      });
+      expect(stdout).not.toHaveBeenCalled();
+      expect(stderr.mock.calls.flat().join('')).toContain(
+        'firecrawl feedback scrape job-1 --help'
+      );
+    } finally {
+      vi.mocked(isKeylessMode).mockReturnValue(false);
+      stdout.mockRestore();
+      stderr.mockRestore();
+    }
+  });
+
   describe('API call generation', () => {
     it('should call scrape with correct URL and default markdown format', async () => {
       const mockResponse = { markdown: '# Test Content' };

@@ -1,3 +1,4 @@
+import { reportFeedbackInvitation } from './feedback-invitation';
 /**
  * Firecrawl client utility
  * Provides a singleton client instance initialized with global configuration
@@ -51,7 +52,11 @@ export async function keylessRequest(
     body: JSON.stringify(body),
   });
   const json: any = await response.json().catch(() => ({}));
-  if (!response.ok) {
+  if (!response.ok || json?.success === false) {
+    reportFeedbackInvitation(
+      json?.data?.metadata ?? json?.metadata,
+      path.split('/').pop()!
+    );
     throw new Error(
       json?.error || `Firecrawl request failed (HTTP ${response.status})`
     );

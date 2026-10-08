@@ -1,7 +1,7 @@
+import { KEYLESS_CLI_HEADERS, isKeylessMode } from '../utils/client';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
-import { getConfig, isCustomApiUrl, validateConfig } from '../utils/config';
-import { getClient } from '../utils/client';
+import { getConfig } from '../utils/config';
 import {
   parseMissingContentArg,
   parseValuableSourcesArg,
@@ -21,6 +21,10 @@ export interface EndpointFeedbackOptions {
   providerFeedback?: Record<string, unknown>[];
   capabilityFeedback?: Record<string, unknown>[];
   rating: SearchFeedbackRating;
+  task?: string;
+  assessment?: string;
+  docClass?: 'born_digital' | 'scanned' | 'mixed' | 'unknown';
+  observations?: Record<string, unknown>[];
   issues?: string[];
   tags?: string[];
   note?: string;
@@ -39,6 +43,7 @@ export interface EndpointFeedbackOptions {
 }
 
 export type EndpointFeedbackErrorCode =
+  | 'FEEDBACK_UNAVAILABLE'
   | 'JOB_NOT_FOUND'
   | 'SEARCH_NOT_FOUND'
   | 'FEEDBACK_WINDOW_EXPIRED'
@@ -62,6 +67,8 @@ export interface EndpointFeedbackResult {
   error?: string;
   errorCode?: EndpointFeedbackErrorCode;
   status?: number;
+  details?: unknown;
+  retry_after_seconds?: number;
   disabled?: boolean;
   disabledSource?: 'env' | 'team';
 }
@@ -71,7 +78,14 @@ export const ENDPOINT_FEEDBACK_OPT_OUT_ENV_VARS = [
   'FIRECRAWL_DISABLE_ENDPOINT_FEEDBACK',
 ] as const;
 
-const TRUTHY = new Set(['1', 'true', 'yes', 'on']);
+export function isEndpointFeedbackDisabledLocally(
+  env: NodeJS.ProcessEnv = process.env
+): boolean {
+  return ENDPOINT_FEEDBACK_OPT_OUT_ENV_VARS.some((key) =>
+    /^(1|true|yes|on)$/i.test(env[key]?.trim() ?? '')
+  );
+}
+
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
 
 export const ENDPOINT_FEEDBACK_ENDPOINTS: EndpointFeedbackEndpoint[] = [
@@ -194,16 +208,32 @@ export function parseEndpointFeedbackRating(
   return rating as SearchFeedbackRating;
 }
 
-export function isEndpointFeedbackDisabledLocally(
-  env: NodeJS.ProcessEnv = process.env
-): boolean {
-  for (const key of ENDPOINT_FEEDBACK_OPT_OUT_ENV_VARS) {
-    const value = env[key];
-    if (typeof value === 'string' && TRUTHY.has(value.trim().toLowerCase())) {
-      return true;
-    }
+export function parseObservations(
+  raw?: string,
+  filePath?: string
+): Record<string, unknown>[] | undefined {
+  if (raw === undefined && filePath === undefined) return undefined;
+  if (raw !== undefined && filePath !== undefined)
+    throw new Error('Provide either --observations or --observations-file.');
+  let value: unknown;
+  try {
+    value = JSON.parse(raw ?? readFileSync(filePath!, 'utf8'));
+  } catch (error) {
+    throw new Error(
+      `${filePath ? '--observations-file' : '--observations'}: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
-  return false;
+  if (
+    !Array.isArray(value) ||
+    value.length < 1 ||
+    value.length > 20 ||
+    value.some(
+      (item) => !item || typeof item !== 'object' || Array.isArray(item)
+    )
+  ) {
+    throw new Error('Observations must be a JSON array of 1-20 objects.');
+  }
+  return value;
 }
 
 export function parseEndpointFeedbackCliOptions(options: {
@@ -215,8 +245,23 @@ export function parseEndpointFeedbackCliOptions(options: {
   valuableSources?: string;
   missingContent?: string | string[];
   rating?: string;
+  observations?: string;
+  observationsFile?: string;
+  docClass?: string;
 }) {
+  if (
+    options.docClass !== undefined &&
+    !['born_digital', 'scanned', 'mixed', 'unknown'].includes(options.docClass)
+  )
+    throw new Error(
+      '--doc-class must be one of: born_digital, scanned, mixed, unknown'
+    );
   return {
+    docClass: options.docClass as EndpointFeedbackOptions['docClass'],
+    observations: parseObservations(
+      options.observations,
+      options.observationsFile
+    ),
     rating: parseEndpointFeedbackRating(String(options.rating || '')),
     issues: parseFeedbackListArg(options.issues, '--issues'),
     tags: parseFeedbackListArg(options.tags, '--tags'),
@@ -230,28 +275,44 @@ export function parseEndpointFeedbackCliOptions(options: {
 export async function executeEndpointFeedback(
   options: EndpointFeedbackOptions
 ): Promise<EndpointFeedbackResult> {
-  if (isEndpointFeedbackDisabledLocally()) {
-    return {
-      success: true,
-      disabled: true,
-      disabledSource: 'env',
-      creditsRefunded: 0,
-    };
-  }
-
   try {
-    if (options.apiKey || options.apiUrl) {
-      getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
-    }
-
     const config = getConfig();
     const apiKey = options.apiKey || config.apiKey;
     const apiUrl = (options.apiUrl || config.apiUrl || DEFAULT_API_URL).replace(
       /\/$/,
       ''
     );
-    if (!isCustomApiUrl(apiUrl)) {
-      validateConfig(apiKey);
+    const keyless = isKeylessMode(apiKey, apiUrl);
+    if (!keyless && isEndpointFeedbackDisabledLocally()) {
+      return {
+        success: true,
+        disabled: true,
+        disabledSource: 'env',
+        creditsRefunded: 0,
+      };
+    }
+    if (keyless) {
+      if (!['search', 'scrape', 'parse'].includes(options.endpoint)) {
+        throw new Error(
+          'Keyless feedback supports Search, Scrape, and Parse. Other endpoints require authentication.'
+        );
+      }
+      const required = {
+        '--task': options.task,
+        '--assessment': options.assessment,
+        '--observations or --observations-file': options.observations,
+        ...(options.endpoint === 'parse'
+          ? { '--doc-class': options.docClass }
+          : {}),
+      };
+      const missing = Object.entries(required)
+        .filter(
+          ([, value]) =>
+            value === undefined || (typeof value === 'string' && !value.trim())
+        )
+        .map(([name]) => name);
+      if (missing.length)
+        throw new Error(`Keyless feedback requires ${missing.join(', ')}.`);
     }
 
     const body: Record<string, unknown> = {
@@ -278,6 +339,10 @@ export async function executeEndpointFeedback(
             ['issues', normalizeList(options.issues)],
             ['tags', normalizeList(options.tags)],
             ['note', options.note],
+            ['task', options.task],
+            ['assessment', options.assessment],
+            ['docClass', options.docClass],
+            ['observations', options.observations],
             ['valuableSources', options.valuableSources],
             ['missingContent', options.missingContent],
             ['querySuggestions', options.querySuggestions],
@@ -296,7 +361,9 @@ export async function executeEndpointFeedback(
     const response = await fetch(`${apiUrl}/v2/feedback`, {
       method: 'POST',
       headers: {
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        ...(apiKey
+          ? { Authorization: `Bearer ${apiKey}` }
+          : KEYLESS_CLI_HEADERS),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
@@ -331,6 +398,12 @@ export async function executeEndpointFeedback(
         error: errorMessage,
         errorCode,
         status: response.status,
+        ...(keyless
+          ? {
+              details: data.details,
+              retry_after_seconds: data.retry_after_seconds,
+            }
+          : {}),
       };
     }
 
@@ -416,6 +489,12 @@ export async function handleEndpointFeedbackCommand(
     console.error('Error:', result.error);
     if (result.errorCode) {
       console.error(`Code: ${result.errorCode}`);
+    }
+    if (result.details !== undefined) {
+      console.error('Details:', JSON.stringify(result.details));
+    }
+    if (typeof result.retry_after_seconds === 'number') {
+      console.error(`Retry after: ${result.retry_after_seconds} seconds.`);
     }
     process.exit(1);
   }
