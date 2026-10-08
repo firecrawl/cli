@@ -30,6 +30,7 @@ import { handleParseCommand } from './commands/parse';
 import { createMonitorCommand } from './commands/monitor';
 import { handleSearchCommand } from './commands/search';
 import { handleDeveloperSearchCommand } from './commands/developer';
+import { handleGovSearchCommand } from './commands/gov';
 import {
   handleInspectPaperCommand,
   handleReadPaperCommand,
@@ -82,7 +83,7 @@ import packageJson from '../package.json';
 import type { SearchSource, SearchCategory } from './types/search';
 import type { ScrapeFormat } from './types/scrape';
 import type { RelatedPapersOptions } from './types/research';
-import type { AgentWebhookConfig } from 'firecrawl';
+import type { AgentExchangeOptions, AgentWebhookConfig } from 'firecrawl';
 import { createCreateCommand } from './commands/create';
 import { createListCommand, createAlexandriaCommand } from './commands/list';
 
@@ -950,7 +951,7 @@ function createSearchCommand(): Command {
     )
     .option(
       '--categories <categories>',
-      'Comma-separated categories to filter: research, pdf, developer (research filters web results to research-affiliated websites -- it is NOT the paper index; for papers use `firecrawl research search-papers`. developer searches an index of public repositories, GitHub issues, merged PRs, READMEs, and docs)'
+      'Comma-separated categories to filter: research, pdf, developer, gov (research filters web results to research-affiliated websites -- it is NOT the paper index; for papers use `firecrawl research search-papers`. developer searches an index of public repositories, GitHub issues, merged PRs, READMEs, and docs. gov searches US federal, state, and local government legal and regulatory sources and cannot be combined with other categories)'
     )
     .option(
       '--tbs <value>',
@@ -1056,7 +1057,7 @@ function createSearchCommand(): Command {
           .map((c: string) => c.trim().toLowerCase()) as SearchCategory[];
 
         // Validate categories
-        const validCategories = ['research', 'pdf', 'developer'];
+        const validCategories = ['research', 'pdf', 'developer', 'gov'];
         for (const category of categories) {
           if (!validCategories.includes(category)) {
             console.error(
@@ -1173,6 +1174,52 @@ Examples:
     });
 
   return developerCmd;
+}
+
+/**
+ * Create and configure the gov command
+ */
+function createGovCommand(): Command {
+  const govCmd = new Command('gov')
+    .description(
+      'Search the Firecrawl Government Index: primary law and regulatory material from US federal, state, and local government sources, including statutes, regulations, codes, court opinions, and other government publications.'
+    )
+    .argument('<query>', 'Natural-language legal question or search phrase')
+    .option(
+      '--limit <number>',
+      'Number of results to return (default: 10, max: 100)',
+      parseInt
+    )
+    .addOption(new Option('--k <number>').argParser(parseInt).hideHelp())
+    .option(
+      '-k, --api-key <key>',
+      'Firecrawl API key (overrides global --api-key)'
+    )
+    .option('--api-url <url>', 'API URL (overrides global --api-url)')
+    .option('-o, --output <path>', 'Output file path (default: stdout)')
+    .option('--json', 'Output as compact JSON', false)
+    .option('--pretty', 'Pretty print JSON output', false)
+    .addHelpText(
+      'after',
+      `
+Examples:
+  $ firecrawl gov "food labeling requirements for allergens" --limit 10
+  $ firecrawl gov "California data breach notification statute" --json
+`
+    )
+    .action(async (query, options) => {
+      await handleGovSearchCommand({
+        query,
+        k: researchLimit(options),
+        apiKey: options.apiKey,
+        apiUrl: options.apiUrl,
+        output: options.output,
+        json: options.json,
+        pretty: options.pretty,
+      });
+    });
+
+  return govCmd;
 }
 
 /**
@@ -1734,6 +1781,46 @@ function createAgentCommand(): Command {
         'high',
       ])
     )
+    // Alexandria providers: each flag maps onto one field of `exchange`.
+    .option(
+      '--alexandria',
+      'Let the agent call Alexandria providers (implied by the flags below)'
+    )
+    .option('--no-alexandria', 'Keep the agent off Alexandria providers')
+    .option(
+      '--toolkits <slugs>',
+      'Comma-separated provider slugs the agent may use (up to 5; default: the whole catalog)'
+    )
+    .option(
+      '--max-calls <n>',
+      'Most provider calls the agent may make this turn (1-30)'
+    )
+    .option(
+      '--require-approval',
+      'Stop for approval before any paid provider call (needs --mode chat)'
+    )
+    .option(
+      '--approve <approvalId>',
+      "Approve the previous turn's pending approval (needs --thread)"
+    )
+    .option(
+      '--call-ids <ids>',
+      'With --approve: comma-separated call IDs to approve (default: all)'
+    )
+    .option(
+      '--always',
+      'With --approve: stop asking for the rest of the thread'
+    )
+    .option(
+      '--decline <approvalId>',
+      "Decline the previous turn's pending approval (needs --thread)"
+    )
+    .addOption(
+      new Option(
+        '--on-terms-required <action>',
+        'When a provider needs data terms the team has not accepted: skip it (default) or ask'
+      ).choices(['skip', 'ask'])
+    )
     .action(async (promptOrJobId, options) => {
       // Auto-detect if it's a job ID (UUID format)
       const isStatusCheck = options.status || isJobId(promptOrJobId);
@@ -1753,6 +1840,33 @@ function createAgentCommand(): Command {
       if (options.thread && (isStatusCheck || isCancel)) {
         console.error(
           'Error: --thread continues a thread with a new prompt; it cannot be combined with --status or --cancel.'
+        );
+        process.exit(1);
+      }
+      if (options.approve && options.decline) {
+        console.error(
+          'Error: use --approve or --decline, not both: each answers the pending approval one way.'
+        );
+        process.exit(1);
+      }
+      if (
+        (options.callIds !== undefined || options.always) &&
+        !options.approve
+      ) {
+        console.error(
+          'Error: --call-ids and --always only apply with --approve.'
+        );
+        process.exit(1);
+      }
+      if ((options.approve || options.decline) && !options.thread) {
+        console.error(
+          "Error: --approve and --decline answer a thread's pending approval; pass that thread with --thread."
+        );
+        process.exit(1);
+      }
+      if (options.requireApproval && options.mode !== 'chat') {
+        console.error(
+          'Error: --require-approval needs --mode chat on the same request, including follow-ups.'
         );
         process.exit(1);
       }
@@ -1803,6 +1917,37 @@ function createAgentCommand(): Command {
         process.exit(1);
       }
 
+      const toolkits = parseCommaList(options.toolkits);
+      if (toolkits && toolkits.length > 5) {
+        console.error('Error: --toolkits takes at most 5 provider slugs.');
+        process.exit(1);
+      }
+      const maxCalls =
+        options.maxCalls === undefined ? undefined : Number(options.maxCalls);
+      if (
+        maxCalls !== undefined &&
+        !(Number.isInteger(maxCalls) && maxCalls >= 1 && maxCalls <= 30)
+      ) {
+        console.error(
+          'Error: --max-calls must be a whole number from 1 to 30.'
+        );
+        process.exit(1);
+      }
+
+      const exchange: AgentExchangeOptions = {
+        enabled: options.alexandria,
+        toolkits,
+        maxCalls,
+        requireApproval: options.requireApproval,
+        approve: options.approve && {
+          approvalId: options.approve,
+          callIds: parseCommaList(options.callIds),
+          always: options.always,
+        },
+        decline: options.decline && { approvalId: options.decline },
+        onTermsRequired: options.onTermsRequired,
+      };
+
       const agentOptions = {
         prompt: promptOrJobId,
         urls,
@@ -1823,6 +1968,9 @@ function createAgentCommand(): Command {
         json: options.json,
         pretty: options.pretty,
         webhook,
+        exchange: Object.values(exchange).some((value) => value !== undefined)
+          ? exchange
+          : undefined,
       };
 
       await handleAgentCommand(agentOptions);
@@ -2318,6 +2466,7 @@ program.addCommand(createFindToolsCommand());
 program.addCommand(createListCommand());
 program.addCommand(createAlexandriaCommand());
 program.addCommand(createDeveloperCommand());
+program.addCommand(createGovCommand());
 program.addCommand(createResearchCommand());
 program.addCommand(createFeedbackCommand());
 program.addCommand(createSearchFeedbackCommand());

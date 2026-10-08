@@ -27,7 +27,7 @@ firecrawl search "your query" --sources news --tbs qdr:d -o .firecrawl/news.json
 
 Use `firecrawl search --help` for search options, `firecrawl list --help` for contract browsing, and `firecrawl scrape --help` for execution options.
 
-`--categories developer` searches an index of public repositories, GitHub issues, merged pull requests, repository READMEs, and curated documentation sites. `--categories research` is a website filter, not the paper index. Dedicated skills: [firecrawl-developer-index](../firecrawl-developer-index/SKILL.md) and [firecrawl-research-index](../firecrawl-research-index/SKILL.md).
+`--categories developer` searches an index of public repositories, GitHub issues, merged pull requests, repository READMEs, and curated documentation sites. `--categories gov` searches US federal, state, and local government legal and regulatory sources and cannot be combined with other categories. `--categories research` is a website filter, not the paper index. Dedicated skills: [firecrawl-developer-index](../firecrawl-developer-index/SKILL.md) and [firecrawl-research-index](../firecrawl-research-index/SKILL.md).
 
 **Done when:** relevant results have been inspected, per-call errors and empty results have been checked, and the request has been answered with source links.
 
@@ -53,7 +53,7 @@ Use `list` for category/provider browsing and selected contracts. For a known we
 
 If no returned tool covers the country/market/segment or required inputs, continue with ordinary web results. Do not exhaust the catalogue or pay for adjacent tools just to probe coverage. `--sources web` explicitly opts out of Alexandria; `--sources web --domain-tools` retains domain matches only.
 
-For Alexandria feedback about a provider result or coverage gap, see [firecrawl-alexandria](../firecrawl-alexandria/SKILL.md).
+For Alexandria feedback about a provider result or coverage gap (each refunds 1 credit, up to 10 per website and 100 per team each UTC day), see [firecrawl-alexandria](../firecrawl-alexandria/SKILL.md).
 
 ## Progressive discovery and output handling
 

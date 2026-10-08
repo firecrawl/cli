@@ -13,10 +13,13 @@ import type {
   AgentThreadOptions,
 } from '../types/agent';
 import type {
+  AgentExchangeOptions,
+  AgentExchangeSummary,
   AgentMode,
   AgentStatusResponse,
   AgentThread,
   AgentWebhookConfig,
+  PendingApproval,
 } from 'firecrawl';
 import { getClient } from '../utils/client';
 import { isJobId } from '../utils/job';
@@ -131,6 +134,8 @@ function toStatusData(
     ...(status.mode !== undefined && { mode: status.mode }),
     ...(status.message !== undefined && { message: status.message }),
     ...(status.suggestions?.length && { suggestions: status.suggestions }),
+    ...(status.pendingApproval && { pendingApproval: status.pendingApproval }),
+    ...(status.exchange && { exchange: status.exchange }),
     ...readIncompleteFields(status),
   };
 }
@@ -299,6 +304,7 @@ export async function executeAgent(
       pollInterval?: number;
       timeout?: number;
       webhook?: string | AgentWebhookConfig;
+      exchange?: AgentExchangeOptions;
       integration?: string;
     } = {
       prompt,
@@ -328,6 +334,9 @@ export async function executeAgent(
     }
     if (options.webhook) {
       agentParams.webhook = options.webhook;
+    }
+    if (options.exchange) {
+      agentParams.exchange = options.exchange;
     }
 
     // If wait mode, use polling with spinner
@@ -484,6 +493,65 @@ function creditLimitNextSteps(threadId?: string): string[] {
 }
 
 /**
+ * What Alexandria did in the run: paid calls, their credits, and providers
+ * left out because their data terms are not accepted.
+ */
+function exchangeSummaryLines(exchange: AgentExchangeSummary): string[] {
+  const calls = `${exchange.paidCalls} paid call${exchange.paidCalls === 1 ? '' : 's'}`;
+  const credits =
+    typeof exchange.creditsUsed === 'number'
+      ? `, ${exchange.creditsUsed} credits`
+      : '';
+  const lines = [`Alexandria: ${calls}${credits}`];
+  if (exchange.skippedProviders?.length) {
+    lines.push('Skipped until their data terms are accepted:');
+    for (const provider of exchange.skippedProviders) {
+      lines.push(`  - ${provider.name}: ${provider.termsUrl}`);
+    }
+  }
+  return lines;
+}
+
+/**
+ * What a turn that ended on a pending approval waits for, and the follow-up
+ * commands that answer it.
+ */
+function pendingApprovalLines(
+  approval: PendingApproval,
+  threadId: string
+): string[] {
+  const lines = [`Pending approval ${approval.id}: ${approval.reason}`];
+  if (approval.kind === 'terms') {
+    lines.push(
+      'Approving does not accept terms. Accept them first in the dashboard, or review them with terms show and, once agreed, accept the version and digest it returns with firecrawl alexandria terms accept <provider> --terms-version <version> --digest <digest> --confirm:'
+    );
+    for (const gate of approval.terms) {
+      lines.push(
+        `  - ${gate.name}: ${gate.url}`,
+        `    firecrawl alexandria terms show ${gate.provider}`
+      );
+    }
+  } else {
+    for (const call of approval.calls) {
+      const estimate =
+        typeof call.creditsEstimate === 'number'
+          ? ` (~${call.creditsEstimate} credits)`
+          : '';
+      lines.push(
+        `  - ${call.id}: ${call.provider}/${call.capability}${estimate}`
+      );
+    }
+  }
+  const followUp = `firecrawl agent "<follow-up prompt>" --thread ${threadId} --mode chat`;
+  lines.push(
+    'To answer it:',
+    `  ${followUp} --approve ${approval.id}`,
+    `  ${followUp} --decline ${approval.id}`
+  );
+  return lines;
+}
+
+/**
  * Short credit-limit notice for stderr, used when the result itself goes to
  * JSON or to a file and so is not shown on the terminal.
  */
@@ -537,6 +605,10 @@ function formatAgentStatus(data: AgentStatusResult['data']): string {
     lines.push(`Credits Used: ${data.creditsUsed}`);
   }
 
+  if (data.exchange) {
+    lines.push(...exchangeSummaryLines(data.exchange));
+  }
+
   if (data.expiresAt) {
     const expiresDate = new Date(data.expiresAt);
     lines.push(
@@ -574,6 +646,11 @@ function formatAgentStatus(data: AgentStatusResult['data']): string {
     for (const suggestion of data.suggestions) {
       lines.push(`  - ${suggestion.label}: ${suggestion.prompt}`);
     }
+  }
+
+  if (data.pendingApproval && data.threadId) {
+    lines.push('');
+    lines.push(...pendingApprovalLines(data.pendingApproval, data.threadId));
   }
 
   if (creditLimited) {

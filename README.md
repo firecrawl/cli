@@ -1,6 +1,6 @@
 # 🔥 Firecrawl CLI
 
-Command-line interface for Firecrawl. Search, scrape, interact, crawl, map, search research papers and developer sources, and run agent jobs directly from your terminal.
+Command-line interface for Firecrawl. Search, scrape, interact, crawl, map, search research papers, developer sources, and government sources, and run agent jobs directly from your terminal.
 
 ## Installation
 
@@ -299,7 +299,7 @@ firecrawl search "landscape photography" --sources images
 # Multiple sources
 firecrawl search "machine learning" --sources web,news,images
 
-# Filter by category (research-affiliated websites, PDFs, developer index)
+# Filter by category (research-affiliated websites, PDFs, developer index, gov index)
 firecrawl search "transformer architecture" --categories research
 firecrawl search "machine learning" --categories pdf,research
 
@@ -308,6 +308,9 @@ firecrawl search "machine learning" --categories pdf,research
 
 # Developer search: public repositories, GitHub issues, merged PRs, READMEs, and docs
 firecrawl search "axum middleware ordering" --categories developer
+
+# Government search: US government sources (cannot be combined with other categories)
+firecrawl search "California data breach notification statute" --categories gov
 
 # Time-based search
 firecrawl search "AI announcements" --tbs qdr:d   # Past day
@@ -327,23 +330,23 @@ firecrawl search "AI data tools"
 
 #### Search Options
 
-| Option                       | Description                                                                                                                                                     |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--limit <n>`                | Maximum results (default: 5, max: 100)                                                                                                                          |
-| `--sources <sources>`        | Comma-separated: `web`, `images`, `news` (default: web)                                                                                                         |
-| `--categories <categories>`  | Comma-separated: `research` (research-affiliated websites -- for papers use [`research search-papers`](#research---search-research-papers)), `pdf`, `developer` |
-| `--tbs <value>`              | Time filter: `qdr:h` (hour), `qdr:d` (day), `qdr:w` (week), `qdr:m` (month), `qdr:y` (year)                                                                     |
-| `--location <location>`      | Geo-targeting (e.g., "Germany", "San Francisco,California,United States")                                                                                       |
-| `--country <code>`           | ISO country code (default: US)                                                                                                                                  |
-| `--timeout <ms>`             | Timeout in milliseconds (default: 60000)                                                                                                                        |
-| `--highlights`               | Query-relevant highlights for web and news when available (default)                                                                                             |
-| `--no-highlights`            | Keep the original search snippets                                                                                                                               |
-| `--ignore-invalid-urls`      | Exclude URLs invalid for other Firecrawl endpoints                                                                                                              |
-| `--scrape`                   | Enable scraping of search results                                                                                                                               |
-| `--scrape-formats <formats>` | Scrape formats when `--scrape` enabled (default: markdown)                                                                                                      |
-| `--only-main-content`        | Include only main content when scraping (default: true)                                                                                                         |
-| `-o, --output <path>`        | Save to file                                                                                                                                                    |
-| `--json`                     | Output as compact JSON                                                                                                                                          |
+| Option                       | Description                                                                                                                                                                                                       |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--limit <n>`                | Maximum results (default: 5, max: 100)                                                                                                                                                                            |
+| `--sources <sources>`        | Comma-separated: `web`, `images`, `news` (default: web)                                                                                                                                                           |
+| `--categories <categories>`  | Comma-separated: `research` (research-affiliated websites -- for papers use [`research search-papers`](#research---search-research-papers)), `pdf`, `developer`, `gov` (cannot be combined with other categories) |
+| `--tbs <value>`              | Time filter: `qdr:h` (hour), `qdr:d` (day), `qdr:w` (week), `qdr:m` (month), `qdr:y` (year)                                                                                                                       |
+| `--location <location>`      | Geo-targeting (e.g., "Germany", "San Francisco,California,United States")                                                                                                                                         |
+| `--country <code>`           | ISO country code (default: US)                                                                                                                                                                                    |
+| `--timeout <ms>`             | Timeout in milliseconds (default: 60000)                                                                                                                                                                          |
+| `--highlights`               | Query-relevant highlights for web and news when available (default)                                                                                                                                               |
+| `--no-highlights`            | Keep the original search snippets                                                                                                                                                                                 |
+| `--ignore-invalid-urls`      | Exclude URLs invalid for other Firecrawl endpoints                                                                                                                                                                |
+| `--scrape`                   | Enable scraping of search results                                                                                                                                                                                 |
+| `--scrape-formats <formats>` | Scrape formats when `--scrape` enabled (default: markdown)                                                                                                                                                        |
+| `--only-main-content`        | Include only main content when scraping (default: true)                                                                                                                                                           |
+| `-o, --output <path>`        | Save to file                                                                                                                                                                                                      |
+| `--json`                     | Output as compact JSON                                                                                                                                                                                            |
 
 #### Examples
 
@@ -405,6 +408,37 @@ firecrawl developer "tokio select cancellation safety in tokio-rs/tokio issues a
 
 # Keep the full response, including passages, citations, and licenses
 firecrawl developer "tokio select cancellation safety" --json -o results.json
+```
+
+---
+
+### `gov` - Search the Firecrawl Government Index
+
+Search the Government Index: primary law and regulatory material from US federal, state, and local government sources, including statutes, regulations, codes, court opinions, and other government publications.
+
+For the request and response schema, see the [Government Index REST API](https://docs.firecrawl.dev/features/gov).
+
+```bash
+firecrawl gov "food labeling requirements for allergens"
+```
+
+#### Options
+
+| Option                | Description                               |
+| --------------------- | ----------------------------------------- |
+| `--limit <n>`         | Number of results (default: 10, max: 100) |
+| `-o, --output <path>` | Save to file                              |
+| `--json`              | Output the raw response as JSON           |
+| `--pretty`            | Pretty print JSON output                  |
+
+#### Examples
+
+```bash
+# Find state statutes on a topic
+firecrawl gov "California data breach notification statute" --limit 10
+
+# Keep the raw response
+firecrawl gov "FDA food labeling regulations" --json -o results.json
 ```
 
 ---
@@ -681,23 +715,34 @@ firecrawl agent <job-id> --wait
 
 #### Agent Options
 
-| Option                      | Description                                                                            |
-| --------------------------- | -------------------------------------------------------------------------------------- |
-| `--urls <urls>`             | Comma-separated URLs to focus extraction on                                            |
-| `--model <model>`           | `spark-2` (default). `spark-1-mini` and `spark-1-pro` are deprecated and run `spark-2` |
-| `--effort <level>`          | Reasoning effort: `low`, `medium`, or `high`                                           |
-| `--schema <json>`           | JSON schema for structured output (inline JSON string)                                 |
-| `--schema-file <path>`      | Path to JSON schema file for structured output                                         |
-| `--max-credits <number>`    | Maximum credits to spend (job fails if exceeded)                                       |
-| `--webhook <url-or-json>`   | Webhook URL or configuration                                                           |
-| `--status`                  | Check status of existing agent job                                                     |
-| `--cancel`                  | Cancel an active agent job by job ID                                                   |
-| `--wait`                    | Wait for agent to complete before returning results                                    |
-| `--poll-interval <seconds>` | Polling interval in seconds when waiting (default: 5)                                  |
-| `--timeout <seconds>`       | Timeout in seconds when waiting (default: no timeout)                                  |
-| `-o, --output <path>`       | Save output to file                                                                    |
-| `--json`                    | Output as JSON format                                                                  |
-| `--pretty`                  | Pretty print JSON output                                                               |
+| Option                         | Description                                                                                               |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `--urls <urls>`                | Comma-separated URLs to focus extraction on                                                               |
+| `--model <model>`              | `spark-2` (default). `spark-1-mini` and `spark-1-pro` are deprecated and run `spark-2`                    |
+| `--effort <level>`             | Reasoning effort: `low`, `medium`, or `high`                                                              |
+| `--schema <json>`              | JSON schema for structured output (inline JSON string)                                                    |
+| `--schema-file <path>`         | Path to JSON schema file for structured output                                                            |
+| `--max-credits <number>`       | Maximum credits to spend (job fails if exceeded)                                                          |
+| `--webhook <url-or-json>`      | Webhook URL or configuration                                                                              |
+| `--thread <threadId>`          | Continue an existing thread with this prompt as the next turn                                             |
+| `--mode <mode>`                | `extract` returns structured data; `chat` returns a text message                                          |
+| `--alexandria`                 | Let the agent call Alexandria providers (implied by the flags below); `--no-alexandria` keeps it off them |
+| `--toolkits <slugs>`           | Comma-separated provider slugs the agent may use (up to 5; default: the whole catalog)                    |
+| `--max-calls <n>`              | Most provider calls the agent may make this turn (1-30)                                                   |
+| `--require-approval`           | Stop for approval before any paid provider call (needs `--mode chat`)                                     |
+| `--approve <approvalId>`       | Approve the previous turn's pending approval (needs `--thread`)                                           |
+| `--call-ids <ids>`             | With `--approve`: comma-separated call IDs to approve (default: all)                                      |
+| `--always`                     | With `--approve`: stop asking for the rest of the thread                                                  |
+| `--decline <approvalId>`       | Decline the previous turn's pending approval (needs `--thread`)                                           |
+| `--on-terms-required <action>` | When a provider needs data terms the team has not accepted: `skip` it (default) or `ask`                  |
+| `--status`                     | Check status of existing agent job                                                                        |
+| `--cancel`                     | Cancel an active agent job by job ID                                                                      |
+| `--wait`                       | Wait for agent to complete before returning results                                                       |
+| `--poll-interval <seconds>`    | Polling interval in seconds when waiting (default: 5)                                                     |
+| `--timeout <seconds>`          | Timeout in seconds when waiting (default: no timeout)                                                     |
+| `-o, --output <path>`          | Save output to file                                                                                       |
+| `--json`                       | Output as JSON format                                                                                     |
+| `--pretty`                     | Pretty print JSON output                                                                                  |
 
 #### Examples
 
@@ -720,6 +765,21 @@ firecrawl agent abc123-def456-... --json
 # Poll a running job until completion
 firecrawl agent abc123-def456-... --wait --poll-interval 10
 ```
+
+#### Alexandria providers
+
+A run uses Alexandria providers only when it starts with an Alexandria flag. A follow-up turn (`--thread`) keeps the previous turn's setting for every Alexandria flag it omits.
+
+```bash
+# Let the agent use two providers
+firecrawl agent "Find the head of sales at example.com" --toolkits apollo,crunchbase --wait
+
+# Ask before any paid provider call, then answer the approval on the next turn
+firecrawl agent "Find the head of sales at example.com" --mode chat --require-approval --wait
+firecrawl agent "Go ahead" --thread <thread-id> --mode chat --approve <approval-id> --wait
+```
+
+A run that stops for approval prints its approval ID and the exact `--approve` / `--decline` follow-up commands. With `--json`, read `pendingApproval` and `exchange` from the output.
 
 ---
 
@@ -1072,4 +1132,4 @@ firecrawl alexandria feedback --rating partial \
   --rationale "Found summaries but could not retrieve attachments" --json
 ```
 
-The optional `--objective` is the underlying goal of the session: what you or your user were ultimately trying to accomplish, beyond the single website. No job ID is required. Alexandria session feedback has no job-age deadline and does not refund credits. Optional `--provider-feedback` and `--capability-feedback` accept JSON arrays; see `firecrawl alexandria feedback --help` for their fields and issue codes. Capability issue codes are `new_capability_request` (requires `requestedFunctionality`), `missing_capability` (the provider exists but lacks this capability), `insufficient_functionality`, `incorrect_result`, `execution_error`, and `other`. Existing `feedback` and `search-feedback` commands retain their job-specific behavior. Endpoint feedback opt-out environment variables also apply to this command.
+The optional `--objective` is the underlying goal of the session: what you or your user were ultimately trying to accomplish, beyond the single website. No job ID is required. It must be sent within 20 minutes of the team's most recent Alexandria search, discovery, or execution; later submissions are rejected with `FEEDBACK_WINDOW_EXPIRED`. Each submission refunds 1 credit, up to 10 credits per website and 100 credits per team each UTC day; past either cap, submissions are still recorded and return `websiteCapReached` or `dailyCapReached`. Optional `--provider-feedback` and `--capability-feedback` accept JSON arrays; see `firecrawl alexandria feedback --help` for their fields and issue codes. Capability issue codes are `new_capability_request` (requires `requestedFunctionality`), `missing_capability` (the provider exists but lacks this capability), `insufficient_functionality`, `incorrect_result`, `execution_error`, and `other`. Existing `feedback` and `search-feedback` commands retain their job-specific behavior. Endpoint feedback opt-out environment variables also apply to this command.

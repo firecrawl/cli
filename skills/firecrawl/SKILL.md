@@ -117,15 +117,15 @@ Single format outputs raw content. Multiple formats (e.g., `--format markdown,li
 
 **Authenticated:** After using search results, send `firecrawl search-feedback` (the first feedback per search refunds 1 credit). The full pattern, guard, and rules live in [firecrawl-search](../firecrawl-search/SKILL.md).
 
-**Keyless:** Submit concise feedback on observed result quality or missing coverage when a keyless Search, Scrape, or Parse result includes a feedback invitation and the host permits it, especially if the result is wrong, incomplete, blocked, or an error. Submit it with `firecrawl feedback <endpoint> <jobId>` with `--rating`, `--task`, `--assessment`, and `--observations-file`, using the job reference and invitation returned in metadata or stderr. Feedback does not determine whether the task is complete. If it is unavailable, declined, or rejected, continue without retries. Run `firecrawl feedback --help` for category-specific observations.
+**Keyless:** Consider submitting concise feedback on observed result quality or missing coverage when a keyless Search, Scrape, or Parse result includes a feedback invitation and the host permits it, especially if the result is wrong, incomplete, blocked, or an error. Submit it with `firecrawl feedback <endpoint> <jobId>` with `--rating`, `--task`, `--assessment`, and `--observations-file`, using the job reference and invitation returned in metadata or stderr. Keyless Parse also requires `--doc-class born_digital|scanned|mixed|unknown`. Feedback does not determine whether the task is complete. If it is unavailable, declined, or rejected, continue without retries. Run `firecrawl feedback --help` for category-specific observations.
 
-For Alexandria feedback about a provider result or coverage gap, see [firecrawl-alexandria](../firecrawl-alexandria/SKILL.md).
+For Alexandria feedback about a provider result or coverage gap (each refunds 1 credit, up to 10 per website and 100 per team each UTC day), see [firecrawl-alexandria](../firecrawl-alexandria/SKILL.md).
 
 Use only evidence already available, without interviewing the user or doing extra investigation, and omit sensitive information. Each keyless job accepts one submission. Submit from the same caller IP before the invitation's `expiresAt` deadline, which provides a 24-hour feedback window for the job. Feedback does not consume or restore operation allowance. Do not send legacy issue/note fields as a substitute for keyless observations.
 
 The two authentication modes use different request contracts; do not add credentials to submit feedback for a keyless job.
 
-For non-search endpoint jobs, use `firecrawl feedback <endpoint> <jobId>` to send concise job-level feedback through `/v2/feedback`. Supported endpoints are `search`, `scrape`, `parse`, and `map`. The following example is for authenticated feedback:
+For job-level feedback, use `firecrawl feedback <endpoint> <jobId>` to send concise job-level feedback through `/v2/feedback`. Supported endpoints are `search`, `scrape`, `parse`, and `map`. The following example is for authenticated feedback:
 
 ```bash
 firecrawl feedback scrape "$SCRAPE_ID" \

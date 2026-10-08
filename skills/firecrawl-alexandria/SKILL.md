@@ -12,9 +12,9 @@ Alexandria brings ready-made website workflows, API providers, and specialized i
 
 Use ordinary web results when they answer the question; use a provider tool when its coverage and inputs fit.
 
-## Alexandria feedback
+## Alexandria feedback (refunds 1 credit)
 
-Alexandria coverage grows from what agents report. If you choose to report how the catalogue served a task, send at most one `firecrawl alexandria feedback` per website you needed data from after finishing the task. It is free: no job ID, no time window, no credit refund.
+Alexandria coverage grows from what agents report. Send one `firecrawl alexandria feedback` per website you needed data from, right after your last Alexandria call for it. No job ID is needed. Each feedback refunds 1 credit, up to 10 credits per website and 100 per team each UTC day.
 
 Feedback can describe any of these outcomes:
 
@@ -26,16 +26,19 @@ Feedback can describe any of these outcomes:
 
 **Rules to know before you call this:**
 
+- **Time window:** must be sent within 20 minutes of your team's most recent Alexandria search, discovery, or execution. Each Alexandria call restarts the window. Late feedback is rejected (`feedbackErrorCode: "FEEDBACK_WINDOW_EXPIRED"`).
 - **`--url` is the website the user needed data from**, not the provider and not a Firecrawl page. `--requested-functionality` is what they needed from it, in one sentence. These two fields are the most important: they aggregate across teams and tell us which sites and workflows to add next.
 - **`--objective` is the underlying goal** behind the session: what you or your user were ultimately trying to accomplish, in one sentence (for example, "Shortlist federal IT contracts to bid on this quarter"). It is broader than `--requested-functionality`, which covers only this website.
 - **`--rationale` explains the rating** from observed results: which provider or capability served or failed the need, and how. Two or three sentences, no raw results pasted in.
 - **`--provider-feedback`** is a JSON array of `{name, issue, why}` for providers that were missing, thin, or unavailable. Issues: `missing_provider` (no provider covers the site), `insufficient_coverage` (exists, but data was thin, stale, or partial for this market or segment), `provider_unavailable` (could not be called), `other`.
 - **`--capability-feedback`** is a JSON array of `{name, provider, issue, why, requestedFunctionality?}` for capabilities that were missing, wrong, or failed. Issues: `new_capability_request` (ask the provider to add one; `requestedFunctionality` required), `missing_capability` (provider exists but lacks it), `insufficient_functionality` (exists but cannot take the input or filter you needed), `incorrect_result`, `execution_error`, `other`. Use `name` and `provider` exactly as discovery returned them; for a capability that does not exist yet, name what it should be.
-- **Rate honestly:** `good` when a tool answered the need, `partial` when it answered some of it or with gaps, `bad` when nothing available answered it or what ran was wrong or failed.
+- **Rate honestly:** `good` when a tool answered the need, `partial` when it answered some of it or with gaps, `bad` when nothing available answered it or what ran was wrong or failed. Every rating gets the same refund.
+- **Website refund cap (per website, per UTC day, default 10 credits).** Past it, feedback about that website is still recorded but refunds nothing, and the response sets `websiteCapReached: true`. Feedback about other websites still refunds.
+- **Daily refund cap (per team, per UTC day, default 100 credits).** Past the cap, feedback is still recorded but refunds nothing. The response includes `creditsRefundedToday`, `dailyRefundCap`, and `dailyCapReached`. **When `dailyCapReached: true`, stop sending Alexandria feedback for the rest of the UTC day.**
 - **`--silent &`** is the right pattern: exit code 0 even on failure, so a rejected call never crashes your pipeline.
 
 ```bash
-# Example: send at most once per website after the task is done. Replace the
+# Example: send once per website, within 20 minutes of your last Alexandria call. Replace the
 # placeholders with what actually happened; drop --provider-feedback or
 # --capability-feedback when there is nothing to report at that level.
 firecrawl alexandria feedback \

@@ -1069,6 +1069,261 @@ it('rejects a malformed --thread before calling the API', async () => {
   expect(requests).toHaveLength(0);
 });
 
+const APPROVAL_ID = '3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c';
+
+it('maps the Alexandria flags onto the exchange object', async () => {
+  response = { success: true, id: RUN_ID, threadId: THREAD_ID, threadTurn: 2 };
+  const approve = await cli([
+    'agent',
+    'Go ahead.',
+    '--thread',
+    THREAD_ID,
+    '--mode',
+    'chat',
+    '--alexandria',
+    '--toolkits',
+    'apollo, crunchbase',
+    '--max-calls',
+    '8',
+    '--require-approval',
+    '--approve',
+    APPROVAL_ID,
+    '--call-ids',
+    'call-1,call-2',
+    '--always',
+    '--on-terms-required',
+    'ask',
+  ]);
+  expect(approve.code).toBe(0);
+  expect(requests[0].body.exchange).toEqual({
+    enabled: true,
+    toolkits: ['apollo', 'crunchbase'],
+    maxCalls: 8,
+    requireApproval: true,
+    approve: {
+      approvalId: APPROVAL_ID,
+      callIds: ['call-1', 'call-2'],
+      always: true,
+    },
+    onTermsRequired: 'ask',
+  });
+
+  const decline = await cli([
+    'agent',
+    'Never mind.',
+    '--thread',
+    THREAD_ID,
+    '--decline',
+    APPROVAL_ID,
+    '--no-alexandria',
+  ]);
+  expect(decline.code).toBe(0);
+  expect(requests[1].body.exchange).toEqual({
+    enabled: false,
+    decline: { approvalId: APPROVAL_ID },
+  });
+});
+
+it('sends no exchange without an Alexandria flag', async () => {
+  response = { success: true, id: RUN_ID, threadId: THREAD_ID, threadTurn: 2 };
+  const result = await cli([
+    'agent',
+    'And the heading?',
+    '--thread',
+    THREAD_ID,
+    '--mode',
+    'chat',
+  ]);
+  expect(result.code).toBe(0);
+  expect(requests[0].body).not.toHaveProperty('exchange');
+});
+
+it('rejects Alexandria flags the API cannot honor before calling it', async () => {
+  const both = await cli([
+    'agent',
+    'Go ahead.',
+    '--thread',
+    THREAD_ID,
+    '--approve',
+    APPROVAL_ID,
+    '--decline',
+    APPROVAL_ID,
+  ]);
+  expect(both.code).toBe(1);
+  expect(both.stderr).toContain('use --approve or --decline, not both');
+
+  const alwaysWithoutApprove = await cli([
+    'agent',
+    'Keep going.',
+    '--thread',
+    THREAD_ID,
+    '--always',
+  ]);
+  expect(alwaysWithoutApprove.code).toBe(1);
+  expect(alwaysWithoutApprove.stderr).toContain(
+    '--call-ids and --always only apply with --approve'
+  );
+
+  const declineWithCallIds = await cli([
+    'agent',
+    'Never mind.',
+    '--thread',
+    THREAD_ID,
+    '--decline',
+    APPROVAL_ID,
+    '--call-ids=',
+  ]);
+  expect(declineWithCallIds.code).toBe(1);
+  expect(declineWithCallIds.stderr).toContain(
+    '--call-ids and --always only apply with --approve'
+  );
+
+  const noThread = await cli(['agent', 'Go ahead.', '--decline', APPROVAL_ID]);
+  expect(noThread.code).toBe(1);
+  expect(noThread.stderr).toContain('pass that thread with --thread');
+
+  const noChat = await cli(['agent', 'Find contacts.', '--require-approval']);
+  expect(noChat.code).toBe(1);
+  expect(noChat.stderr).toContain('--require-approval needs --mode chat');
+
+  for (const value of ['12o', '0', '31', '2.5']) {
+    const maxCalls = await cli([
+      'agent',
+      'Find contacts.',
+      '--max-calls',
+      value,
+    ]);
+    expect(maxCalls.code).toBe(1);
+    expect(maxCalls.stderr).toContain(
+      '--max-calls must be a whole number from 1 to 30'
+    );
+  }
+
+  const toolkits = await cli([
+    'agent',
+    'Find contacts.',
+    '--toolkits',
+    'a,b,c,d,e,f',
+  ]);
+  expect(toolkits.code).toBe(1);
+  expect(toolkits.stderr).toContain(
+    '--toolkits takes at most 5 provider slugs'
+  );
+  expect(requests).toHaveLength(0);
+});
+
+it('shows a pending approval and how to answer it', async () => {
+  const approvalStatus = {
+    success: true,
+    status: 'completed',
+    expiresAt: '2026-09-17T00:00:00.000Z',
+    creditsUsed: 4,
+    threadId: THREAD_ID,
+    threadTurn: 1,
+    mode: 'chat',
+    message: 'I need your approval for one paid lookup.',
+    pendingApproval: {
+      id: APPROVAL_ID,
+      kind: 'calls',
+      reason: 'Look up the company in a paid provider.',
+      calls: [
+        {
+          id: 'call-1',
+          provider: 'apollo',
+          capability: 'organizations/enrich',
+          input: { domain: 'example.com' },
+          creditsEstimate: 3,
+        },
+      ],
+      resolution: null,
+    },
+    exchange: {
+      enabled: true,
+      toolkits: ['apollo'],
+      requireApproval: true,
+      paidCalls: 0,
+      creditsUsed: 0,
+      skippedProviders: [
+        {
+          provider: 'crunchbase',
+          name: 'Crunchbase',
+          reason: 'terms_required',
+          version: '1',
+          termsUrl: 'https://example.com/terms/crunchbase',
+        },
+      ],
+    },
+  };
+  runThenPoll(approvalStatus);
+  const args = [
+    'agent',
+    'Find the company size.',
+    '--mode',
+    'chat',
+    '--toolkits',
+    'apollo',
+    '--require-approval',
+    '--wait',
+    '--poll-interval',
+    '0.01',
+  ];
+  const readable = await cli(args);
+  expect(readable.code).toBe(0);
+  expect(requests[0].body.exchange).toEqual({
+    toolkits: ['apollo'],
+    requireApproval: true,
+  });
+  expect(readable.stdout).toContain('Alexandria: 0 paid calls, 0 credits');
+  expect(readable.stdout).toContain(
+    '  - Crunchbase: https://example.com/terms/crunchbase'
+  );
+  expect(readable.stdout).toContain(
+    `Pending approval ${APPROVAL_ID}: Look up the company in a paid provider.`
+  );
+  expect(readable.stdout).toContain(
+    '  - call-1: apollo/organizations/enrich (~3 credits)'
+  );
+  for (const answer of ['--approve', '--decline']) {
+    expect(readable.stdout).toContain(
+      `firecrawl agent "<follow-up prompt>" --thread ${THREAD_ID} --mode chat ${answer} ${APPROVAL_ID}`
+    );
+  }
+
+  const json = await cli([...args, '--json']);
+  expect(JSON.parse(json.stdout)).toMatchObject({
+    pendingApproval: approvalStatus.pendingApproval,
+    exchange: approvalStatus.exchange,
+  });
+
+  response = {
+    ...approvalStatus,
+    pendingApproval: {
+      id: APPROVAL_ID,
+      kind: 'terms',
+      reason: 'Crunchbase needs its data terms accepted.',
+      calls: [],
+      terms: [
+        {
+          provider: 'crunchbase',
+          name: 'Crunchbase',
+          version: '1',
+          digest: null,
+          url: 'https://example.com/terms/crunchbase',
+        },
+      ],
+      resolution: null,
+    },
+  };
+  responseFor = undefined;
+  const terms = await cli(['agent', RUN_ID]);
+  expect(terms.stdout).toContain('Approving does not accept terms.');
+  expect(terms.stdout).toContain(
+    '  - Crunchbase: https://example.com/terms/crunchbase'
+  );
+  expect(terms.stdout).toContain('firecrawl alexandria terms show crunchbase');
+  expect(terms.stdout).toContain(`--approve ${APPROVAL_ID}`);
+});
+
 it('surfaces chat replies and thread position on status', async () => {
   response = {
     success: true,
