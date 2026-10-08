@@ -506,8 +506,9 @@ provided through `--observations` or `--observations-file`. Task, assessment, an
 reference and evidence already available; no user interview or additional
 investigation is required. Run `firecrawl feedback --help` for category fields.
 
-Each keyless job accepts one submission; retrying returns the original feedback
-ID. Submit from the same caller IP before the invitation's `expiresAt` deadline,
+Each keyless job accepts one submission; retrying a successful submission within
+the feedback window returns its original feedback ID. Submit from the same caller
+IP before the invitation's `expiresAt` deadline,
 which provides a 24-hour feedback window for the job.
 Submitting feedback does not consume or restore operation allowance. Invitations
 and references appear in metadata or stderr, preserving ordinary stdout.

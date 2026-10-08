@@ -94,7 +94,7 @@ Keyless feedback is available for successful and failed jobs when the response i
 
 ### Keyless Search
 
-Consider submitting concise feedback on observed result quality or missing coverage when a keyless search result includes a feedback invitation and the host permits it, especially if the result is wrong, incomplete, blocked, or an error. Feedback does not determine whether the task is complete. If it is unavailable, declined, or rejected, continue without retries.
+Consider submitting concise feedback on observed result quality or missing coverage when a keyless search result includes a feedback invitation and the host permits it, especially if the result is wrong, incomplete, blocked, or an error. Feedback does not determine whether the task is complete. If feedback is declined or terminally rejected, continue without retries. For retryable errors, an optional retry must respect the returned retry timing.
 
 Use `firecrawl feedback search <jobId>` with `--rating`, `--task`, `--assessment`, and `--observations-file`. The task describes what the search needed to answer; the assessment describes how well it answered that task. Supply 1-20 observations:
 
@@ -105,7 +105,7 @@ Use `firecrawl feedback search <jobId>` with `--rating`, `--task`, `--assessment
 
 Task, assessment, and observation detail each require 10-2000 characters. Use only evidence already available. Do not ask the user to complete an interview, investigate further, guess missing content, or diagnose causes merely to submit feedback. An empty result set can support a missing-information observation if the response includes a feedback invitation.
 
-Each job accepts one submission, and retrying returns the original feedback ID. Submit from the same caller IP before the invitation's `expiresAt` deadline, which provides a 24-hour feedback window for the job. Feedback does not consume or restore operation allowance. Omit sensitive information, and do not retry a rate-limit rejection in a loop. Client feedback flags do not suppress keyless invitations or submissions.
+Each job accepts one submission, and retrying a successful submission within the feedback window returns its original feedback ID. Submit from the same caller IP before the invitation's `expiresAt` deadline, which provides a 24-hour feedback window for the job. Feedback does not consume or restore operation allowance. Omit sensitive information, and do not retry a rate-limit rejection in a loop. Client feedback flags do not suppress keyless invitations or submissions.
 
 Run `firecrawl feedback --help` for the full evidence contract. Old instructions using `firecrawl search-feedback` require authentication and do not work for keyless jobs.
 
