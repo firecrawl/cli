@@ -398,7 +398,7 @@ export async function executeEndpointFeedback(
         error: errorMessage,
         errorCode,
         status: response.status,
-        ...(!apiKey
+        ...(keyless
           ? {
               details: data.details,
               retry_after_seconds: data.retry_after_seconds,

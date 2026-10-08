@@ -265,17 +265,21 @@ describe('executeEndpointFeedback', () => {
   });
 
   it.each([
-    [400, false],
-    [429, false],
-    [400, true],
-    [429, true],
+    [400, false, false],
+    [429, false, false],
+    [400, true, false],
+    [429, true, false],
+    [400, false, true],
+    [429, false, true],
   ] as const)(
-    'shows API validation details and retry timing only for keyless feedback: HTTP %i, authenticated %s',
-    async (status, authenticated) => {
+    'shows API validation details and retry timing only for keyless feedback: HTTP %i, authenticated %s, custom API %s',
+    async (status, authenticated, customApi) => {
       vi.stubEnv('FIRECRAWL_API_KEY', '');
       initializeConfig({
         apiKey: authenticated ? 'test-api-key' : undefined,
-        apiUrl: 'https://api.firecrawl.dev',
+        apiUrl: customApi
+          ? 'http://localhost:3002'
+          : 'https://api.firecrawl.dev',
       });
       const details = [
         {
@@ -319,10 +323,10 @@ describe('executeEndpointFeedback', () => {
         ).rejects.toThrow('process.exit:1');
         const output = stderr.mock.calls.flat().join(' ');
         expect(output.includes('Invalid evidence basis')).toBe(
-          !authenticated && status === 400
+          !authenticated && !customApi && status === 400
         );
         expect(output.includes('Retry after: 2 seconds.')).toBe(
-          !authenticated && status === 429
+          !authenticated && !customApi && status === 429
         );
         expect(stdout).not.toHaveBeenCalled();
       } finally {
