@@ -278,7 +278,12 @@ export async function executeEndpointFeedback(
   try {
     const config = getConfig();
     const apiKey = options.apiKey || config.apiKey;
-    if (apiKey && isEndpointFeedbackDisabledLocally()) {
+    const apiUrl = (options.apiUrl || config.apiUrl || DEFAULT_API_URL).replace(
+      /\/$/,
+      ''
+    );
+    const keyless = isKeylessMode(apiKey, apiUrl);
+    if (!keyless && isEndpointFeedbackDisabledLocally()) {
       return {
         success: true,
         disabled: true,
@@ -286,12 +291,7 @@ export async function executeEndpointFeedback(
         creditsRefunded: 0,
       };
     }
-    const apiUrl = (options.apiUrl || config.apiUrl || DEFAULT_API_URL).replace(
-      /\/$/,
-      ''
-    );
-
-    if (isKeylessMode(apiKey, apiUrl)) {
+    if (keyless) {
       if (!['search', 'scrape', 'parse'].includes(options.endpoint)) {
         throw new Error(
           'Keyless feedback supports Search, Scrape, and Parse. Other endpoints require authentication.'

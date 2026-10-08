@@ -47,7 +47,7 @@ describe('executeScrape', () => {
   it('preserves keyless content and writes the API feedback invitation only to stderr', async () => {
     const metadata = { jobId: 'job-1', feedback: { jobId: 'job-1' } };
     vi.mocked(isKeylessMode).mockReturnValue(true);
-    vi.mocked(keylessRequest).mockResolvedValue({
+    vi.mocked(keylessRequest).mockResolvedValueOnce({
       success: true,
       data: { markdown: 'Observed content', metadata },
     });

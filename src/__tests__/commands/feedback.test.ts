@@ -380,6 +380,25 @@ describe('executeEndpointFeedback', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  it('preserves local opt-out for a custom API URL without credentials', async () => {
+    vi.stubEnv('FIRECRAWL_API_KEY', '');
+    vi.stubEnv('FIRECRAWL_NO_ENDPOINT_FEEDBACK', '1');
+    initializeConfig({ apiKey: undefined, apiUrl: 'http://localhost:3002' });
+    await expect(
+      executeEndpointFeedback({
+        endpoint: 'scrape',
+        jobId: '0193f6c5-1234-7890-abcd-1234567890ab',
+        rating: 'bad',
+        issues: ['missing_markdown'],
+      })
+    ).resolves.toMatchObject({
+      success: true,
+      disabled: true,
+      disabledSource: 'env',
+    });
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   it('handles local opt-out silently in the CLI command path', async () => {
     process.env.FIRECRAWL_NO_ENDPOINT_FEEDBACK = '1';
 

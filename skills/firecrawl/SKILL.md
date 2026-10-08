@@ -140,7 +140,7 @@ firecrawl feedback scrape "$SCRAPE_ID" \
 
 Keep generic feedback small: issue codes, tags, short notes, URLs, page numbers, and small metadata objects — never raw scrape/parse outputs or full page contents.
 
-Keyless feedback is available for successful and failed jobs when the response includes a job reference. For an explicitly failed job, use observation `kind: "failure"` and `reason: "timeout"`, `"transport_error"`, `"proxy_error"`, or `"other"`; report only the error already returned. Keep the submission under 8 KiB including server defaults. Run `firecrawl feedback --help` for reason definitions and the complete contract.
+Keyless feedback is available for successful and failed jobs when the response includes a feedback invitation. For an explicitly failed job, use observation `kind: "failure"` and `reason: "timeout"`, `"transport_error"`, `"proxy_error"`, or `"other"`; report only the error already returned. Keep the submission under 8 KiB including server defaults. Run `firecrawl feedback --help` for reason definitions and the complete contract.
 
 **Authenticated feedback preference:** `FIRECRAWL_NO_ENDPOINT_FEEDBACK=1` or `FIRECRAWL_DISABLE_ENDPOINT_FEEDBACK=1` skips authenticated endpoint feedback calls. Respect these flags for authenticated jobs. Keyless jobs retain server-issued invitations and optional submissions regardless of these flags.
 
