@@ -1,0 +1,130 @@
+name: Documentation impact review
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'README.md'
+      - 'skills/**'
+      - '.claude-plugin/**'
+      - 'scripts/**'
+      - 'homebrew/**'
+      - 'nfpm.yaml'
+      - '.github/workflows/*publish*.yml'
+      - '.github/workflows/*release*.yml'
+      - '.github/workflows/docs-impact.yml'
+      - '.github/prompts/docs-impact.md'
+
+concurrency:
+  group: docs-impact-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze documentation impact
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      review: ${{ steps.codex.outputs.final-message }}
+      ran: ${{ steps.api-key.outputs.available }}
+
+    steps:
+      - name: Check for OpenAI API key
+        id: api-key
+        shell: bash
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [[ -z "${OPENAI_API_KEY}" ]]; then
+            echo "::notice::Documentation impact review skipped because OPENAI_API_KEY is not configured."
+            echo "available=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "available=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Checkout pull request merge ref
+        if: steps.api-key.outputs.available == 'true'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout current documentation
+        if: steps.api-key.outputs.available == 'true'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          repository: firecrawl/firecrawl-docs
+          ref: main
+          path: _docs
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run advisory docs-impact review
+        id: codex
+        if: steps.api-key.outputs.available == 'true'
+        uses: openai/codex-action@b11346a6fa031e2e164ab4b7c7ea201afffd7d59
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/prompts/docs-impact.md
+          sandbox: read-only
+          safety-strategy: drop-sudo
+          codex-args: '["--ephemeral"]'
+
+  comment:
+    name: Publish advisory result
+    needs: analyze
+    if: >-
+      needs.analyze.result == 'success' &&
+      needs.analyze.outputs.ran == 'true' &&
+      needs.analyze.outputs.review != ''
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Upsert documentation impact comment
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        env:
+          DOCS_IMPACT_REVIEW: ${{ needs.analyze.outputs.review }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const marker = '<!-- firecrawl-docs-impact-review -->';
+            const review = process.env.DOCS_IMPACT_REVIEW.trim();
+            const body = `${marker}\n## Documentation impact review\n\n${review}`;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find(
+              (comment) =>
+                comment.user?.login === 'github-actions[bot]' &&
+                comment.body?.includes(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
