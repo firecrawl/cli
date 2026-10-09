@@ -3,7 +3,7 @@
  * Installs firecrawl skill files and MCP server into AI coding agents
  */
 
-import { execFileSync, execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import {
   chmodSync,
   existsSync,
@@ -626,11 +626,13 @@ async function installSkills(
         skills: selection.skills,
       });
 
-      const cmd = args.join(' ');
-      console.log(`Running: ${cmd}\n`);
+      console.log(`Running: ${args.join(' ')}\n`);
 
       try {
-        execSync(cmd, { stdio: 'inherit', env: cleanNpmEnv() });
+        runClientCommand(args[0], args.slice(1), {
+          stdio: 'inherit',
+          env: cleanNpmEnv(),
+        });
         continue;
       } catch {
         process.exit(1);
@@ -639,7 +641,10 @@ async function installSkills(
 
     // Fallback: native install (no npx/Node required)
     try {
-      await installSkillsNative(repo, { skills: selection.skills });
+      await installSkillsNative(repo, {
+        agent: options.agent,
+        skills: selection.skills,
+      });
     } catch (error) {
       console.error(
         `Failed to install skills from ${repo}:`,
