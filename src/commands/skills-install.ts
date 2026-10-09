@@ -45,6 +45,7 @@ export const CLI_SKILLS = [
   'firecrawl-monitor',
   'firecrawl-parse',
   'firecrawl-download',
+  'firecrawl-alexandria',
   // Index skills: teach the `firecrawl research` / `firecrawl developer`
   // CLI commands, so they ship with the CLI set.
   'firecrawl-research-index',

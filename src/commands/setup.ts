@@ -3,7 +3,7 @@
  * Installs firecrawl skill files and MCP server into AI coding agents
  */
 
-import { execFileSync, execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import {
   chmodSync,
   existsSync,
@@ -302,26 +302,16 @@ export async function handleSetupCommand(
   }
 
   switch (subcommand) {
-    case 'alexandria': {
-      if (options.nativeSkills || options.project) {
-        throw new Error(
-          'Alexandria beta skill setup requires npm and global scope.'
-        );
-      }
-      const args = buildSkillsInstallArgs({
-        repo: path.resolve(__dirname, '../../beta-skills'),
-        skills: ['firecrawl-alexandria', 'firecrawl-agent'],
-        agent: options.agent,
-        includeNpxYes: true,
-      });
-      // Copy out of the npm cache so the installed skill survives cache cleanup.
-      runClientCommand('npx', [...args.slice(1), '--copy'], {
-        stdio: 'inherit',
-        env: cleanNpmEnv(),
-      });
+    case 'alexandria':
+      await installSkills(options, [
+        {
+          repo: CATALOG_REPO,
+          skills: ['firecrawl-alexandria', 'firecrawl-agent'],
+          label: 'Alexandria skills',
+        },
+      ]);
       await offerSkillsAuth(options);
       break;
-    }
     // `skills` is the historical name for the core set; keep it as an alias.
     case 'skills':
     case 'core':
@@ -636,11 +626,13 @@ async function installSkills(
         skills: selection.skills,
       });
 
-      const cmd = args.join(' ');
-      console.log(`Running: ${cmd}\n`);
+      console.log(`Running: ${args.join(' ')}\n`);
 
       try {
-        execSync(cmd, { stdio: 'inherit', env: cleanNpmEnv() });
+        runClientCommand(args[0], args.slice(1), {
+          stdio: 'inherit',
+          env: cleanNpmEnv(),
+        });
         continue;
       } catch {
         process.exit(1);
@@ -649,7 +641,10 @@ async function installSkills(
 
     // Fallback: native install (no npx/Node required)
     try {
-      await installSkillsNative(repo, { skills: selection.skills });
+      await installSkillsNative(repo, {
+        agent: options.agent,
+        skills: selection.skills,
+      });
     } catch (error) {
       console.error(
         `Failed to install skills from ${repo}:`,

@@ -29,6 +29,15 @@ import {
 const cliSkillFlags = `--skill ${CLI_SKILLS.join(' ')}`;
 const buildSkillFlags = `--skill ${BUILD_SKILLS.join(' ')}`;
 const workflowSkillFlags = `--skill ${WORKFLOW_SKILLS.join(' ')}`;
+
+function expectSkillsInstall(command: string) {
+  const [bin, ...args] = command.split(' ');
+  expect(execFileSync).toHaveBeenCalledWith(
+    bin,
+    args,
+    expect.objectContaining({ stdio: 'inherit' })
+  );
+}
 import { configureWebDefaults } from '../../utils/web-defaults';
 import { getApiKey } from '../../utils/config';
 import { browserLogin, isAuthenticated } from '../../utils/auth';
@@ -88,60 +97,51 @@ describe('handleSetupCommand', () => {
   it('installs the CLI skills from the catalog globally across all detected agents by default', async () => {
     await handleSetupCommand('skills', {});
 
-    expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --yes ${cliSkillFlags}`,
-      expect.objectContaining({ stdio: 'inherit' })
+    expectSkillsInstall(
+      `npx -y skills add firecrawl/skills --full-depth --global --yes ${cliSkillFlags}`
     );
   });
 
-  it('copies only the bundled beta skills for explicit beta setup', async () => {
-    await handleSetupCommand('alexandria', { agent: 'claude-code', yes: true });
+  it('installs the Alexandria skills from the catalog', async () => {
+    await handleSetupCommand('alexandria', { agent: 'claude-code' });
+
+    expectSkillsInstall(
+      'npx -y skills add firecrawl/skills --full-depth --global --yes --agent claude-code --skill firecrawl-alexandria firecrawl-agent'
+    );
+  });
+
+  it('passes --agent to npx as one argument, never through a shell', async () => {
+    const agent = 'cursor; touch /tmp/pwned';
+    await handleSetupCommand('alexandria', { agent });
+
     expect(execFileSync).toHaveBeenCalledWith(
       'npx',
-      [
-        '-y',
-        'skills',
-        'add',
-        path.resolve('beta-skills'),
-        '--full-depth',
-        '--global',
-        '--yes',
-        '--agent',
-        'claude-code',
-        '--skill',
-        'firecrawl-alexandria',
-        'firecrawl-agent',
-        '--copy',
-      ],
+      expect.arrayContaining(['--agent', agent]),
       expect.objectContaining({ stdio: 'inherit' })
     );
-    expect(execSync).not.toHaveBeenCalled();
   });
 
   it('installs the CLI skills globally for a specific agent without using --all', async () => {
     await handleSetupCommand('skills', { agent: 'cursor' });
 
-    expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --yes --agent cursor ${cliSkillFlags}`,
-      expect.objectContaining({ stdio: 'inherit' })
+    expectSkillsInstall(
+      `npx -y skills add firecrawl/skills --full-depth --global --yes --agent cursor ${cliSkillFlags}`
     );
   });
 
   it('treats "core" as the canonical name for the CLI skill set', async () => {
     await handleSetupCommand('core', {});
 
-    expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --yes ${cliSkillFlags}`,
-      expect.objectContaining({ stdio: 'inherit' })
+    expectSkillsInstall(
+      `npx -y skills add firecrawl/skills --full-depth --global --yes ${cliSkillFlags}`
     );
   });
 
   it('installs the build skills from the catalog as their own group', async () => {
     await handleSetupCommand('build', {});
 
-    expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --yes ${buildSkillFlags}`,
-      expect.objectContaining({ stdio: 'inherit' })
+    expectSkillsInstall(
+      `npx -y skills add firecrawl/skills --full-depth --global --yes ${buildSkillFlags}`
     );
   });
 
@@ -179,44 +179,39 @@ describe('handleSetupCommand', () => {
   it('installs a single catalog skill by exact name', async () => {
     await handleSetupCommand('firecrawl-developer-index', {});
 
-    expect(execSync).toHaveBeenCalledWith(
-      'npx -y skills add firecrawl/skills --full-depth --global --yes --skill firecrawl-developer-index',
-      expect.objectContaining({ stdio: 'inherit' })
+    expectSkillsInstall(
+      'npx -y skills add firecrawl/skills --full-depth --global --yes --skill firecrawl-developer-index'
     );
   });
 
   it('resolves bare skill names by adding the firecrawl- prefix', async () => {
     await handleSetupCommand('developer-index', {});
 
-    expect(execSync).toHaveBeenCalledWith(
-      'npx -y skills add firecrawl/skills --full-depth --global --yes --skill firecrawl-developer-index',
-      expect.objectContaining({ stdio: 'inherit' })
+    expectSkillsInstall(
+      'npx -y skills add firecrawl/skills --full-depth --global --yes --skill firecrawl-developer-index'
     );
   });
 
   it('prefers the build group over the firecrawl-build skill for bare "build"', async () => {
     await handleSetupCommand('build', {});
 
-    expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --yes ${buildSkillFlags}`,
-      expect.objectContaining({ stdio: 'inherit' })
+    expectSkillsInstall(
+      `npx -y skills add firecrawl/skills --full-depth --global --yes ${buildSkillFlags}`
     );
 
-    vi.mocked(execSync).mockClear();
+    vi.mocked(execFileSync).mockClear();
     await handleSetupCommand('firecrawl-build', {});
 
-    expect(execSync).toHaveBeenCalledWith(
-      'npx -y skills add firecrawl/skills --full-depth --global --yes --skill firecrawl-build',
-      expect.objectContaining({ stdio: 'inherit' })
+    expectSkillsInstall(
+      'npx -y skills add firecrawl/skills --full-depth --global --yes --skill firecrawl-build'
     );
   });
 
   it('installs workflow skills from the catalog as a separate setup option', async () => {
     await handleSetupCommand('workflows', {});
 
-    expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --yes ${workflowSkillFlags}`,
-      expect.objectContaining({ stdio: 'inherit' })
+    expectSkillsInstall(
+      `npx -y skills add firecrawl/skills --full-depth --global --yes ${workflowSkillFlags}`
     );
   });
 
@@ -227,17 +222,14 @@ describe('handleSetupCommand', () => {
       ALL_SKILL_REPOS
     );
 
-    expect(execSync).toHaveBeenCalledWith(
-      'npx -y skills add firecrawl/cli --full-depth --global --yes --agent codex',
-      expect.objectContaining({ stdio: 'inherit' })
+    expectSkillsInstall(
+      'npx -y skills add firecrawl/cli --full-depth --global --yes --agent codex'
     );
-    expect(execSync).toHaveBeenCalledWith(
-      'npx -y skills add firecrawl/skills --full-depth --global --yes --agent codex',
-      expect.objectContaining({ stdio: 'inherit' })
+    expectSkillsInstall(
+      'npx -y skills add firecrawl/skills --full-depth --global --yes --agent codex'
     );
-    expect(execSync).toHaveBeenCalledWith(
-      'npx -y skills add firecrawl/firecrawl-workflows --full-depth --global --yes --agent codex',
-      expect.objectContaining({ stdio: 'inherit' })
+    expectSkillsInstall(
+      'npx -y skills add firecrawl/firecrawl-workflows --full-depth --global --yes --agent codex'
     );
   });
 
@@ -255,9 +247,8 @@ describe('handleSetupCommand', () => {
 
     await handleSetupCommand(undefined, { yes: true });
 
-    expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --yes ${cliSkillFlags}`,
-      expect.objectContaining({ stdio: 'inherit' })
+    expectSkillsInstall(
+      `npx -y skills add firecrawl/skills --full-depth --global --yes ${cliSkillFlags}`
     );
     expect(execFileSync).toHaveBeenCalledWith(
       'npx',
@@ -815,7 +806,11 @@ describe('handleSetupCommand', () => {
 
     const mcpCall = vi
       .mocked(execFileSync)
-      .mock.calls.find(([command]) => command === 'npx');
+      .mock.calls.find(
+        ([command, args]) =>
+          command === 'npx' && !(args as string[]).includes('skills')
+      );
+    expect(mcpCall).toBeDefined();
     expect(mcpCall?.[1]).not.toContain('--global');
   });
 
@@ -984,13 +979,13 @@ describe('handleSetupCommand', () => {
       await handleSetupCommand('skills', {});
 
       const allCalls = (
-        execSync as unknown as {
-          mock: { calls: [string, { env?: NodeJS.ProcessEnv }][] };
+        execFileSync as unknown as {
+          mock: { calls: [string, string[], { env?: NodeJS.ProcessEnv }][] };
         }
       ).mock.calls;
-      const installCalls = allCalls.filter(([cmd]) =>
-        cmd.includes('skills add')
-      );
+      const installCalls = allCalls
+        .filter(([, args]) => args.join(' ').includes('skills add'))
+        .map(([, , opts]) => [undefined, opts] as const);
       expect(installCalls.length).toBe(1);
       for (const [, opts] of installCalls) {
         expect(opts.env).toBeDefined();
