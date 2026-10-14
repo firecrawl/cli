@@ -926,11 +926,8 @@ function createSearchCommand(): Command {
     )
     .argument('<query>', 'Search query, or alexandria for semantic tool search')
     .argument('[tool-query]', 'Query for search alexandria')
-    .option('--objective <goal>', 'Broader task goal behind this search')
-    .option(
-      '--client-model <model>',
-      'Model issuing and consuming the results, if known'
-    )
+    .addOption(new Option('--objective <goal>').hideHelp())
+    .addOption(new Option('--client-model <model>').hideHelp())
     .option(
       '--limit <number>',
       'Maximum number of results (default: 5, max: 100)',
@@ -1066,8 +1063,6 @@ function createSearchCommand(): Command {
 
       const searchOptions = {
         query,
-        objective: options.objective,
-        clientModel: options.clientModel,
         toolDetail: options.toolDetail,
         domainTools:
           options.domainTools ??
