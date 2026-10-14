@@ -187,6 +187,22 @@ export async function handleCreate(
     process.exit(1);
   }
 
+  // If the user passed exactly one --key but no --provider, assume they
+  // want that provider as the default. Matches the common "I have one key,
+  // just set it up" mental model.
+  if (!selectedProvider && options.key?.length) {
+    const flagKeys = parseKeyFlags(options.key);
+    const providerEnvVars = new Map(
+      availableProviders.map((p) => [p.envVar, p.id])
+    );
+    const matched = Object.keys(flagKeys)
+      .map((envVar) => providerEnvVars.get(envVar))
+      .filter((id): id is string => !!id);
+    if (matched.length === 1) {
+      selectedProvider = getSelectedProvider(availableProviders, matched[0]);
+    }
+  }
+
   if (!selectedProvider) {
     if (process.stdin.isTTY) {
       const providerId = await select({
