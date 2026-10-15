@@ -111,14 +111,14 @@ describe('handleInitCommand', () => {
     );
   });
 
-  it('installs only the focused workflows selected during interactive init', async () => {
+  it('installs only the existing workflows selected during interactive init', async () => {
     confirmMock
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(false);
     checkboxMock
       .mockResolvedValueOnce(['workflows'])
-      .mockResolvedValueOnce(['firecrawl-find-leads', 'firecrawl-enrich-lead']);
+      .mockResolvedValueOnce(['firecrawl-lead-gen', 'firecrawl-lead-research']);
 
     await handleInitCommand({
       skipInstall: true,
@@ -129,13 +129,13 @@ describe('handleInitCommand', () => {
     expect(checkboxMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
         choices: expect.arrayContaining([
-          expect.objectContaining({ value: 'firecrawl-find-leads' }),
-          expect.objectContaining({ value: 'firecrawl-enrich-lead' }),
+          expect.objectContaining({ value: 'firecrawl-lead-gen' }),
+          expect.objectContaining({ value: 'firecrawl-lead-research' }),
         ]),
       })
     );
     expect(execSync).toHaveBeenCalledWith(
-      'npx -y skills add firecrawl/skills --full-depth --global --yes --agent codex --skill firecrawl-find-leads firecrawl-enrich-lead',
+      'npx -y skills add firecrawl/skills --full-depth --global --yes --agent codex --skill firecrawl-lead-gen firecrawl-lead-research',
       expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'] })
     );
     expect(execSync).toHaveBeenCalledTimes(1);
