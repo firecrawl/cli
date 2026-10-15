@@ -4,7 +4,7 @@
   "publishConfig": {
     "tag": "latest"
   },
-  "description": "Command-line interface for Firecrawl. Scrape, crawl, and extract data from any website, and search a ~43M-abstract research paper index (PubMed, bioRxiv, medRxiv, arXiv), directly from your terminal.",
+  "description": "Command-line interface for Firecrawl. Search, scrape, and interact with the web, crawl any website, and search a ~43M-abstract research paper index (PubMed, bioRxiv, medRxiv, arXiv), directly from your terminal.",
   "main": "dist/index.js",
   "bin": {
     "firecrawl": "dist/index.js"
