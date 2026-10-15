@@ -302,16 +302,6 @@ export async function handleSetupCommand(
   }
 
   switch (subcommand) {
-    case 'alexandria':
-      await installSkills(options, [
-        {
-          repo: CATALOG_REPO,
-          skills: ['firecrawl-alexandria', 'firecrawl-agent'],
-          label: 'Alexandria skills',
-        },
-      ]);
-      await offerSkillsAuth(options);
-      break;
     // `skills` is the historical name for the core set; keep it as an alias.
     case 'skills':
     case 'core':

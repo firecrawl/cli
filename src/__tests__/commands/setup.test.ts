@@ -102,17 +102,9 @@ describe('handleSetupCommand', () => {
     );
   });
 
-  it('installs the Alexandria skills from the catalog', async () => {
-    await handleSetupCommand('alexandria', { agent: 'claude-code' });
-
-    expectSkillsInstall(
-      'npx -y skills add firecrawl/skills --full-depth --global --yes --agent claude-code --skill firecrawl-alexandria firecrawl-agent'
-    );
-  });
-
   it('passes --agent to npx as one argument, never through a shell', async () => {
     const agent = 'cursor; touch /tmp/pwned';
-    await handleSetupCommand('alexandria', { agent });
+    await handleSetupCommand('core', { agent });
 
     expect(execFileSync).toHaveBeenCalledWith(
       'npx',
