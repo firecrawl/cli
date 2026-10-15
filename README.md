@@ -85,6 +85,8 @@ npx skills add firecrawl/skills
 
 > Contributing skills? CLI skills (including the research/developer index skills) → PR this repo (`skills/`). Build/SDK skills → PR the [`firecrawl`](https://github.com/firecrawl/firecrawl) monorepo (`skills/`). Workflow skills → PR [`firecrawl/firecrawl-workflows`](https://github.com/firecrawl/firecrawl-workflows). The catalog ([`firecrawl/skills`](https://github.com/firecrawl/skills)) is read-only — never PR it directly.
 
+The Firecrawl Claude Code and Cursor plugins are released separately and do not include these CLI skills. Changes here still reach the skill catalog.
+
 To reinstall skills manually:
 
 ```bash

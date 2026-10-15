@@ -137,6 +137,10 @@ it('starts with a live category guide and preserves category-discovery access er
       { id: 'new-category' },
     ],
   });
+  const priced = await cli(['list', '--include-costs', '--json']);
+  expect(JSON.parse(priced.stdout).data.items[0].nextCommand).toBe(
+    'firecrawl alexandria list finance --category --include-costs'
+  );
   status = 403;
   response = {
     success: false,
@@ -242,7 +246,17 @@ it('expands only a selected tool without falling back to a group', async () => {
   const leaf = await cli(['list', 'benzinga', 'calendar/earnings']);
   expect(leaf.code).toBe(0);
   expect(leaf.stdout).toContain('Inputs:');
-  expect(leaf.stdout).toContain('2 credits per call');
+  expect(leaf.stdout).not.toContain('credits per');
+  const priced = await cli([
+    'list',
+    'benzinga',
+    'calendar/earnings',
+    '--include-costs',
+  ]);
+  expect(priced.stdout).toContain('2 credits per call');
+  expect(requests.at(-1)?.body.alexandria[0].options).not.toHaveProperty(
+    'includeCosts'
+  );
   expect(requests.at(-1)?.body.alexandria[0].options).toMatchObject({
     capabilities: ['calendar/earnings'],
     expand: ['options', 'response', 'examples'],
@@ -257,7 +271,7 @@ it('expands only a selected tool without falling back to a group', async () => {
     level: 'tools',
     limit: 20,
   });
-  expect(requests).toHaveLength(4);
+  expect(requests).toHaveLength(6);
 });
 
 it('inspects a combined tool address in one request and preserves provider errors', async () => {
@@ -352,9 +366,23 @@ it('preserves scoped next requests, pagination and discovery receipts', async ()
     {
       requestId: parsed.requestId,
       scrape_id: 'discovery-1',
-      creditsCost: 0,
     },
   ]);
+  const priced = JSON.parse(
+    (
+      await cli([
+        'list',
+        '--request',
+        JSON.stringify(next),
+        '--include-costs',
+        '--json',
+      ])
+    ).stdout
+  );
+  expect(priced.data.alexandria[0].data.nextCommand).toBe(
+    `firecrawl list --request '${JSON.stringify(next)}' --include-costs`
+  );
+  expect(priced.discoveryRequests[0].creditsCost).toBe(0);
 });
 
 it('refuses execution through list and propagates discovery access errors', async () => {
@@ -512,6 +540,7 @@ it('sends provider calls to Scrape with a stable retry ID and preserves the rece
     expect(result.code).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual({
       ...response,
+      data: { ...response.data, alexandria: [{ data: { value: 42 } }] },
       requestId: 'retry-1',
       receipt: {
         creditsUsed: 1,
@@ -613,7 +642,16 @@ it('retains successful results and billing when one provider fails', async () =>
     'other/lookup',
   ]);
   expect(result.code).toBe(1);
-  expect(JSON.parse(result.stdout)).toMatchObject(response);
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    ...response,
+    data: {
+      creditsCost: 1,
+      alexandria: [{ data: { value: 42 } }, response.data.alexandria[1]],
+    },
+  });
+  expect(JSON.parse(result.stdout).data.alexandria[0]).not.toHaveProperty(
+    'creditsCost'
+  );
   expect(requests).toHaveLength(1);
 });
 
@@ -674,11 +712,12 @@ it('presents tools compactly after web results while JSON preserves full contrac
   expect(readable.stdout.indexOf('GDP report')).toBeLessThan(
     readable.stdout.indexOf('=== Alexandria Tools ===')
   );
-  expect(readable.stdout).toContain('5 credits per record');
+  expect(readable.stdout).not.toContain('credits per');
   expect(readable.stdout).toContain('scrape --alexandria');
   expect(readable.stdout).not.toContain('EXAMPLE_PAYLOAD');
   const json = await cli(['search', 'GDP growth', '--json']);
-  expect(JSON.parse(json.stdout).data.tools).toEqual([tool]);
+  const { creditsCost: _cost, perRecord: _perRecord, ...unpriced } = tool;
+  expect(JSON.parse(json.stdout).data.tools).toEqual([unpriced]);
   response.data.tools = [
     {
       provider: tool.provider,

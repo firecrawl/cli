@@ -5,6 +5,7 @@ import { type AlexandriaCall } from 'firecrawl';
 import { getClient } from '../utils/client';
 import { getApiKey } from '../utils/config';
 import { writeOutput } from '../utils/output';
+import { withoutResultPrices } from '../utils/alexandria-prices';
 
 type Call = AlexandriaCall & { options: Record<string, unknown> };
 export type AlexandriaOptions = {
@@ -16,6 +17,7 @@ export type AlexandriaOptions = {
   json?: boolean;
   pretty?: boolean;
   showReceipt?: boolean;
+  includeCosts?: boolean;
 };
 
 export function requireAlexandriaKey(apiKey?: string): void {
@@ -228,7 +230,11 @@ export async function requestAlexandria(
   const receipt = receiptFor(envelope, 'scrape', requestId);
   if (options.showReceipt !== false) printReceipt(receipt, false);
   printRetry(envelope);
-  return { ...envelope, requestId, receipt };
+  return {
+    ...(options.includeCosts ? envelope : withoutResultPrices(envelope)),
+    requestId,
+    receipt,
+  };
 }
 
 export async function handleAlexandria(
@@ -285,6 +291,7 @@ export function createFindToolsCommand(): Command {
       '--request <json>',
       'A complete next request returned by Find Tools'
     )
+    .option('--include-costs', 'Include per-capability credit prices')
     .option(
       '--request-id <id>',
       'Reuse to recover the same execution; completed results replay'

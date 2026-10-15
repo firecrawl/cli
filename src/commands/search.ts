@@ -14,6 +14,7 @@ import type {
 } from '../types/search';
 import { getClient, isKeylessMode, keylessRequest } from '../utils/client';
 import { writeOutput } from '../utils/output';
+import { withoutToolPrice } from '../utils/alexandria-prices';
 import { apiFailure, requireAlexandriaKey } from './alexandria';
 
 const DEFAULT_SEARCH_LIMIT = 5;
@@ -32,8 +33,6 @@ export async function executeSearch(
       limit: options.limit ?? DEFAULT_SEARCH_LIMIT,
       integration: 'cli',
     };
-    if (options.objective) searchParams.objective = options.objective;
-    if (options.clientModel) searchParams.clientModel = options.clientModel;
     searchParams.toolDetail = options.toolDetail ?? 'compact';
     if (options.domainTools !== undefined)
       searchParams.domainTools = options.domainTools;
@@ -131,7 +130,7 @@ export async function executeSearch(
     const payload = (envelope.data ?? {}) as Record<string, any>;
 
     const data: SearchResultData = {};
-    if (payload.tools) data.tools = payload.tools;
+    if (payload.tools) data.tools = payload.tools.map(withoutToolPrice);
     if (payload.web) data.web = payload.web as WebSearchResult[];
     if (payload.images) data.images = payload.images as ImageSearchResult[];
     if (payload.news) data.news = payload.news as NewsSearchResult[];
@@ -310,10 +309,6 @@ function formatSearchReadable(
       }
       if (typeof tool.description === 'string')
         lines.push(`  ${clipPassage(tool.description)}`);
-      if (typeof tool.creditsCost === 'number')
-        lines.push(
-          `  Cost: ${tool.creditsCost} credits per ${tool.perRecord ? 'record' : 'call'}`
-        );
       if (Array.isArray(tool.matchedUrls) && tool.matchedUrls.length)
         lines.push(`  Matches: ${tool.matchedUrls.join(', ')}`);
       lines.push('');
