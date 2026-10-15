@@ -102,6 +102,10 @@ describe('handleSetupCommand', () => {
     );
   });
 
+  it('ships the Alexandria skill in the core set', () => {
+    expect(CLI_SKILLS).toContain('firecrawl-alexandria');
+  });
+
   it('passes --agent to npx as one argument, never through a shell', async () => {
     const agent = 'cursor; touch /tmp/pwned';
     await handleSetupCommand('core', { agent });
