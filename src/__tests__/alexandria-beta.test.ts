@@ -137,6 +137,10 @@ it('starts with a live category guide and preserves category-discovery access er
       { id: 'new-category' },
     ],
   });
+  const priced = await cli(['list', '--include-costs', '--json']);
+  expect(JSON.parse(priced.stdout).data.items[0].nextCommand).toBe(
+    'firecrawl alexandria list finance --category --include-costs'
+  );
   status = 403;
   response = {
     success: false,

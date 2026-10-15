@@ -142,7 +142,7 @@ async function requestCategories(
               )
               .join(' '),
         description: row.about,
-        nextCommand: `firecrawl alexandria list ${quote(row.cohort)} --category${options.limit === undefined ? '' : ` --limit ${options.limit}`}`,
+        nextCommand: `firecrawl alexandria list ${quote(row.cohort)} --category${options.limit === undefined ? '' : ` --limit ${options.limit}`}${options.includeCosts ? ' --include-costs' : ''}`,
       }))
       .sort((a: Category, b: Category) => a.name.localeCompare(b.name));
     return {
