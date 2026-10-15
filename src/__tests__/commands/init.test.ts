@@ -111,6 +111,36 @@ describe('handleInitCommand', () => {
     );
   });
 
+  it('installs only the focused workflows selected during interactive init', async () => {
+    confirmMock
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false);
+    checkboxMock
+      .mockResolvedValueOnce(['workflows'])
+      .mockResolvedValueOnce(['firecrawl-find-leads', 'firecrawl-enrich-lead']);
+
+    await handleInitCommand({
+      skipInstall: true,
+      skipAuth: true,
+      agent: 'codex',
+    });
+
+    expect(checkboxMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        choices: expect.arrayContaining([
+          expect.objectContaining({ value: 'firecrawl-find-leads' }),
+          expect.objectContaining({ value: 'firecrawl-enrich-lead' }),
+        ]),
+      })
+    );
+    expect(execSync).toHaveBeenCalledWith(
+      'npx -y skills add firecrawl/skills --full-depth --global --yes --agent codex --skill firecrawl-find-leads firecrawl-enrich-lead',
+      expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'] })
+    );
+    expect(execSync).toHaveBeenCalledTimes(1);
+  });
+
   it('summarizes native interactive installation independently of its count', async () => {
     confirmMock
       .mockResolvedValueOnce(true)

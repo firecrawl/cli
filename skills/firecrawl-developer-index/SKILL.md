@@ -5,6 +5,8 @@ description: Search an index of public repositories, GitHub issues, merged pull 
 
 # Firecrawl Developer Index
 
+For a task focused on official documentation, setup, examples, migrations or compatibility, use the `firecrawl-read-docs` workflow when installed. It uses `firecrawl developer` for retrieval while keeping documentation separate from repository issues and proposals. Continue here for implementation or bug evidence beyond the docs.
+
 Answer a developer question from the primary source: the issue where the bug was reported, the merged pull request that fixed it, the README or documentation page that states the contract. A blog post that describes a behaviour is a weaker answer than the passage that defines it, so reach for the index first and the open web second. The repository half of the index covers public repositories only. Private or internal repositories are not in it, so a question about private code needs a different route: read that code directly.
 
 There is **no fixed recipe**. Read the question, decide what kind it is, and choose the approach below. A literal error string wants a different move than "how do I do X". Don't run machinery a question doesn't call for.
