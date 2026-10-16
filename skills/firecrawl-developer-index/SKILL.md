@@ -1,11 +1,9 @@
 ---
 name: firecrawl-developer-index
-description: Search official documentation and indexed public repositories, issues, merged pull requests and READMEs. Use for setup, API examples, migrations, compatibility, version-specific behavior or upstream implementation and bug evidence; reuse sufficient supplied code or documentation.
+description: Search an index of public repositories, GitHub issues, merged pull requests, repository READMEs, and curated documentation sites. Use when a programming question needs external documentation or upstream evidence.
 ---
 
 # Firecrawl Developer Index
-
-For official documentation, setup, examples, migrations or compatibility, follow [official documentation](references/official-documentation.md). Continue below for implementation or bug evidence beyond the docs. Reuse adequate evidence when switching approaches.
 
 Answer a developer question from the primary source: the issue where the bug was reported, the merged pull request that fixed it, the README or documentation page that states the contract. A blog post that describes a behaviour is a weaker answer than the passage that defines it, so reach for the index first and the open web second. The repository half of the index covers public repositories only. Private or internal repositories are not in it, so a question about private code needs a different route: read that code directly.
 
@@ -56,7 +54,7 @@ Only the HTTP surface takes these. On `GET`, pass `types=issue,pull_request` or 
 ## Principles
 
 - **Quote the passage, cite the `url`.** The passages are the evidence; hand them over rather than paraphrasing them into a claim the reader can't check. `title` is frequently absent on `doc` results — fall back to `url`.
-- **Distinguish a fix from a release.** A merged fix can supersede an earlier issue report about repository code. Verify that it shipped in the user's version before describing the installed behavior; cite the evidence you used.
+- **A merge supersedes a report.** When an issue and a pull request disagree, the merged pull request is the current behaviour. Say which one you read.
 - **Scope last, not first.** Search the whole index, then narrow with `types`, `repos`, or `sources` once you know what the hits look like. Scoping first hides the result that would have told you where to look.
 - **Go to the web when the index has nothing to say.** Trade-offs, ecosystem opinion, and anything about an unindexed project are web questions. Don't force them through the index, and don't dress a general web page up as a primary source.
 
