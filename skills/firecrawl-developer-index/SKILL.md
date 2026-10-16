@@ -1,6 +1,6 @@
 ---
 name: firecrawl-developer-index
-description: Search official documentation and indexed public repositories, issues, merged pull requests and READMEs. Use for setup, API examples, migrations, compatibility, version-specific behavior or upstream implementation and bug evidence; reuse sufficient supplied code or documentation.
+description: Search official documentation and indexed public repositories, issues, merged pull requests and READMEs. Use for setup, API examples, migrations, compatibility, version-specific behavior or upstream implementation and bug evidence.
 ---
 
 # Firecrawl Developer Index
