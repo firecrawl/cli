@@ -14,7 +14,7 @@ There is **no fixed recipe**. Read the question, decide what kind it is, and cho
 - HTTP: **`GET|POST https://api.firecrawl.dev/v2/search/developer`**
   MCP: **`firecrawl_developer_search(query, k?, skills?)`**
   CLI: **`firecrawl developer <query> [--limit <n>]`**
-  Ranked results over the whole index. Each carries `id` (`issue:owner/repo#123`), `url`, and the **matched passages in markdown**, so tables and code blocks survive. The artifact kind is the `id` prefix: `doc:`, `issue:`, `pull_request:`, or `readme:`.
+  Ranked results over the whole index. Each carries `id` (`issue:owner/repo#123`), `url`, and the **matched passages in markdown**, so tables and code blocks survive. The artifact kind is the `id` prefix: `doc:`, `issue:`, `pull_request:`, or `readme:` for curated index entries, and `web:` for an open web page returned alongside them — not a curated artifact, and not something you can request or exclude by name. To keep only curated results, pass `types=["doc","issue","pull_request","readme"]`.
   The default first move for a developer question. It is the only surface that returns the passages, which is what lets you answer instead of pointing at a page.
   `k` / `--limit` is 1–100 and defaults to 10. `skills="only"` (HTTP/MCP only) restricts the search to agent-skill files.
   Keyless; send `Authorization: Bearer $FIRECRAWL_API_KEY` for higher rate limits.
@@ -33,7 +33,7 @@ There is **no fixed recipe**. Read the question, decide what kind it is, and cho
 
 Only the HTTP surface takes these. On `GET`, pass `types=issue,pull_request` or repeat the parameter; on `POST`, pass arrays. All are optional.
 
-- `types` — which of `doc`, `issue`, `pull_request`, `readme` to search. Defaults to all four. Narrowing here is the cheapest way to sharpen a query.
+- `types` — which of `doc`, `issue`, `pull_request`, `readme` to search. When unset the request also returns `web:` results alongside the four curated kinds; passing an explicit list is the only way to exclude them. Narrowing here is also the cheapest way to sharpen a query.
 - `repos` (`owner/name`) scopes the repository half, meaning `issue`, `pull_request`, and `readme`; `sources` (documentation source ids, at most 20) scopes the documentation half, meaning `doc`. Passing both **unions** the halves rather than intersecting them. Both echo back in the response with `indexed: true|false` — that is how you tell "not in the index" from "found nothing".
 - A filter that cannot match any requested `type` is a `400`, not an empty list: `repos` with no repository type in `types`, or `sources` without `doc`.
 - `passages` (1–5, default 1) is the _maximum_ passages per result, not a guarantee. Raise it when one page is clearly the right page but the first passage is the wrong part of it.
