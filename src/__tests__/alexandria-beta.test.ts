@@ -1412,7 +1412,9 @@ it('shows a pending approval and how to answer it', async () => {
   responseFor = undefined;
   const terms = await cli(['agent', RUN_ID]);
   expect(terms.stdout).toContain('Approving does not accept terms.');
-  expect(terms.stdout).toContain('Firecrawl dashboard');
+  expect(terms.stdout).toContain(
+    'Firecrawl dashboard first: https://www.firecrawl.dev/app/settings?tab=data-sources'
+  );
   expect(terms.stdout).not.toContain('alexandria terms accept');
   expect(terms.stdout).toContain(
     '  - Crunchbase: https://example.com/terms/crunchbase'
