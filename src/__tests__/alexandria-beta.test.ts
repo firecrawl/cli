@@ -439,11 +439,13 @@ it('refuses execution through list and propagates discovery access errors', asyn
   expect(requests).toHaveLength(1);
 });
 
-it('documents the default discovery flow and respects explicit web-only search', async () => {
+it('documents the default discovery flow and adds alexandria to explicit sources', async () => {
   const help = await cli(['--help']);
   expect(help.stdout).toContain('find-tools');
   const searchHelp = await cli(['search', '--help']);
-  expect(searchHelp.stdout).toContain('web,alexandria');
+  expect(searchHelp.stdout.replace(/\s+/g, ' ')).toContain(
+    'with an API key, alexandria is always added'
+  );
   expect(searchHelp.stdout).toContain('--no-domain-tools');
   const scrapeHelp = await cli(['scrape', '--help']);
   expect(scrapeHelp.stdout).toContain('--alexandria');
@@ -469,7 +471,16 @@ it('documents the default discovery flow and respects explicit web-only search',
   ]);
   expect(result.code).toBe(0);
   expect(requests[0].body).toMatchObject({
-    sources: [{ type: 'web' }],
+    sources: [{ type: 'web' }, { type: 'alexandria' }],
+    domainTools: true,
+  });
+  const keyless = await cli(
+    ['search', 'pizza hut', '--sources', 'news', '--json'],
+    ''
+  );
+  expect(keyless.code).toBe(0);
+  expect(requests[1].body).toMatchObject({
+    sources: [{ type: 'news' }],
     domainTools: false,
   });
 });
