@@ -600,10 +600,55 @@ it('relays terms refusals and keeps the request ID on failure', async () => {
   expect(result.code).toBe(1);
   const body = JSON.parse(result.stdout);
   expect(body).toMatchObject(response);
-  expect(body.guidance).toContain('wait for explicit approval');
-  expect(body.guidance).toContain('/app/settings?tab=data-sources');
+  expect(body.guidance).toContain('organization admin');
+  expect(body.guidance).toContain('https://firecrawl.dev/terms/provider');
+  expect(body.guidance).not.toContain('alexandria terms accept');
   expect(result.stderr).toContain(body.requestId);
   expect(requests).toHaveLength(1);
+});
+
+it('points terms refusals without a returned link to the dashboard settings', async () => {
+  status = 403;
+  response = {
+    success: false,
+    error: 'Accept provider terms',
+    code: 'THIRD_PARTY_DATA_TERMS_REQUIRED',
+  };
+  const result = await cli([
+    'scrape',
+    '--alexandria',
+    'provider/lookup',
+    '--json',
+  ]);
+  expect(result.code).toBe(1);
+  expect(JSON.parse(result.stdout).guidance).toContain(
+    'https://www.firecrawl.dev/app/settings?tab=data-sources'
+  );
+});
+
+it('never accepts terms from the CLI and points to the dashboard instead', async () => {
+  const result = await cli([
+    'alexandria',
+    'terms',
+    'accept',
+    'provider',
+    '--terms-version',
+    '1.0',
+    '--digest',
+    'a'.repeat(64),
+    '--confirm',
+  ]);
+  expect(result.code).toBe(1);
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    success: false,
+    guidance: {
+      url: 'https://www.firecrawl.dev/app/settings?tab=data-sources',
+    },
+  });
+  expect(requests).toHaveLength(0);
+  const help = await cli(['alexandria', 'terms', '--help']);
+  expect(help.stdout).toContain('show');
+  expect(help.stdout).not.toMatch(/^\s+accept\b/m);
 });
 
 it('executes Find Tools through the same API and refuses keyless access', async () => {
@@ -1367,6 +1412,8 @@ it('shows a pending approval and how to answer it', async () => {
   responseFor = undefined;
   const terms = await cli(['agent', RUN_ID]);
   expect(terms.stdout).toContain('Approving does not accept terms.');
+  expect(terms.stdout).toContain('Firecrawl dashboard');
+  expect(terms.stdout).not.toContain('alexandria terms accept');
   expect(terms.stdout).toContain(
     '  - Crunchbase: https://example.com/terms/crunchbase'
   );
