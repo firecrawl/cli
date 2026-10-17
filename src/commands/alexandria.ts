@@ -6,6 +6,7 @@ import { getClient } from '../utils/client';
 import { getApiKey } from '../utils/config';
 import { writeOutput } from '../utils/output';
 import { withoutResultPrices } from '../utils/alexandria-prices';
+import { TERMS_DASHBOARD_URL } from './terms';
 
 type Call = AlexandriaCall & { options: Record<string, unknown> };
 export type AlexandriaOptions = {
@@ -247,8 +248,8 @@ export async function handleAlexandria(
     envelope.data?.alexandria?.some((item: any) => item.error);
   if (failed) process.exitCode = 1;
   if (envelope.code === 'THIRD_PARTY_DATA_TERMS_REQUIRED') {
-    envelope.guidance =
-      'Review the provider terms with firecrawl alexandria terms show <provider>. Present the terms to the user and wait for explicit approval. Only then accept with firecrawl alexandria terms accept <provider> --terms-version <version> --digest <sha256> --confirm. If the API-provided link is unavailable, use https://www.firecrawl.dev/app/settings?tab=data-sources. Do not automatically retry or accept.';
+    const url = envelope.requiresAction?.url || TERMS_DASHBOARD_URL;
+    envelope.guidance = `An organization admin must accept this provider's terms in the Firecrawl dashboard: ${url}. Give the user this link; they can review the terms first with firecrawl alexandria terms show <provider>. Do not retry until the terms are accepted.`;
     console.error(envelope.guidance);
   }
   writeOutput(

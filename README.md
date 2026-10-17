@@ -1071,30 +1071,19 @@ URLs (including domains, IP addresses and localhost) continue to scrape websites
 
 ### Alexandria provider terms
 
-When a provider returns `THIRD_PARTY_DATA_TERMS_REQUIRED`, review its linked terms.
-Read the current provider agreement and metadata with:
+When a provider returns `THIRD_PARTY_DATA_TERMS_REQUIRED`, an organization admin must
+accept that provider's terms in the Firecrawl dashboard, at the link the error returns
+(`requiresAction.url`) or https://www.firecrawl.dev/app/settings?tab=data-sources.
+The CLI does not accept terms. To read the current provider agreement and metadata first:
 
 ```bash
 npx firecrawl-cli@latest alexandria terms show benzinga --pretty
 ```
 
-After reviewing it, explicitly accept the exact version and digest for the organization
-associated with your Firecrawl API key:
-
-```bash
-npx firecrawl-cli@latest alexandria terms accept benzinga \
-  --terms-version '<reviewed-version>' --digest '<reviewed-sha256>' --confirm
-```
-
-This records acceptance of the reviewed Alexandria provider terms. No automatic
-acceptance or retry occurs. A `409 terms_changed` requires reviewing the new agreement before retrying.
-Agents must present the returned terms and provider links, ask the user for explicit
-approval, and wait before accepting. If review is refused or a provider link is
-unavailable, show the error and direct an organization admin to
-https://www.firecrawl.dev/app/settings?tab=data-sources. Never infer consent from a
-failed lookup or automatically retry an acceptance. The API remains authoritative
-for organization access and acceptance authority.
-After confirmed success, rerun the original provider command; its normal credits apply.
+Agents must give the user the dashboard link and must not retry the provider until the
+terms are accepted. Reading terms does not accept them, and a failed lookup is never
+consent. After an admin accepts them, rerun the original provider command; its normal
+credits apply.
 
 ### Alexandria receipts and retries
 
