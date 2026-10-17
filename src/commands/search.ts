@@ -45,7 +45,7 @@ export async function executeSearch(
 
     // Authenticated searches always include Alexandria, keeping the requested sources.
     const requestedSources: SearchSource[] = options.sources?.length
-      ? options.sources
+      ? [...new Set(options.sources)]
       : ['web'];
     const addsAlexandria =
       !!getApiKey(options.apiKey) && !requestedSources.includes('alexandria');

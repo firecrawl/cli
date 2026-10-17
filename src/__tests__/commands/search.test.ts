@@ -242,6 +242,11 @@ describe('executeSearch', () => {
       [undefined, [{ type: 'web' }, { type: 'alexandria' }], true],
       [['web'], [{ type: 'web' }, { type: 'alexandria' }], true],
       [['web', 'alexandria'], [{ type: 'web' }, { type: 'alexandria' }], true],
+      [
+        ['web', 'alexandria', 'alexandria'],
+        [{ type: 'web' }, { type: 'alexandria' }],
+        true,
+      ],
       [['alexandria'], [{ type: 'alexandria' }], false],
     ] as const)(
       'always includes alexandria once for sources %j',
