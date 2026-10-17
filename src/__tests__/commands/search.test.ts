@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { executeSearch, handleSearchCommand } from '../../commands/search';
-import { getClient } from '../../utils/client';
+import { getClient, keylessRequest } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { writeOutput } from '../../utils/output';
 import { setupTest, teardownTest } from '../utils/mock-client';
@@ -17,7 +17,13 @@ vi.mock('../../utils/client', async () => {
   return {
     ...actual,
     getClient: vi.fn(),
+    keylessRequest: vi.fn(),
   };
+});
+
+vi.mock('../../utils/credentials', async () => {
+  const actual = await vi.importActual('../../utils/credentials');
+  return { ...actual, loadCredentials: vi.fn(() => null) };
 });
 
 describe('executeSearch', () => {
@@ -268,7 +274,37 @@ describe('executeSearch', () => {
       );
     });
 
-    it('does not add alexandria without an API key', async () => {
+    it.each([
+      [undefined, [{ type: 'web' }]],
+      [['news'], [{ type: 'news' }]],
+    ] as const)(
+      'keyless search sends only the requested sources %j',
+      async (sources, sent) => {
+        const savedKey = process.env.FIRECRAWL_API_KEY;
+        delete process.env.FIRECRAWL_API_KEY;
+        try {
+          initializeConfig({ apiKey: '', apiUrl: 'https://api.firecrawl.dev' });
+          vi.mocked(keylessRequest).mockResolvedValueOnce({
+            success: true,
+            data: { web: [] },
+          });
+          const result = await executeSearch({
+            query: 'records',
+            sources: sources ? [...sources] : undefined,
+          });
+          expect(result.success).toBe(true);
+          expect(mockHttpPost).not.toHaveBeenCalled();
+          expect(keylessRequest).toHaveBeenCalledWith(
+            '/v2/search',
+            expect.objectContaining({ sources: sent, domainTools: false })
+          );
+        } finally {
+          if (savedKey !== undefined) process.env.FIRECRAWL_API_KEY = savedKey;
+        }
+      }
+    );
+
+    it('does not add alexandria on a self-hosted URL without an API key', async () => {
       const savedKey = process.env.FIRECRAWL_API_KEY;
       delete process.env.FIRECRAWL_API_KEY;
       try {
