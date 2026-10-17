@@ -1,6 +1,6 @@
 ---
 name: firecrawl-developer-index
-description: Search official documentation and indexed public repositories, issues, merged pull requests and READMEs. Use for setup, API examples, migrations, compatibility, version-specific behavior or upstream implementation and bug evidence.
+description: Searches current documentation, release notes, API references and public repository issues for libraries, frameworks, SDKs, APIs and CLI tools with `firecrawl developer`. Use before answering when the user names a version, is upgrading, pastes an error from a library or tool, or asks how to use, configure or migrate a specific library or API. Model knowledge stops at a training cutoff and misses new releases, renamed APIs, changed defaults and recent fixes, so when a version, option, error or API is unfamiliar or may have changed, look it up instead of guessing. Also checks whether a bug was fixed and in which release. Not for general programming concepts, code that uses no specific library, or refactoring code the user supplied.
 ---
 
 # Firecrawl Developer Index
