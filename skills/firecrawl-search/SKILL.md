@@ -47,7 +47,7 @@ Alexandria is a catalogue of ready-made website workflows, API providers, and sp
 
 ### Inspect before execution
 
-Search defaults to `web,alexandria` with domain-tool matching on. Preserve the user's location, marketplace, and constraints in the query; do not turn normal research into an artificial tool-discovery query. Inspect `data.web` and `data.tools` from the same response.
+With an API key, search always includes Alexandria: it defaults to `web,alexandria` with domain-tool matching on, and `--sources` without `alexandria` (for example `--sources news`) gets it added. Preserve the user's location, marketplace, and constraints in the query; do not turn normal research into an artificial tool-discovery query. Inspect `data.web` and `data.tools` from the same response.
 
 Search returns compact tool matches by default: only `provider`, `capability`, and `description`. A match is not executed data. Select a candidate, then run `firecrawl list <provider> <capability> --pretty` with its provider and capability IDs to read the contract's inputs, coverage, and access requirements.
 
@@ -57,7 +57,7 @@ After inspecting the contract, execute with `firecrawl scrape <provider/capabili
 
 Use `list` for category/provider browsing and selected contracts. For a known website, `find-tools <url>` discovers associated tools without executing them. Run `firecrawl find-tools --help` for advanced catalogue selectors; avoid broad expansion unless the task needs it.
 
-If no returned tool covers the country/market/segment or required inputs, continue with ordinary web results. Do not exhaust the catalogue or pay for adjacent tools just to probe coverage. `--sources web` explicitly opts out of Alexandria; `--sources web --domain-tools` retains domain matches only.
+If no returned tool covers the country/market/segment or required inputs, continue with ordinary web results. Do not exhaust the catalogue or pay for adjacent tools just to probe coverage. `--no-domain-tools` turns off domain matches only; semantic tool matches stay on.
 
 For Alexandria feedback about a provider result or coverage gap (each refunds 1 credit, up to 10 per website and 100 per team each UTC day), see [firecrawl-alexandria](../firecrawl-alexandria/SKILL.md).
 

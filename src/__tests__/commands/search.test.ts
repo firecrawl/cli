@@ -100,6 +100,8 @@ describe('executeSearch', () => {
         limit: 5,
         integration: 'cli',
         toolDetail: 'compact',
+        sources: [{ type: 'web' }, { type: 'alexandria' }],
+        domainTools: true,
       });
       const body = mockHttpPost.mock.calls[0][1];
       expect(body).not.toHaveProperty('objective');
@@ -203,7 +205,12 @@ describe('executeSearch', () => {
         '/v2/search',
         expect.objectContaining({
           query: 'test query',
-          sources: [{ type: 'web' }, { type: 'images' }, { type: 'news' }],
+          sources: [
+            { type: 'web' },
+            { type: 'images' },
+            { type: 'news' },
+            { type: 'alexandria' },
+          ],
         })
       );
     });
@@ -220,9 +227,111 @@ describe('executeSearch', () => {
         '/v2/search',
         expect.objectContaining({
           query: 'tech news',
-          sources: [{ type: 'news' }],
+          sources: [{ type: 'news' }, { type: 'alexandria' }],
         })
       );
+    });
+
+    it.each([
+      [undefined, [{ type: 'web' }, { type: 'alexandria' }], true],
+      [['web'], [{ type: 'web' }, { type: 'alexandria' }], true],
+      [['web', 'alexandria'], [{ type: 'web' }, { type: 'alexandria' }], true],
+      [['alexandria'], [{ type: 'alexandria' }], false],
+    ] as const)(
+      'always includes alexandria once for sources %j',
+      async (sources, sent, domainTools) => {
+        mockHttpPost.mockResolvedValue(mockSearchResponse({ web: [] }));
+        await executeSearch({
+          query: 'records',
+          sources: sources ? [...sources] : undefined,
+        });
+        expect(mockHttpPost).toHaveBeenCalledWith(
+          '/v2/search',
+          expect.objectContaining({ sources: sent, domainTools })
+        );
+      }
+    );
+
+    it('keeps an explicit --no-domain-tools when alexandria is added', async () => {
+      mockHttpPost.mockResolvedValue(mockSearchResponse({ web: [] }));
+      await executeSearch({
+        query: 'records',
+        sources: ['web'],
+        domainTools: false,
+      });
+      expect(mockHttpPost).toHaveBeenCalledWith(
+        '/v2/search',
+        expect.objectContaining({
+          sources: [{ type: 'web' }, { type: 'alexandria' }],
+          domainTools: false,
+        })
+      );
+    });
+
+    it('does not add alexandria without an API key', async () => {
+      const savedKey = process.env.FIRECRAWL_API_KEY;
+      delete process.env.FIRECRAWL_API_KEY;
+      try {
+        initializeConfig({ apiKey: '', apiUrl: 'https://firecrawl.internal' });
+        mockHttpPost.mockResolvedValue(mockSearchResponse({ news: [] }));
+        const result = await executeSearch({
+          query: 'records',
+          sources: ['news'],
+          apiUrl: 'https://firecrawl.internal',
+        });
+        expect(result.success).toBe(true);
+        expect(mockHttpPost).toHaveBeenCalledWith(
+          '/v2/search',
+          expect.objectContaining({
+            sources: [{ type: 'news' }],
+            domainTools: false,
+          })
+        );
+      } finally {
+        if (savedKey !== undefined) process.env.FIRECRAWL_API_KEY = savedKey;
+      }
+    });
+
+    it('retries on the requested sources when added discovery is refused', async () => {
+      mockHttpPost
+        .mockRejectedValueOnce({
+          response: {
+            status: 403,
+            data: {
+              error:
+                'Provider discovery requires access and does not support zero data retention.',
+            },
+          },
+        })
+        .mockResolvedValueOnce(mockSearchResponse({ news: [] }));
+      const result = await executeSearch({
+        query: 'records',
+        sources: ['news'],
+      });
+      expect(result.success).toBe(true);
+      expect(mockHttpPost).toHaveBeenCalledTimes(2);
+      expect(mockHttpPost.mock.calls[1][1]).toMatchObject({
+        sources: [{ type: 'news' }],
+        domainTools: false,
+      });
+    });
+
+    it('does not retry when alexandria was requested explicitly', async () => {
+      mockHttpPost.mockRejectedValue({
+        response: {
+          status: 403,
+          data: {
+            error:
+              'Provider discovery requires access and does not support zero data retention.',
+          },
+        },
+      });
+      const result = await executeSearch({
+        query: 'records',
+        sources: ['web', 'alexandria'],
+      });
+      expect(result.success).toBe(false);
+      expect(mockHttpPost).toHaveBeenCalledTimes(1);
     });
 
     it('should include categories option when provided', async () => {
@@ -460,7 +569,8 @@ describe('executeSearch', () => {
         limit: 20,
         integration: 'cli',
         toolDetail: 'compact',
-        sources: [{ type: 'web' }, { type: 'news' }],
+        sources: [{ type: 'web' }, { type: 'news' }, { type: 'alexandria' }],
+        domainTools: true,
         categories: [{ type: 'developer' }],
         tbs: 'qdr:w',
         location: 'Germany',

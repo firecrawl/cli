@@ -18,7 +18,7 @@ export interface SearchOptions {
   apiUrl?: string;
   /** Maximum number of results (default: 5, max: 100) */
   limit?: number;
-  /** Sources to search: web, images, news, alexandria (CLI default: web,alexandria) */
+  /** Sources to search: web, images, news, alexandria (default: web; alexandria is added when an API key is set) */
   sources?: SearchSource[];
   /** Categories to filter results: research, pdf, developer, gov */
   categories?: SearchCategory[];

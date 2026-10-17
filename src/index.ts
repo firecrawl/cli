@@ -935,7 +935,7 @@ function createSearchCommand(): Command {
     )
     .option(
       '--sources <sources>',
-      'Comma-separated sources: web, images, news, alexandria (default: web,alexandria; --sources web opts out of tools)'
+      'Comma-separated sources: web, images, news, alexandria (default: web; with an API key, alexandria is always added)'
     )
     .option(
       '--categories <categories>',
@@ -1014,9 +1014,9 @@ function createSearchCommand(): Command {
       }
       if (alexandriaOnly) query = toolQuery;
       // Parse sources
-      let sources: SearchSource[] = alexandriaOnly
+      let sources: SearchSource[] | undefined = alexandriaOnly
         ? ['alexandria']
-        : ['web', 'alexandria'];
+        : undefined;
       if (options.sources) {
         sources = options.sources
           .split(',')
@@ -1064,9 +1064,7 @@ function createSearchCommand(): Command {
       const searchOptions = {
         query,
         toolDetail: options.toolDetail,
-        domainTools:
-          options.domainTools ??
-          (!alexandriaOnly && sources.includes('alexandria')),
+        domainTools: options.domainTools,
         limit: options.limit,
         sources,
         categories,
