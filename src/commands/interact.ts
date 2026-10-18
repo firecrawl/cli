@@ -6,6 +6,7 @@
 import { getClient, isKeylessMode, KEYLESS_CLI_HEADERS } from '../utils/client';
 import { getCliOrigin } from '../utils/agent-origin';
 import { getConfig, validateConfig } from '../utils/config';
+import { worldIdHeaders } from '../utils/world-id';
 import {
   getScrapeId,
   loadInteractSession,
@@ -61,7 +62,7 @@ function buildHeaders(apiKey: string | undefined, keyless: boolean) {
   if (!keyless && apiKey) {
     headers.Authorization = `Bearer ${apiKey}`;
   }
-  if (keyless) Object.assign(headers, KEYLESS_CLI_HEADERS);
+  if (keyless) Object.assign(headers, KEYLESS_CLI_HEADERS, worldIdHeaders());
   return { ...headers, ...integrationHeaders() };
 }
 

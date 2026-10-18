@@ -15,6 +15,7 @@ import {
 } from './config';
 import { getCliOrigin } from './agent-origin';
 import { integrationHeaders, withIntegrationHeader } from './integration';
+import { worldIdHeaders } from './world-id';
 
 // SDK versions without an origin option ignore it, so the request origin
 // reaches the API only once the SDK supports it.
@@ -41,7 +42,8 @@ export function isKeylessMode(apiKey?: string, apiUrl?: string): boolean {
  * (GET research and developer lookups, interact stop) carry only this and
  * X-Integration.
  * Keyless error messages are printed as the API sends them: their
- * firecrawl.dev/k/<id> link already resolves to CLI attribution.
+ * firecrawl.dev/k/<id> link already resolves to CLI attribution. A World ID
+ * credential, when present, rides along on every keyless request.
  */
 export const KEYLESS_CLI_HEADERS: Readonly<Record<string, string>> = {
   'X-Origin': 'cli',
@@ -58,6 +60,7 @@ export async function keylessRequest(
       'Content-Type': 'application/json',
       ...KEYLESS_CLI_HEADERS,
       ...integrationHeaders(),
+      ...worldIdHeaders(),
     },
     body: JSON.stringify({ origin: getCliOrigin(), ...body }),
   });
@@ -78,6 +81,7 @@ export async function keylessGet(path: string): Promise<any> {
       'Content-Type': 'application/json',
       ...KEYLESS_CLI_HEADERS,
       ...integrationHeaders(),
+      ...worldIdHeaders(),
     },
   });
   const json: any = await response.json().catch(() => ({}));

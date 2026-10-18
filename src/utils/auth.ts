@@ -31,7 +31,7 @@ const NO_LOGIN_INPUT_MESSAGE =
 /**
  * Open URL in the default browser
  */
-async function openBrowser(url: string): Promise<void> {
+export async function openBrowser(url: string): Promise<void> {
   const { exec } = await import('child_process');
   const platform = process.platform;
 
