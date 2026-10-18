@@ -35,7 +35,8 @@ function stubCommands(root: string, commands: string[]): string {
   const bin = path.join(root, 'bin');
   mkdirSync(bin, { recursive: true });
   for (const command of commands) {
-    writeFileSync(path.join(bin, command), '', { mode: 0o755 });
+    const filename = process.platform === 'win32' ? `${command}.cmd` : command;
+    writeFileSync(path.join(bin, filename), '', { mode: 0o755 });
   }
   return bin;
 }

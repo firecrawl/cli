@@ -319,10 +319,9 @@ describe('init templates', () => {
   });
 
   it('only lists templates that are standalone public repositories', () => {
-    expect(TEMPLATES.length).toBeGreaterThan(0);
-    for (const template of TEMPLATES) {
-      expect(template.repo).toMatch(/^firecrawl\/[\w.-]+$/);
-    }
+    expect(TEMPLATES.map((template) => template.repo)).toEqual([
+      'firecrawl/open-lovable',
+    ]);
     expect(findTemplate('open-lovable')?.repo).toBe('firecrawl/open-lovable');
   });
 

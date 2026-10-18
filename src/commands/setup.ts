@@ -5,10 +5,13 @@
 
 import { execFileSync } from 'child_process';
 import {
+  accessSync,
   chmodSync,
+  constants as fsConstants,
   existsSync,
   mkdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from 'fs';
 import os from 'os';
@@ -161,11 +164,16 @@ function isCommandOnPath(command: string): boolean {
   if (process.platform === 'win32') {
     return resolveWindowsCommand(command, process.env) !== command;
   }
-  return (process.env.PATH ?? '')
-    .split(path.delimiter)
-    .some(
-      (directory) => directory && existsSync(path.join(directory, command))
-    );
+  return (process.env.PATH ?? '').split(path.delimiter).some((directory) => {
+    if (!directory) return false;
+    const candidate = path.join(directory, command);
+    try {
+      accessSync(candidate, fsConstants.X_OK);
+      return statSync(candidate).isFile();
+    } catch {
+      return false;
+    }
+  });
 }
 
 /**
