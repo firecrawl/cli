@@ -30,6 +30,16 @@ const cliSkillFlags = `--skill ${CLI_SKILLS.join(' ')}`;
 const buildSkillFlags = `--skill ${BUILD_SKILLS.join(' ')}`;
 const workflowSkillFlags = `--skill ${WORKFLOW_SKILLS.join(' ')}`;
 
+/** Create a bin directory holding empty stand-ins for the given commands. */
+function stubCommands(root: string, commands: string[]): string {
+  const bin = path.join(root, 'bin');
+  mkdirSync(bin, { recursive: true });
+  for (const command of commands) {
+    writeFileSync(path.join(bin, command), '', { mode: 0o755 });
+  }
+  return bin;
+}
+
 function expectSkillsInstall(command: string) {
   const [bin, ...args] = command.split(' ');
   expect(execFileSync).toHaveBeenCalledWith(
@@ -587,8 +597,10 @@ describe('handleSetupCommand', () => {
   });
   it('uses each client native environment binding with --agent all', async () => {
     const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-all-env-test-'));
+    const originalPath = process.env.PATH;
     process.env.HOME = home;
     process.env.FIRECRAWL_API_KEY = 'fc-test-key';
+    process.env.PATH = stubCommands(home, ['codex', 'openclaw']);
 
     try {
       await handleSetupCommand('mcp', {
@@ -617,6 +629,104 @@ describe('handleSetupCommand', () => {
         readFileSync(path.join(home, '.hermes', 'config.yaml'), 'utf-8')
       ).toContain('Authorization: Bearer ${FIRECRAWL_API_KEY}');
     } finally {
+      process.env.PATH = originalPath;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('skips clients that are not installed with --agent all and still succeeds', async () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-all-skip-'));
+    const originalPath = process.env.PATH;
+    process.env.HOME = home;
+    process.env.PATH = stubCommands(home, []);
+    vi.mocked(getApiKey).mockReturnValue(undefined);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    try {
+      await handleSetupCommand('mcp', {
+        agent: 'all',
+        global: true,
+        yes: true,
+      });
+
+      const commands = vi.mocked(execFileSync).mock.calls.map(([cmd]) => cmd);
+      expect(commands).not.toContain('openclaw');
+      expect(commands.filter((cmd) => cmd === 'npx')).toHaveLength(8);
+      expect(existsSync(path.join(home, '.hermes', 'config.yaml'))).toBe(true);
+      const output = log.mock.calls.flat().join('\n');
+      expect(output).toContain('Skipping OpenClaw: openclaw not found on PATH');
+      expect(output).toMatch(/Configured: .*Gemini CLI.*Hermes Agent/);
+      expect(output).toContain(
+        'Skipped: OpenClaw (openclaw not found on PATH)'
+      );
+    } finally {
+      process.env.PATH = originalPath;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('skips clients without a verified environment binding with --agent all', async () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-all-env-skip-'));
+    const originalPath = process.env.PATH;
+    process.env.HOME = home;
+    process.env.FIRECRAWL_API_KEY = 'fc-test-key';
+    process.env.PATH = stubCommands(home, []);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    try {
+      await handleSetupCommand('mcp', {
+        agent: 'all',
+        global: true,
+        yes: true,
+      });
+
+      const serialized = vi
+        .mocked(execFileSync)
+        .mock.calls.map(([cmd, args]) =>
+          [cmd, ...(args as string[])].join(' ')
+        );
+      expect(serialized.some((call) => call.includes('antigravity'))).toBe(
+        false
+      );
+      expect(serialized.some((call) => call.startsWith('codex '))).toBe(false);
+      const output = log.mock.calls.flat().join('\n');
+      expect(output).toContain('Skipping Codex: codex not found on PATH');
+      expect(output).toContain(
+        'Skipping Antigravity: no verified environment-variable syntax'
+      );
+    } finally {
+      process.env.PATH = originalPath;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps configuring other clients and fails when an installed client fails', async () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-all-fail-'));
+    const originalPath = process.env.PATH;
+    process.env.HOME = home;
+    process.env.PATH = stubCommands(home, ['openclaw']);
+    vi.mocked(getApiKey).mockReturnValue(undefined);
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(execFileSync).mockImplementation((_cmd, args) => {
+      if ((args as string[]).includes('cursor')) {
+        throw new Error('add-mcp failed');
+      }
+      return Buffer.from('');
+    });
+
+    try {
+      await expect(
+        handleSetupCommand('mcp', { agent: 'all', global: true, yes: true })
+      ).rejects.toThrow('Failed to configure Firecrawl MCP for Cursor.');
+
+      const commands = vi.mocked(execFileSync).mock.calls.map(([cmd]) => cmd);
+      expect(commands.filter((cmd) => cmd === 'npx')).toHaveLength(8);
+      expect(commands).toContain('openclaw');
+      expect(existsSync(path.join(home, '.hermes', 'config.yaml'))).toBe(true);
+    } finally {
+      vi.mocked(execFileSync).mockReset();
+      process.env.PATH = originalPath;
       rmSync(home, { recursive: true, force: true });
     }
   });
@@ -666,7 +776,7 @@ describe('handleSetupCommand', () => {
         .mock.calls.filter(([, args]) =>
           (args as string[])?.includes('add-mcp@1.14.0')
         );
-      expect(addMcpCalls).toHaveLength(5);
+      expect(addMcpCalls).toHaveLength(8);
       expect(addMcpCalls.flat(2)).not.toContain('--global');
       expect(
         readFileSync(path.join(home, '.hermes', 'config.yaml'), 'utf-8')

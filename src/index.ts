@@ -2478,10 +2478,7 @@ program
   .description(
     'Set up Firecrawl: install CLI, authenticate, add integrations, and scaffold a template'
   )
-  .argument(
-    '[template]',
-    'Template to scaffold (e.g. browser-nextjs, scrape-express)'
-  )
+  .argument('[template]', 'Template to scaffold (e.g. open-lovable)')
   .option(
     '--all',
     'Explicitly install skills to all detected agents (default unless --agent is used)'

@@ -101,6 +101,13 @@ To install the Firecrawl MCP server into your editors (Cursor, Claude Code, VS C
 firecrawl setup mcp
 ```
 
+Use `--agent <agent>` for one client, or `--agent all --global` to configure
+Claude Code, VS Code, Codex, OpenCode, Cursor, Gemini CLI, Windsurf,
+Antigravity, Hermes Agent, and OpenClaw in one run. Clients that cannot be
+configured on this machine (for example OpenClaw when the `openclaw` command is
+not installed) are skipped and listed in the summary; the command only fails
+when a client it tried to configure fails.
+
 To make Firecrawl the default web provider for supported AI agents:
 
 ```bash
