@@ -53,29 +53,40 @@ export function buildBatchScrapeOptions(
     ...options.scrapeOptions,
   };
 
-  const formats = options.format
+  const baseFormats: unknown[] | undefined = options.format
     ? parseFormats(options.format)
-    : wantsJson
-      ? []
+    : Array.isArray(scrapeOptions.formats)
+      ? scrapeOptions.formats
       : undefined;
+  const formats = baseFormats ?? (wantsJson ? [] : undefined);
   if (formats) {
-    if (wantsJson && !formats.includes('json')) {
-      formats.push('json');
-    }
     if (formats.includes('json') && !wantsJson) {
       throw new Error(
         'The json format requires --schema, --schema-file, or --prompt'
       );
     }
-    scrapeOptions.formats = formats.map((format) =>
-      format === 'json'
-        ? {
-            type: 'json',
-            ...(schema !== undefined ? { schema } : {}),
-            ...(prompt !== undefined ? { prompt } : {}),
-          }
-        : format
-    );
+    if (wantsJson) {
+      const isJson = (format: unknown) =>
+        format === 'json' ||
+        (typeof format === 'object' &&
+          format !== null &&
+          (format as { type?: unknown }).type === 'json');
+      const jsonFormat = {
+        type: 'json',
+        ...(schema !== undefined ? { schema } : {}),
+        ...(prompt !== undefined ? { prompt } : {}),
+      };
+      const jsonIndex = formats.findIndex(isJson);
+      const merged = formats.filter((format) => !isJson(format));
+      merged.splice(
+        jsonIndex === -1 ? merged.length : jsonIndex,
+        0,
+        jsonFormat
+      );
+      scrapeOptions.formats = merged;
+    } else {
+      scrapeOptions.formats = formats;
+    }
   }
 
   if (options.onlyMainContent) {
@@ -99,7 +110,7 @@ export async function executeBatchScrape(
 ): Promise<BatchScrapeResult> {
   try {
     const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
-    const { jobId, urls, timeout } = options;
+    const { jobId, urls = [], timeout } = options;
 
     if ((options.cancel || options.status) && !jobId) {
       return {

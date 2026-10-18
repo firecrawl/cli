@@ -8,7 +8,7 @@ export interface BatchScrapeCommandOptions {
   /** API URL for Firecrawl */
   apiUrl?: string;
   /** URLs to scrape (ignored when jobId is set) */
-  urls: string[];
+  urls?: string[];
   /** Existing batch scrape job ID for status checks or cancellation */
   jobId?: string;
   /** Check status of an existing batch scrape job */

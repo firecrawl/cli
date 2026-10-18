@@ -36,6 +36,8 @@ firecrawl scrape "https://example.com/pricing" --query "What is the enterprise p
 
 Run `firecrawl scrape --help` for the full option list.
 
+**Done when:** the page content or provider result has been checked for errors and inspected in bounded sections to answer the request. Preserve source links and disclose partial results.
+
 ## Structured JSON from a page
 
 Pass a JSON schema with the `json` format to get typed fields instead of markdown:
@@ -69,8 +71,6 @@ firecrawl batch-scrape --urls-file urls.txt --wait \
 ```
 
 Results are in `.data[]`, one document per URL with `metadata.sourceURL`. Add `--webhook <url>` to get notified, `--ignore-invalid-urls` to skip bad entries, and `--cancel` with a job ID to stop a job. Run `firecrawl batch-scrape --help` for all options.
-
-**Done when:** the page content or provider result has been checked for errors and inspected in bounded sections to answer the request. Preserve source links and disclose partial results.
 
 ## Find tools, inspect inputs, and get help
 

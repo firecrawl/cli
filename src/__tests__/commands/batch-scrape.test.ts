@@ -218,6 +218,35 @@ describe('executeBatchScrape', () => {
       ]);
     });
 
+    it('keeps --scrape-options formats when adding the json format', async () => {
+      mockClient.startBatchScrape.mockResolvedValue({ id: JOB_ID, url: 'u' });
+
+      await executeBatchScrape({
+        urls: URLS,
+        schema,
+        scrapeOptions: {
+          formats: ['markdown', { type: 'json', prompt: 'old' }, 'links'],
+        },
+      });
+
+      expect(
+        mockClient.startBatchScrape.mock.calls[0][1].options.formats
+      ).toEqual(['markdown', { type: 'json', schema }, 'links']);
+    });
+
+    it('rejects a json format from --scrape-options without a schema or prompt', async () => {
+      const result = await executeBatchScrape({
+        urls: URLS,
+        scrapeOptions: { formats: ['markdown', 'json'] },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe(
+        'The json format requires --schema, --schema-file, or --prompt'
+      );
+      expect(mockClient.startBatchScrape).not.toHaveBeenCalled();
+    });
+
     it('rejects the json format without a schema or prompt', async () => {
       const result = await executeBatchScrape({ urls: URLS, format: 'json' });
 
@@ -240,7 +269,7 @@ describe('executeBatchScrape', () => {
       };
       mockClient.getBatchScrapeStatus.mockResolvedValue(job);
 
-      const result = await executeBatchScrape({ urls: [], jobId: JOB_ID });
+      const result = await executeBatchScrape({ jobId: JOB_ID });
 
       expect(mockClient.getBatchScrapeStatus).toHaveBeenCalledWith(JOB_ID);
       expect(mockClient.startBatchScrape).not.toHaveBeenCalled();
@@ -263,7 +292,7 @@ describe('executeBatchScrape', () => {
         new Error('Job not found')
       );
 
-      const result = await executeBatchScrape({ urls: [], jobId: JOB_ID });
+      const result = await executeBatchScrape({ jobId: JOB_ID });
 
       expect(result).toEqual({ success: false, error: 'Job not found' });
     });
@@ -326,6 +355,35 @@ describe('executeBatchScrape', () => {
       );
       stderr.mockRestore();
     });
+
+    it('times out the progress loop with a hint naming the job ID', async () => {
+      const stderr = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation(() => true);
+      const now = vi.spyOn(Date, 'now');
+      now.mockReturnValueOnce(0).mockReturnValue(2000);
+      mockClient.startBatchScrape.mockResolvedValue({ id: JOB_ID, url: 'u' });
+      mockClient.getBatchScrapeStatus.mockResolvedValue({
+        ...job,
+        status: 'scraping',
+        completed: 1,
+      });
+
+      const result = await executeBatchScrape({
+        urls: URLS,
+        wait: true,
+        progress: true,
+        pollInterval: 0.001,
+        timeout: 1,
+      });
+
+      expect(mockClient.getBatchScrapeStatus).toHaveBeenCalledTimes(1);
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Timeout after 1 seconds');
+      expect(result.error).toContain(`firecrawl batch-scrape ${JOB_ID}`);
+      now.mockRestore();
+      stderr.mockRestore();
+    });
   });
 
   describe('cancel', () => {
@@ -333,7 +391,6 @@ describe('executeBatchScrape', () => {
       mockClient.cancelBatchScrape.mockResolvedValue(true);
 
       const result = await executeBatchScrape({
-        urls: [],
         jobId: JOB_ID,
         cancel: true,
       });
@@ -350,7 +407,6 @@ describe('executeBatchScrape', () => {
       mockClient.cancelBatchScrape.mockResolvedValue(false);
 
       const result = await executeBatchScrape({
-        urls: [],
         jobId: JOB_ID,
         cancel: true,
       });
