@@ -3,10 +3,9 @@
  * Execute AI prompts or code against a scraped page in a live browser session
  */
 
-import { getClient, isKeylessMode, KEYLESS_CLI_HEADERS } from '../utils/client';
+import { getClient, isKeylessMode, keylessHeaders } from '../utils/client';
 import { getCliOrigin } from '../utils/agent-origin';
 import { getConfig, validateConfig } from '../utils/config';
-import { worldIdHeaders } from '../utils/world-id';
 import {
   getScrapeId,
   loadInteractSession,
@@ -62,7 +61,7 @@ function buildHeaders(apiKey: string | undefined, keyless: boolean) {
   if (!keyless && apiKey) {
     headers.Authorization = `Bearer ${apiKey}`;
   }
-  if (keyless) Object.assign(headers, KEYLESS_CLI_HEADERS, worldIdHeaders());
+  if (keyless) Object.assign(headers, keylessHeaders());
   return { ...headers, ...integrationHeaders() };
 }
 

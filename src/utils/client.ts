@@ -49,6 +49,11 @@ export const KEYLESS_CLI_HEADERS: Readonly<Record<string, string>> = {
   'X-Origin': 'cli',
 };
 
+/** Headers every keyless request sends: the CLI origin and any World ID credential. */
+export function keylessHeaders(): Record<string, string> {
+  return { ...KEYLESS_CLI_HEADERS, ...worldIdHeaders() };
+}
+
 export async function keylessRequest(
   path: string,
   body: Record<string, unknown>
@@ -58,9 +63,8 @@ export async function keylessRequest(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...KEYLESS_CLI_HEADERS,
+      ...keylessHeaders(),
       ...integrationHeaders(),
-      ...worldIdHeaders(),
     },
     body: JSON.stringify({ origin: getCliOrigin(), ...body }),
   });
@@ -79,9 +83,8 @@ export async function keylessGet(path: string): Promise<any> {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
-      ...KEYLESS_CLI_HEADERS,
+      ...keylessHeaders(),
       ...integrationHeaders(),
-      ...worldIdHeaders(),
     },
   });
   const json: any = await response.json().catch(() => ({}));
