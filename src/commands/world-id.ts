@@ -19,6 +19,7 @@ import {
 } from '../utils/world-id';
 
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
+const REQUEST_TIMEOUT_MS = 15_000;
 
 export const WORLD_ID_UNAVAILABLE_MESSAGE =
   'World ID verification is not enabled on this Firecrawl API.';
@@ -51,6 +52,7 @@ async function post(
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...KEYLESS_CLI_HEADERS },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   const json: any = await response.json().catch(() => ({}));
   const retryAfter = Number(response.headers.get('retry-after'));
@@ -116,10 +118,18 @@ export async function verifyWorldId(
 
   while (now() < deadline) {
     await sleep(intervalSeconds * 1000);
-    const poll = await post('/v2/keyless/world-id/token', {
-      device_handle: device.device_handle,
-    });
+    let poll: Awaited<ReturnType<typeof post>>;
+    try {
+      poll = await post('/v2/keyless/world-id/token', {
+        device_handle: device.device_handle,
+      });
+    } catch {
+      continue;
+    }
     if (poll.status === 200 && typeof poll.json?.credential === 'string') {
+      if (!Number.isFinite(Date.parse(poll.json.expires_at))) {
+        throw new Error('World ID verification returned no valid expiry time.');
+      }
       const stored = {
         credential: poll.json.credential,
         expiresAt: poll.json.expires_at,

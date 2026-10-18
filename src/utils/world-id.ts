@@ -43,6 +43,7 @@ export function saveWorldIdCredential(stored: StoredWorldIdCredential): void {
     encoding: 'utf-8',
     mode: 0o600,
   });
+  fs.chmodSync(worldIdPath(), 0o600);
 }
 
 export function clearWorldIdCredential(): boolean {

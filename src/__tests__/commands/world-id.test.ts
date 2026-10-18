@@ -95,6 +95,43 @@ describe('firecrawl world-id', () => {
     expect(headers.Authorization).toBeUndefined();
   });
 
+  it('keeps polling through a transport error', async () => {
+    const responses: Array<[number, unknown] | Error> = [
+      [200, START],
+      new TypeError('fetch failed'),
+      [
+        200,
+        {
+          success: true,
+          credential: CREDENTIAL,
+          expires_at: '2099-01-01T00:00:00.000Z',
+        },
+      ],
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        const next = responses.shift()!;
+        if (next instanceof Error) throw next;
+        return new Response(JSON.stringify(next[1]), { status: next[0] });
+      })
+    );
+
+    await expect(verifyWorldId(quiet)).resolves.toMatchObject({
+      credential: CREDENTIAL,
+    });
+  });
+
+  it('refuses a credential without a valid expiry', async () => {
+    stubResponses(
+      [200, START],
+      [200, { success: true, credential: CREDENTIAL }]
+    );
+
+    await expect(verifyWorldId(quiet)).rejects.toThrow('no valid expiry');
+    expect(loadWorldIdCredential()).toBeNull();
+  });
+
   it('says so when the API has World ID turned off', async () => {
     stubResponses([404, { success: false, error: 'Not found' }]);
 
@@ -190,6 +227,9 @@ describe('firecrawl world-id', () => {
   });
 
   it('stores the credential readable by the owner only', () => {
+    fs.writeFileSync(path.join(configDir, 'world-id.json'), '{}', {
+      mode: 0o644,
+    });
     saveWorldIdCredential({
       credential: CREDENTIAL,
       expiresAt: '2099-01-01T00:00:00.000Z',

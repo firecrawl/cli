@@ -31,23 +31,20 @@ const NO_LOGIN_INPUT_MESSAGE =
  * Open URL in the default browser
  */
 export async function openBrowser(url: string): Promise<void> {
-  const { exec } = await import('child_process');
-  const platform = process.platform;
-
-  let command: string;
-  switch (platform) {
-    case 'darwin':
-      command = `open "${url}"`;
-      break;
-    case 'win32':
-      command = `start "" "${url}"`;
-      break;
-    default:
-      command = `xdg-open "${url}"`;
+  const { protocol } = new URL(url);
+  if (protocol !== 'https:' && protocol !== 'http:') {
+    throw new Error(`Refusing to open a non-web URL: ${url}`);
   }
+  const { execFile } = await import('child_process');
+  const [command, args] =
+    process.platform === 'darwin'
+      ? ['open', [url]]
+      : process.platform === 'win32'
+        ? ['rundll32', ['url.dll,FileProtocolHandler', url]]
+        : ['xdg-open', [url]];
 
   return new Promise((resolve, reject) => {
-    exec(command, (error: Error | null) => {
+    execFile(command, args, (error: Error | null) => {
       if (error) {
         reject(error);
       } else {
