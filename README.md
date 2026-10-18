@@ -1,6 +1,6 @@
 # 🔥 Firecrawl CLI
 
-Command-line interface for Firecrawl. Search, scrape, interact, crawl, map, search research papers, developer sources, and government sources, and run agent jobs directly from your terminal.
+Command-line interface for Firecrawl, the context API for AI agents. Search, scrape, parse, crawl, map, and interact with the web, search research papers, developer sources, and government sources, and run agent jobs directly from your terminal.
 
 ## Installation
 
