@@ -67,6 +67,7 @@ export const BUILD_SKILLS = [
 /** Workflow skills, authored in firecrawl/firecrawl-workflows and mirrored into the catalog. */
 export const WORKFLOW_SKILLS = [
   'firecrawl-workflows',
+  'firecrawl-business-contacts',
   'firecrawl-company-directories',
   'firecrawl-competitive-intel',
   'firecrawl-dashboard-reporting',

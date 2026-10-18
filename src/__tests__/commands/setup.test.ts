@@ -211,16 +211,19 @@ describe('handleSetupCommand', () => {
     );
   });
 
-  it.each(['fantasy-sports', 'job-postings', 'lead-gen', 'lead-research'])(
-    'installs the %s workflow by name',
-    async (name) => {
-      await handleSetupCommand(name, { agent: 'codex', yes: true });
+  it.each([
+    'business-contacts',
+    'fantasy-sports',
+    'job-postings',
+    'lead-gen',
+    'lead-research',
+  ])('installs the %s workflow by name', async (name) => {
+    await handleSetupCommand(name, { agent: 'codex', yes: true });
 
-      expectSkillsInstall(
-        `npx -y skills add firecrawl/skills --full-depth --global --yes --agent codex --skill firecrawl-${name}`
-      );
-    }
-  );
+    expectSkillsInstall(
+      `npx -y skills add firecrawl/skills --full-depth --global --yes --agent codex --skill firecrawl-${name}`
+    );
+  });
 
   it('installs all skill repos for Codex non-interactively', async () => {
     await installSkillsForAgent(
