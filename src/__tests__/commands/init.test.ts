@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync, execSync } from 'child_process';
+import { EventEmitter } from 'events';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { PassThrough } from 'stream';
 import * as skillsNative from '../../commands/skills-native';
 import {
   findTemplate,
@@ -23,6 +25,13 @@ const { installMcpMock, getApiKeyMock, confirmMock, checkboxMock } = vi.hoisted(
     checkboxMock: vi.fn(),
   })
 );
+
+const { httpsGetMock } = vi.hoisted(() => ({ httpsGetMock: vi.fn() }));
+
+vi.mock('https', () => ({
+  default: { get: httpsGetMock },
+  get: httpsGetMock,
+}));
 
 vi.mock('child_process', () => ({
   execFileSync: vi.fn(),
@@ -381,6 +390,33 @@ describe('init templates', () => {
       })
     );
     expect(fs.existsSync(path.join(tmp, 'package.json'))).toBe(true);
+    expect(
+      fs.readdirSync(tmp).filter((entry) => entry.startsWith('.firecrawl-'))
+    ).toEqual([]);
+  });
+
+  it('exits non-zero and leaves no temp files when clone and tarball both fail', async () => {
+    vi.mocked(execFileSync).mockImplementation(() => {
+      throw new Error('git clone failed');
+    });
+    httpsGetMock.mockImplementation((_url, _options, callback) => {
+      const res = Object.assign(new PassThrough(), {
+        statusCode: 404,
+        headers: {},
+      });
+      queueMicrotask(() => callback(res));
+      return Object.assign(new EventEmitter(), { destroy: vi.fn() });
+    });
+    vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+
+    await expect(scaffoldTemplate('open-lovable')).rejects.toThrow('exit');
+
+    expect(process.exit).toHaveBeenCalledWith(1);
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining('GitHub API returned 404')
+    );
     expect(
       fs.readdirSync(tmp).filter((entry) => entry.startsWith('.firecrawl-'))
     ).toEqual([]);

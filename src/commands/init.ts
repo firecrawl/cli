@@ -780,22 +780,33 @@ async function downloadFromRepo(repo: string): Promise<void> {
 
   try {
     await new Promise<void>((resolve, reject) => {
+      let req: import('http').ClientRequest | undefined;
+      let fileStream: import('fs').WriteStream | undefined;
+      const fail = (error: Error) => {
+        clearTimeout(deadline);
+        req?.destroy();
+        fileStream?.destroy();
+        reject(error);
+      };
+      const deadline = setTimeout(
+        () => fail(new Error('Timed out downloading template')),
+        TEMPLATE_DOWNLOAD_TIMEOUT_MS
+      );
       const request = (url: string, redirects = 0) => {
-        const req = https.get(
+        req = https.get(
           url,
           {
             headers: {
               'User-Agent': 'firecrawl-cli',
               Accept: 'application/vnd.github+json',
             },
-            timeout: TEMPLATE_DOWNLOAD_TIMEOUT_MS,
           },
           (res) => {
             const status = res.statusCode ?? 0;
             if (status >= 300 && status < 400 && res.headers.location) {
               res.resume();
               if (redirects >= 5) {
-                reject(new Error('Too many redirects downloading template'));
+                fail(new Error('Too many redirects downloading template'));
                 return;
               }
               request(res.headers.location, redirects + 1);
@@ -803,20 +814,20 @@ async function downloadFromRepo(repo: string): Promise<void> {
             }
             if (status !== 200) {
               res.resume();
-              reject(new Error(`GitHub API returned ${status}`));
+              fail(new Error(`GitHub API returned ${status}`));
               return;
             }
-            const fileStream = fs.createWriteStream(tmpTar);
-            fileStream.on('error', reject);
-            res.on('error', reject);
-            fileStream.on('finish', () => resolve());
+            fileStream = fs.createWriteStream(tmpTar);
+            fileStream.on('error', fail);
+            res.on('error', fail);
+            fileStream.on('finish', () => {
+              clearTimeout(deadline);
+              resolve();
+            });
             res.pipe(fileStream);
           }
         );
-        req.on('timeout', () =>
-          req.destroy(new Error('Timed out downloading template'))
-        );
-        req.on('error', reject);
+        req.on('error', fail);
       };
       request(`https://api.github.com/repos/${repo}/tarball`);
     });

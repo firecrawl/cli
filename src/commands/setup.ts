@@ -754,13 +754,15 @@ async function installAllMcpLaunchers(
     }
   }
 
-  console.log('Firecrawl MCP setup summary:');
-  console.log(`  Configured: ${configured.join(', ') || 'none'}`);
-  if (skipped.length > 0) {
-    console.log(`  Skipped (not installed): ${skipped.join(', ')}`);
+  if (!options.quiet) {
+    console.log('Firecrawl MCP setup summary:');
+    console.log(`  Configured: ${configured.join(', ') || 'none'}`);
+    if (skipped.length > 0) {
+      console.log(`  Skipped (not installed): ${skipped.join(', ')}`);
+    }
+    if (failed.length > 0) console.log(`  Failed: ${failed.join(', ')}`);
   }
   if (failed.length > 0) {
-    console.log(`  Failed: ${failed.join(', ')}`);
     throw new Error(
       `Failed to configure Firecrawl MCP for ${failed.join(', ')}.`
     );
