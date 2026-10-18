@@ -676,6 +676,89 @@ describe('handleSetupCommand', () => {
     }
   });
 
+  it('skips clients that are not installed with --agent all and still configures the rest', async () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-all-skip-'));
+    process.env.HOME = home;
+    vi.mocked(getApiKey).mockReturnValue(undefined);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.mocked(execFileSync).mockImplementation((command) => {
+      if (command === 'openclaw') {
+        throw Object.assign(new Error('spawnSync openclaw ENOENT'), {
+          code: 'ENOENT',
+        });
+      }
+      return Buffer.from('');
+    });
+
+    try {
+      await handleSetupCommand('mcp', {
+        agent: 'all',
+        global: true,
+        yes: true,
+      });
+
+      const output = log.mock.calls.flat().join('\n');
+      expect(output).toContain('Skipped OpenClaw: not installed');
+      expect(output).toContain(
+        'Configured: Claude Code, VS Code, Codex, OpenCode, Cursor, Hermes Agent'
+      );
+      expect(output).toContain('Skipped (not installed): OpenClaw');
+      expect(output).not.toContain('Failed:');
+      expect(existsSync(path.join(home, '.hermes', 'config.yaml'))).toBe(true);
+    } finally {
+      vi.mocked(execFileSync).mockReset();
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps configuring the remaining clients when one fails with --agent all', async () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-all-fail-'));
+    process.env.HOME = home;
+    vi.mocked(getApiKey).mockReturnValue(undefined);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(execFileSync).mockImplementation((command, args) => {
+      if (command === 'npx' && (args as string[]).includes('cursor')) {
+        throw new Error('add-mcp exited with code 1');
+      }
+      return Buffer.from('');
+    });
+
+    try {
+      await expect(
+        handleSetupCommand('mcp', { agent: 'all', global: true, yes: true })
+      ).rejects.toThrow('Failed to configure Firecrawl MCP for Cursor.');
+
+      expect(execFileSync).toHaveBeenCalledWith(
+        'openclaw',
+        expect.any(Array),
+        expect.any(Object)
+      );
+      const output = log.mock.calls.flat().join('\n');
+      expect(output).toContain(
+        'Configured: Claude Code, VS Code, Codex, OpenCode, Hermes Agent, OpenClaw'
+      );
+      expect(output).toContain('Failed: Cursor');
+    } finally {
+      vi.mocked(execFileSync).mockReset();
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('still fails an explicit OpenClaw setup when OpenClaw is not installed', async () => {
+    vi.mocked(execFileSync).mockImplementationOnce(() => {
+      throw Object.assign(new Error('spawnSync openclaw ENOENT'), {
+        code: 'ENOENT',
+      });
+    });
+
+    await expect(
+      installMcp({ agent: 'openclaw', keyless: true })
+    ).rejects.toThrow(
+      'Failed to configure Firecrawl MCP for OpenClaw. Verify that OpenClaw is installed and available on PATH.'
+    );
+  });
+
   it('requires a client selection for no-agent environment-backed setup', async () => {
     process.env.FIRECRAWL_API_KEY = 'fc-test-key';
 

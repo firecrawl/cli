@@ -52,69 +52,32 @@ const dim = '\x1b[2m';
 const bold = '\x1b[1m';
 const green = '\x1b[32m';
 
-const TEMPLATES_REPO = 'firecrawl/cli-templates';
-
 interface TemplateEntry {
   name: string;
   description: string;
-  path: string; // subdirectory within the templates repo
+  /** GitHub repository (owner/name) cloned as the template. */
+  repo: string;
 }
 
 export const TEMPLATES: TemplateEntry[] = [
-  // Scraping
-  {
-    name: 'Scrape / Basic',
-    description: 'Simple scrape + crawl scripts',
-    path: 'scrape-basic',
-  },
-  {
-    name: 'Scrape / Express',
-    description: 'Express server with scrape, crawl, and search endpoints',
-    path: 'scrape-express',
-  },
   {
     name: 'Scrape / Next.js',
-    description: 'Next.js app with server actions for scraping',
-    path: 'scrape-nextjs',
-  },
-
-  // Browser
-  {
-    name: 'Browser / Basic',
-    description: 'Playwright and Puppeteer CDP scripts with Firecrawl browser',
-    path: 'browser-basic',
-  },
-  {
-    name: 'Browser / Express',
-    description: 'Express server with browser automation endpoints',
-    path: 'browser-express',
-  },
-  {
-    name: 'Browser / AI SDK',
     description:
-      'Next.js browser co-pilot with Vercel AI SDK and live session UI',
-    path: '_external:firecrawl/browser-ai-sdk',
+      'Next.js app that scrapes a URL with Firecrawl and renders the markdown',
+    repo: 'firecrawl/firecrawl-nextjs-template',
   },
-
-  // AI Frameworks
-  {
-    name: 'AI / Vercel AI SDK',
-    description: 'Firecrawl tools with Vercel AI SDK',
-    path: 'ai-vercel',
-  },
-  {
-    name: 'AI / LangChain',
-    description: 'Firecrawl tools with LangChain agents',
-    path: 'ai-langchain',
-  },
-
-  // Full apps
   {
     name: 'Open Lovable',
     description: 'Clone and recreate any website as a modern React app',
-    path: '_external:firecrawl/open-lovable',
+    repo: 'firecrawl/open-lovable',
   },
 ];
+
+const TEMPLATE_DOWNLOAD_TIMEOUT_MS = 120_000;
+
+function templateKey(template: TemplateEntry): string {
+  return template.repo.split('/').pop() ?? template.repo;
+}
 
 /**
  * Init selections extend the shared catalog selections with a retry hint.
@@ -776,113 +739,108 @@ function copyTemplateFiles(
   }
 }
 
-async function downloadFromRepo(
-  repo: string,
-  subdir: string | null
-): Promise<void> {
+async function downloadFromRepo(repo: string): Promise<void> {
   const fs = await import('fs');
   const path = await import('path');
-  const { execSync: exec } = await import('child_process');
+  const { execFileSync } = await import('child_process');
   const targetDir = process.cwd();
   const tmpDir = path.join(targetDir, `.firecrawl-template-${Date.now()}`);
 
-  // Try sparse checkout for subdirectory, full clone for whole repo
   try {
-    if (subdir) {
-      fs.mkdirSync(tmpDir, { recursive: true });
-      exec(
-        `git clone --depth 1 --filter=blob:none --sparse https://github.com/${repo}.git "${tmpDir}"`,
-        { stdio: 'pipe' }
-      );
-      exec(`git -C "${tmpDir}" sparse-checkout set "${subdir}"`, {
+    execFileSync(
+      'git',
+      ['clone', '--depth', '1', `https://github.com/${repo}.git`, tmpDir],
+      {
         stdio: 'pipe',
-      });
-      const srcDir = path.join(tmpDir, subdir);
-      if (!fs.existsSync(srcDir)) {
-        throw new Error(`Template directory "${subdir}" not found in ${repo}`);
+        timeout: TEMPLATE_DOWNLOAD_TIMEOUT_MS,
+        env: {
+          ...process.env,
+          GIT_TERMINAL_PROMPT: '0',
+          GCM_INTERACTIVE: 'never',
+        },
       }
-      copyTemplateFiles(srcDir, targetDir, fs, path);
-    } else {
-      exec(`git clone --depth 1 https://github.com/${repo}.git "${tmpDir}"`, {
-        stdio: 'pipe',
-      });
-      copyTemplateFiles(tmpDir, targetDir, fs, path);
-    }
-
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    );
+    copyTemplateFiles(tmpDir, targetDir, fs, path);
     return;
-  } catch (gitError) {
-    // Clean up failed git attempt
-    if (fs.existsSync(tmpDir)) {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
+  } catch {
+    // Fall back to the tarball below.
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 
-  // Fallback: download tarball and extract
   const https = await import('https');
-  const tarballUrl = `https://api.github.com/repos/${repo}/tarball`;
+  const tmpTar = path.join(
+    targetDir,
+    `.firecrawl-template-${Date.now()}.tar.gz`
+  );
+  const extractDir = path.join(
+    targetDir,
+    `.firecrawl-template-extract-${Date.now()}`
+  );
 
-  await new Promise<void>((resolve, reject) => {
-    const request = (url: string) => {
-      https.get(
-        url,
-        {
-          headers: {
-            'User-Agent': 'firecrawl-cli',
-            Accept: 'application/vnd.github+json',
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const request = (url: string, redirects = 0) => {
+        const req = https.get(
+          url,
+          {
+            headers: {
+              'User-Agent': 'firecrawl-cli',
+              Accept: 'application/vnd.github+json',
+            },
+            timeout: TEMPLATE_DOWNLOAD_TIMEOUT_MS,
           },
-        },
-        (res) => {
-          if (res.statusCode === 302 && res.headers.location) {
-            request(res.headers.location);
-            return;
-          }
-          if (res.statusCode !== 200) {
-            reject(new Error(`GitHub API returned ${res.statusCode}`));
-            return;
-          }
-
-          const tmpTar = path.join(
-            targetDir,
-            `.firecrawl-template-${Date.now()}.tar.gz`
-          );
-          const fileStream = fs.createWriteStream(tmpTar);
-          res.pipe(fileStream);
-          fileStream.on('finish', () => {
-            fileStream.close();
-            try {
-              const extractDir = path.join(
-                targetDir,
-                `.firecrawl-template-extract-${Date.now()}`
-              );
-              fs.mkdirSync(extractDir, { recursive: true });
-              exec(
-                `tar -xzf "${tmpTar}" -C "${extractDir}" --strip-components=1`,
-                { stdio: 'pipe' }
-              );
-
-              const srcDir = subdir
-                ? path.join(extractDir, subdir)
-                : extractDir;
-              if (!fs.existsSync(srcDir)) {
-                throw new Error(
-                  `Template directory "${subdir}" not found in tarball`
-                );
+          (res) => {
+            const status = res.statusCode ?? 0;
+            if (status >= 300 && status < 400 && res.headers.location) {
+              res.resume();
+              if (redirects >= 5) {
+                reject(new Error('Too many redirects downloading template'));
+                return;
               }
-              copyTemplateFiles(srcDir, targetDir, fs, path);
-
-              fs.rmSync(tmpTar, { force: true });
-              fs.rmSync(extractDir, { recursive: true, force: true });
-              resolve();
-            } catch (err) {
-              reject(err);
+              request(res.headers.location, redirects + 1);
+              return;
             }
-          });
-        }
-      );
-    };
-    request(tarballUrl);
-  });
+            if (status !== 200) {
+              res.resume();
+              reject(new Error(`GitHub API returned ${status}`));
+              return;
+            }
+            const fileStream = fs.createWriteStream(tmpTar);
+            fileStream.on('error', reject);
+            res.on('error', reject);
+            fileStream.on('finish', () => resolve());
+            res.pipe(fileStream);
+          }
+        );
+        req.on('timeout', () =>
+          req.destroy(new Error('Timed out downloading template'))
+        );
+        req.on('error', reject);
+      };
+      request(`https://api.github.com/repos/${repo}/tarball`);
+    });
+
+    fs.mkdirSync(extractDir, { recursive: true });
+    execFileSync(
+      'tar',
+      ['-xzf', tmpTar, '-C', extractDir, '--strip-components=1'],
+      { stdio: 'pipe' }
+    );
+    copyTemplateFiles(extractDir, targetDir, fs, path);
+  } finally {
+    fs.rmSync(tmpTar, { force: true });
+    fs.rmSync(extractDir, { recursive: true, force: true });
+  }
+}
+
+function printTemplateDownloadError(repo: string, error: unknown): void {
+  console.error(`\n  ${bold}Could not download template.${reset}`);
+  console.error(
+    `  ${dim}${error instanceof Error ? error.message : 'Unknown error'}${reset}\n`
+  );
+  console.log(`  Clone it manually:\n`);
+  console.log(`    git clone https://github.com/${repo}.git\n`);
 }
 
 async function stepTemplate(): Promise<void> {
@@ -903,37 +861,21 @@ async function stepTemplate(): Promise<void> {
     })),
   });
 
-  const isExternal = template.path.startsWith('_external:');
-  const repo = isExternal
-    ? template.path.replace('_external:', '')
-    : TEMPLATES_REPO;
-  const subdir = isExternal ? null : template.path;
-
   console.log(`\n  Downloading ${bold}${template.name}${reset}...`);
-  console.log(
-    `  ${dim}github.com/${repo}${subdir ? '/' + subdir : ''}${reset}\n`
-  );
+  console.log(`  ${dim}github.com/${template.repo}${reset}\n`);
   try {
-    await downloadFromRepo(repo, subdir);
+    await downloadFromRepo(template.repo);
     console.log(`\n  ${green}✓${reset} Template ready\n`);
   } catch (error) {
-    console.error(`\n  ${bold}Could not download template.${reset}`);
-    console.error(
-      `  ${dim}${error instanceof Error ? error.message : 'Unknown error'}${reset}\n`
-    );
-    console.log(`  Clone it manually:\n`);
-    console.log(
-      `    git clone https://github.com/${repo}.git${subdir ? ' && cp -r ' + repo.split('/')[1] + '/' + subdir + '/* .' : ''}\n`
-    );
+    printTemplateDownloadError(template.repo, error);
   }
 }
 
 export function findTemplate(name: string): TemplateEntry | undefined {
   const lower = name.toLowerCase();
-  return TEMPLATES.find((t) => {
-    const path = t.path.replace('_external:', '').split('/').pop() ?? '';
-    return path === lower || t.name.toLowerCase() === lower;
-  });
+  return TEMPLATES.find(
+    (t) => templateKey(t) === lower || t.name.toLowerCase() === lower
+  );
 }
 
 export async function scaffoldTemplate(templatePath: string): Promise<void> {
@@ -942,38 +884,24 @@ export async function scaffoldTemplate(templatePath: string): Promise<void> {
     console.error(`\n  Unknown template: ${bold}${templatePath}${reset}\n`);
     console.log(`  Available templates:\n`);
     for (const t of TEMPLATES) {
-      const key = t.path.replace('_external:', '').split('/').pop() ?? '';
-      console.log(`    ${bold}${key}${reset}  ${dim}${t.description}${reset}`);
+      console.log(
+        `    ${bold}${templateKey(t)}${reset}  ${dim}${t.description}${reset}`
+      );
     }
     console.log('');
     process.exit(1);
   }
 
-  const isExternal = template.path.startsWith('_external:');
-  const repo = isExternal
-    ? template.path.replace('_external:', '')
-    : TEMPLATES_REPO;
-  const subdir = isExternal ? null : template.path;
-
   console.log('');
   console.log(
     `  ${orange}🔥 ${bold}firecrawl${reset} ${dim}${template.name}${reset}`
   );
-  console.log(
-    `  ${dim}github.com/${repo}${subdir ? '/' + subdir : ''}${reset}\n`
-  );
+  console.log(`  ${dim}github.com/${template.repo}${reset}\n`);
   try {
-    await downloadFromRepo(repo, subdir);
+    await downloadFromRepo(template.repo);
     console.log(`\n  ${green}✓${reset} Template ready\n`);
   } catch (error) {
-    console.error(`\n  ${bold}Could not download template.${reset}`);
-    console.error(
-      `  ${dim}${error instanceof Error ? error.message : 'Unknown error'}${reset}\n`
-    );
-    console.log(`  Clone it manually:\n`);
-    console.log(
-      `    git clone https://github.com/${repo}.git${subdir ? ' && cp -r ' + repo.split('/')[1] + '/' + subdir + '/* .' : ''}\n`
-    );
+    printTemplateDownloadError(template.repo, error);
     process.exit(1);
   }
 }

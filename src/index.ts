@@ -2480,7 +2480,7 @@ program
   )
   .argument(
     '[template]',
-    'Template to scaffold (e.g. browser-nextjs, scrape-express)'
+    'Template to scaffold (e.g. firecrawl-nextjs-template, open-lovable)'
   )
   .option(
     '--all',

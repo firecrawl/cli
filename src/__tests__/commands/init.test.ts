@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import * as skillsNative from '../../commands/skills-native';
-import { handleInitCommand } from '../../commands/init';
+import {
+  findTemplate,
+  handleInitCommand,
+  scaffoldTemplate,
+  TEMPLATES,
+} from '../../commands/init';
 import { CLI_SKILLS, WORKFLOW_SKILLS } from '../../commands/skills-install';
 
 const cliSkillFlags = `--skill ${CLI_SKILLS.join(' ')}`;
@@ -17,6 +25,7 @@ const { installMcpMock, getApiKeyMock, confirmMock, checkboxMock } = vi.hoisted(
 );
 
 vi.mock('child_process', () => ({
+  execFileSync: vi.fn(),
   execSync: vi.fn(),
 }));
 
@@ -300,4 +309,80 @@ describe('init global installation', () => {
       );
     }
   );
+});
+
+describe('init templates', () => {
+  let cwd: string;
+  let tmp: string;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    cwd = process.cwd();
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'firecrawl-init-template-'));
+    process.chdir(tmp);
+  });
+
+  afterEach(() => {
+    process.chdir(cwd);
+    fs.rmSync(tmp, { recursive: true, force: true });
+    vi.mocked(execFileSync).mockReset();
+    vi.restoreAllMocks();
+  });
+
+  it('offers only standalone template repositories', () => {
+    expect(TEMPLATES.map((t) => t.repo)).toEqual([
+      'firecrawl/firecrawl-nextjs-template',
+      'firecrawl/open-lovable',
+    ]);
+    expect(findTemplate('firecrawl-nextjs-template')?.repo).toBe(
+      'firecrawl/firecrawl-nextjs-template'
+    );
+    expect(findTemplate('scrape-express')).toBeUndefined();
+  });
+
+  it('lists the available templates for an unknown name', async () => {
+    vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+
+    await expect(scaffoldTemplate('not-a-template')).rejects.toThrow('exit');
+
+    const lines = vi
+      .mocked(console.log)
+      .mock.calls.flat()
+      .map((line) => String(line).replace(/\x1b\[[0-9;]*m/g, ''));
+    expect(lines).toContain(
+      '    open-lovable  Clone and recreate any website as a modern React app'
+    );
+    expect(process.exit).toHaveBeenCalledWith(1);
+  });
+
+  it('clones the template without interactive git prompts and with a timeout', async () => {
+    vi.mocked(execFileSync).mockImplementation((_command, args) => {
+      const dest = (args as string[]).at(-1)!;
+      fs.mkdirSync(dest, { recursive: true });
+      fs.writeFileSync(path.join(dest, 'package.json'), '{}');
+      return Buffer.from('');
+    });
+
+    await scaffoldTemplate('open-lovable');
+
+    expect(execFileSync).toHaveBeenCalledWith(
+      'git',
+      expect.arrayContaining([
+        'clone',
+        'https://github.com/firecrawl/open-lovable.git',
+      ]),
+      expect.objectContaining({
+        timeout: expect.any(Number),
+        env: expect.objectContaining({ GIT_TERMINAL_PROMPT: '0' }),
+      })
+    );
+    expect(fs.existsSync(path.join(tmp, 'package.json'))).toBe(true);
+    expect(
+      fs.readdirSync(tmp).filter((entry) => entry.startsWith('.firecrawl-'))
+    ).toEqual([]);
+  });
 });

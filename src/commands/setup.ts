@@ -87,6 +87,22 @@ const ADD_MCP_LAUNCH_AGENTS = [
   'cursor',
 ] as const;
 
+const MCP_AGENT_LABELS: Record<(typeof ADD_MCP_LAUNCH_AGENTS)[number], string> =
+  {
+    'claude-code': 'Claude Code',
+    vscode: 'VS Code',
+    codex: 'Codex',
+    opencode: 'OpenCode',
+    cursor: 'Cursor',
+  };
+
+/** Thrown when an MCP client's own CLI is not installed or not on PATH. */
+class McpClientNotInstalledError extends Error {}
+
+function isCommandNotFound(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
+}
+
 const SKILL_REPO_LABELS: Record<string, string> = {
   'firecrawl/cli': 'Core CLI skills',
   'firecrawl/skills': 'Build skills',
@@ -702,15 +718,53 @@ async function installAllMcpLaunchers(
   options: SetupOptions,
   runtimeEnv: NodeJS.ProcessEnv
 ): Promise<void> {
-  for (const agent of ADD_MCP_LAUNCH_AGENTS) {
-    await installAddMcp(
-      { ...options, yes: true },
-      { kind: 'add-mcp', agent },
-      runtimeEnv
+  const steps: Array<[string, () => Promise<void>]> = [
+    ...ADD_MCP_LAUNCH_AGENTS.map((agent): [string, () => Promise<void>] => [
+      MCP_AGENT_LABELS[agent],
+      () =>
+        installAddMcp(
+          { ...options, yes: true },
+          { kind: 'add-mcp', agent },
+          runtimeEnv
+        ),
+    ]),
+    ['Hermes Agent', () => installHermesMcp(runtimeEnv, options.keyless)],
+    ['OpenClaw', () => installOpenClawMcp(runtimeEnv, options.keyless)],
+  ];
+
+  const configured: string[] = [];
+  const skipped: string[] = [];
+  const failed: string[] = [];
+  for (const [label, install] of steps) {
+    try {
+      await install();
+      configured.push(label);
+    } catch (error) {
+      if (error instanceof McpClientNotInstalledError) {
+        console.log(
+          `${dim}Skipped ${label}: not installed or not on PATH.${reset}\n`
+        );
+        skipped.push(label);
+        continue;
+      }
+      console.error(
+        `Failed to configure ${label}: ${error instanceof Error ? error.message : 'Unknown error'}\n`
+      );
+      failed.push(label);
+    }
+  }
+
+  console.log('Firecrawl MCP setup summary:');
+  console.log(`  Configured: ${configured.join(', ') || 'none'}`);
+  if (skipped.length > 0) {
+    console.log(`  Skipped (not installed): ${skipped.join(', ')}`);
+  }
+  if (failed.length > 0) {
+    console.log(`  Failed: ${failed.join(', ')}`);
+    throw new Error(
+      `Failed to configure Firecrawl MCP for ${failed.join(', ')}.`
     );
   }
-  await installHermesMcp(runtimeEnv, options.keyless);
-  await installOpenClawMcp(runtimeEnv, options.keyless);
 }
 
 async function installAddMcp(
@@ -811,8 +865,14 @@ function installCodexMcpFromEnvironment(
     if (options.quiet) {
       console.log(`  ${green}✓${reset} Firecrawl MCP configured for codex`);
     }
-  } catch {
-    throw new Error('Failed to configure Firecrawl MCP for Codex.');
+  } catch (error) {
+    const message = 'Failed to configure Firecrawl MCP for Codex.';
+    if (isCommandNotFound(error)) {
+      throw new McpClientNotInstalledError(
+        `${message} Verify that Codex is installed and available on PATH.`
+      );
+    }
+    throw new Error(message);
   }
 }
 
@@ -885,9 +945,11 @@ export async function installOpenClawMcp(
         env: cleanNpmEnv(),
       }
     );
-  } catch {
-    throw new Error(
-      'Failed to configure Firecrawl MCP for OpenClaw. Verify that OpenClaw is installed and available on PATH.'
-    );
+  } catch (error) {
+    const message =
+      'Failed to configure Firecrawl MCP for OpenClaw. Verify that OpenClaw is installed and available on PATH.';
+    throw isCommandNotFound(error)
+      ? new McpClientNotInstalledError(message)
+      : new Error(message);
   }
 }
