@@ -703,6 +703,67 @@ firecrawl crawl https://example.com --wait -o crawl-results.json --pretty
 
 ---
 
+### `batch-scrape` - Scrape a list of URLs
+
+Scrape many known URLs as one async job. Unlike multi-URL `scrape`, every requested format is kept and results come back as JSON.
+
+```bash
+# Start a batch scrape (returns job ID)
+firecrawl batch-scrape https://example.com https://example.org
+
+# Read URLs from a file (one per line; blank lines and # comments ignored)
+firecrawl batch-scrape --urls-file urls.txt
+
+# Wait for results
+firecrawl batch-scrape --urls-file urls.txt --format markdown,links --wait --progress
+
+# Check status (returns documents scraped so far)
+firecrawl batch-scrape <job-id>
+
+# Cancel a job
+firecrawl batch-scrape <job-id> --cancel
+```
+
+#### Batch Scrape Options
+
+| Option                         | Description                                     |
+| ------------------------------ | ----------------------------------------------- |
+| `--urls-file <path>`           | File with one URL per line                      |
+| `-f, --format <formats>`       | Output format(s), comma-separated               |
+| `--only-main-content`          | Extract only main content                       |
+| `--wait-for <ms>`              | Wait time before scraping each page             |
+| `--max-age <milliseconds>`     | Maximum age of cached content in milliseconds   |
+| `--schema <json>`              | JSON schema for extraction (adds `json` format) |
+| `--schema-file <path>`         | Path to JSON schema file                        |
+| `--prompt <text>`              | Extraction prompt (adds `json` format)          |
+| `--scrape-options <json>`      | JSON scrape options applied to every URL        |
+| `--scrape-options-file <path>` | Path to scrape options JSON file                |
+| `--wait`                       | Wait for the job to complete                    |
+| `--progress`                   | Show progress while waiting                     |
+| `--timeout <seconds>`          | Timeout when waiting                            |
+| `--poll-interval <seconds>`    | Status check interval (default: 2)              |
+| `--webhook <url-or-json>`      | Webhook URL or configuration                    |
+| `--max-concurrency <n>`        | Max concurrent scrapes for this job             |
+| `--ignore-invalid-urls`        | Skip invalid URLs instead of failing the job    |
+| `--status`                     | Check status of a job by job ID                 |
+| `--cancel`                     | Cancel an active job by job ID                  |
+| `-o, --output <path>`          | Save output to file                             |
+| `--pretty`                     | Pretty print JSON output                        |
+
+#### Examples
+
+```bash
+# Extract the same fields from every page
+firecrawl batch-scrape --urls-file products.txt --wait \
+  --schema '{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"string"}}}' \
+  -o products.json --pretty
+
+# Notify a webhook instead of waiting
+firecrawl batch-scrape --urls-file urls.txt --webhook https://example.com/hooks/firecrawl
+```
+
+---
+
 ### `credit-usage` - Check your credits
 
 ```bash
@@ -1026,6 +1087,9 @@ firecrawl https://example.com --format markdown,links,images
 ```bash
 # Just pass multiple URLs -- results are saved to .firecrawl/
 firecrawl scrape https://firecrawl.dev https://firecrawl.dev/blog https://docs.firecrawl.dev
+
+# Many URLs, other formats, or JSON extraction: run one batch job
+firecrawl batch-scrape --urls-file urls.txt --format markdown,links --wait -o results.json
 ```
 
 ### Combine with other tools

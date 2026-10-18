@@ -39,6 +39,7 @@ Follow this escalation pattern:
 | Answer a coding question    | `developer`           | Issues, merged PRs, READMEs, and docs — not a general web page  |
 | Find US law or regulation   | `gov`                 | US statutes, regulations, codes, and court opinions             |
 | Get a page's content        | `scrape`              | Have a URL, page is static or JS-rendered                       |
+| Scrape a list of known URLs | `batch-scrape`        | Many URLs, non-markdown formats, JSON extraction, or a webhook  |
 | Find URLs within a site     | `map`                 | Need to locate a specific subpage                               |
 | Bulk extract a site section | `crawl`               | Need many pages (e.g., all /docs/)                              |
 | AI-powered data extraction  | `agent`               | Need structured data from complex sites                         |
@@ -78,6 +79,7 @@ A client context/output error does not prove the provider failed. Keep the reque
 - **Finding research papers (biomedical, clinical, or scientific literature; PubMed, bioRxiv, medRxiv, arXiv)** -> [firecrawl-research-index](../firecrawl-research-index/SKILL.md). Use the paper index instead of scraping PubMed or Google Scholar by hand; `search --categories research` is a website filter, not the paper index.
 - **Answering a library, API, error, or known-bug question from issues, merged PRs, READMEs, or docs** -> [firecrawl-developer-index](../firecrawl-developer-index/SKILL.md)
 - **Scraping a known URL** -> [firecrawl-scrape](../firecrawl-scrape/SKILL.md)
+- **Scraping a list of known URLs as one job (batch scrape) or extracting JSON with a schema** -> [firecrawl-scrape](../firecrawl-scrape/SKILL.md)
 - **Finding URLs on a known site** -> [firecrawl-map](../firecrawl-map/SKILL.md)
 - **Bulk extraction from a docs section or site** -> [firecrawl-crawl](../firecrawl-crawl/SKILL.md)
 - **AI-powered structured extraction from complex sites** -> [firecrawl-agent](../firecrawl-agent/SKILL.md)
