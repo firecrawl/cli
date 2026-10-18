@@ -14,6 +14,7 @@ import {
   type GlobalConfig,
 } from './config';
 import { integrationHeaders, withIntegrationHeader } from './integration';
+import { worldIdHeaders } from './world-id';
 
 let clientInstance: Firecrawl | null = null;
 
@@ -36,7 +37,8 @@ export function isKeylessMode(apiKey?: string, apiUrl?: string): boolean {
  * (GET research and developer lookups, interact stop) carry only this and
  * X-Integration.
  * Keyless error messages are printed as the API sends them: their
- * firecrawl.dev/k/<id> link already resolves to CLI attribution.
+ * firecrawl.dev/k/<id> link already resolves to CLI attribution. A World ID
+ * credential, when present, rides along on every keyless request.
  */
 export const KEYLESS_CLI_HEADERS: Readonly<Record<string, string>> = {
   'X-Origin': 'cli',
@@ -53,6 +55,7 @@ export async function keylessRequest(
       'Content-Type': 'application/json',
       ...KEYLESS_CLI_HEADERS,
       ...integrationHeaders(),
+      ...worldIdHeaders(),
     },
     body: JSON.stringify(body),
   });
@@ -73,6 +76,7 @@ export async function keylessGet(path: string): Promise<any> {
       'Content-Type': 'application/json',
       ...KEYLESS_CLI_HEADERS,
       ...integrationHeaders(),
+      ...worldIdHeaders(),
     },
   });
   const json: any = await response.json().catch(() => ({}));
