@@ -108,7 +108,7 @@ describe('Authentication Utilities', () => {
   });
 
   describe('login prompts without a terminal', () => {
-    const realStdin = process.stdin;
+    const realStdin = Object.getOwnPropertyDescriptor(process, 'stdin')!;
     let stdin: PassThrough;
 
     beforeEach(() => {
@@ -122,10 +122,7 @@ describe('Authentication Utilities', () => {
     });
 
     afterEach(() => {
-      Object.defineProperty(process, 'stdin', {
-        value: realStdin,
-        configurable: true,
-      });
+      Object.defineProperty(process, 'stdin', realStdin);
       vi.restoreAllMocks();
     });
 
@@ -160,6 +157,16 @@ describe('Authentication Utilities', () => {
       stdin.end();
 
       await expect(login).rejects.toThrow(/No input to log in with/);
+    });
+
+    it('answers successive prompts from one pipe', async () => {
+      const login = interactiveLogin();
+      stdin.end('2\nfc-second-line\n');
+
+      await expect(login).resolves.toEqual({
+        apiKey: 'fc-second-line',
+        apiUrl: 'https://api.firecrawl.dev',
+      });
     });
 
     it('still reads a piped API key', async () => {
