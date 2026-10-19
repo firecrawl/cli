@@ -24,8 +24,12 @@ const MAX_TRANSPORT_FAILURES = 3;
 // The server rate limits at 30 polls per minute, so allow it to recover.
 const MAX_SERVER_FAILURES = 5;
 
+const NO_LOGIN_INPUT_MESSAGE =
+  'No input to log in with. Run "firecrawl login --browser", pass --api-key, or set FIRECRAWL_API_KEY.';
+
 /**
- * Prompt for input
+ * Prompt for input. Rejects when stdin ends before an answer (CI, agents,
+ * `</dev/null`), so callers fail instead of the process exiting 0 mid-prompt.
  */
 function promptInput(question: string): Promise<string> {
   const rl = readline.createInterface({
@@ -33,8 +37,13 @@ function promptInput(question: string): Promise<string> {
     output: process.stdout,
   });
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    let answered = false;
+    rl.on('close', () => {
+      if (!answered) reject(new Error(NO_LOGIN_INPUT_MESSAGE));
+    });
     rl.question(question, (answer: string) => {
+      answered = true;
       rl.close();
       resolve(answer.trim());
     });

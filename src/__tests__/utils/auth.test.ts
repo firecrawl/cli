@@ -3,7 +3,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { isAuthenticated } from '../../utils/auth';
+import { PassThrough } from 'stream';
+import {
+  interactiveLogin,
+  isAuthenticated,
+  manualLogin,
+} from '../../utils/auth';
 import { initializeConfig, resetConfig } from '../../utils/config';
 import * as credentials from '../../utils/credentials';
 
@@ -99,6 +104,53 @@ describe('Authentication Utilities', () => {
       initializeConfig({});
 
       expect(isAuthenticated()).toBe(true);
+    });
+  });
+
+  describe('login prompts without a terminal', () => {
+    const realStdin = process.stdin;
+    let stdin: PassThrough;
+
+    beforeEach(() => {
+      stdin = new PassThrough();
+      Object.defineProperty(process, 'stdin', {
+        value: stdin,
+        configurable: true,
+      });
+      vi.spyOn(console, 'log').mockImplementation(() => {});
+      vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    });
+
+    afterEach(() => {
+      Object.defineProperty(process, 'stdin', {
+        value: realStdin,
+        configurable: true,
+      });
+      vi.restoreAllMocks();
+    });
+
+    it('rejects the login menu when stdin ends without a choice', async () => {
+      const login = interactiveLogin();
+      stdin.end();
+
+      await expect(login).rejects.toThrow(/No input to log in with/);
+    });
+
+    it('rejects manual login when stdin ends without a key', async () => {
+      const login = manualLogin();
+      stdin.end();
+
+      await expect(login).rejects.toThrow(/No input to log in with/);
+    });
+
+    it('still reads a piped API key', async () => {
+      const login = manualLogin();
+      stdin.end('fc-piped-key\n');
+
+      await expect(login).resolves.toEqual({
+        apiKey: 'fc-piped-key',
+        apiUrl: 'https://api.firecrawl.dev',
+      });
     });
   });
 });
