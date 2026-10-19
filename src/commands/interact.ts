@@ -4,6 +4,7 @@
  */
 
 import { getClient, isKeylessMode, KEYLESS_CLI_HEADERS } from '../utils/client';
+import { getCliOrigin } from '../utils/agent-origin';
 import { getConfig, validateConfig } from '../utils/config';
 import {
   getScrapeId,
@@ -81,7 +82,10 @@ export async function handleInteractExecute(
       `Using scrape ${scrapeId}` + (storedUrl ? ` (${storedUrl})` : '') + '\n'
     );
 
-    const body: Record<string, unknown> = { origin: 'cli', integration: 'cli' };
+    const body: Record<string, unknown> = {
+      origin: getCliOrigin(),
+      integration: 'cli',
+    };
 
     if (options.code) {
       body.code = options.code;

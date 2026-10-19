@@ -1069,6 +1069,12 @@ Requests from the CLI are tagged `integration: cli`. A tool that wraps the CLI c
 export FIRECRAWL_INTEGRATION=_my-tool
 ```
 
+Supported API requests carry an origin of `cli@<version>`. When a coding agent runs the CLI, the origin also names the agent, for example `cli.codex@<version>`; it is detected from environment variables the agent sets in the commands it runs. To send plain `cli@<version>` instead:
+
+```bash
+export FIRECRAWL_CLI_DISABLE_AGENT_ORIGIN=1
+```
+
 ---
 
 ## Experimental

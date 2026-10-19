@@ -19,6 +19,7 @@
 import * as fs from 'fs';
 import { Command } from 'commander';
 import { getConfig, validateConfig } from '../utils/config';
+import { getCliOrigin } from '../utils/agent-origin';
 import { writeOutput } from '../utils/output';
 import { integrationHeaders } from '../utils/integration';
 
@@ -67,11 +68,15 @@ async function monitorRequest(
     ...integrationHeaders(),
   };
   if (init.body !== undefined) headers['Content-Type'] = 'application/json';
+  const body =
+    init.body && typeof init.body === 'object' && !Array.isArray(init.body)
+      ? { ...init.body, origin: getCliOrigin() }
+      : init.body;
 
   const response = await fetch(url, {
     method: init.method ?? 'GET',
     headers,
-    body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
   const payload = (await response.json().catch(() => ({}))) as any;

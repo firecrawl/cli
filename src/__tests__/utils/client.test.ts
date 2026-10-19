@@ -9,6 +9,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { keylessGet, keylessRequest } from '../../utils/client';
+import { getCliOrigin } from '../../utils/agent-origin';
 
 const OWN_SIGNUP_URL = 'https://firecrawl.dev/k/7fq2xab9';
 
@@ -75,5 +76,18 @@ describe('keyless requests', () => {
       expect(headers['X-Origin']).toBe('cli');
       expect(headers.Authorization).toBeUndefined();
     }
+  });
+
+  it('stamps the agent origin in the POST body without overriding integration', async () => {
+    const fetchMock = stubFetch(200, { success: true });
+
+    await keylessRequest('/v2/scrape', {
+      url: 'https://example.com',
+      integration: 'cli',
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
+    expect(body.origin).toBe(getCliOrigin());
+    expect(body.integration).toBe('cli');
   });
 });

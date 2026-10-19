@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
+import { getCliOrigin } from '../utils/agent-origin';
 
 const exec = promisify(execFile);
 const requests: { url?: string; headers: Record<string, any>; body: any }[] =
@@ -1889,7 +1890,7 @@ it('submits Alexandria session feedback without a job ID', async () => {
   expect(requests[0].body).toEqual({
     endpoint: 'alexandria',
     rating: 'partial',
-    origin: 'cli',
+    origin: getCliOrigin(),
     integration: 'cli',
     requestedWebsite: {
       url: 'https://example.com',

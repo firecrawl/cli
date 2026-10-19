@@ -15,6 +15,7 @@ import { parseAlexandriaFeedbackArray } from '../../commands/alexandria-feedback
 import { getClient } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { setupTest, teardownTest } from '../utils/mock-client';
+import { getCliOrigin } from '../../utils/agent-origin';
 
 vi.mock('../../utils/client', async () => {
   const actual = await vi.importActual('../../utils/client');
@@ -85,7 +86,7 @@ describe('executeEndpointFeedback', () => {
     expect(JSON.parse(request.body)).toEqual({
       endpoint: 'alexandria',
       rating: 'partial',
-      origin: 'cli',
+      origin: getCliOrigin(),
       integration: 'cli',
       requestedWebsite,
       rationale: 'Only summaries available',
@@ -149,7 +150,7 @@ describe('executeEndpointFeedback', () => {
       endpoint: 'scrape',
       jobId: '0193f6c5-1234-7890-abcd-1234567890ab',
       rating: 'partial',
-      origin: 'cli',
+      origin: getCliOrigin(),
       integration: 'cli',
       issues: ['missing_markdown'],
       tags: ['docs'],
