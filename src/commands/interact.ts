@@ -11,6 +11,7 @@ import {
   clearInteractSession,
 } from '../utils/interact-session';
 import { writeOutput } from '../utils/output';
+import { getIntegration } from '../utils/integration';
 
 export interface InteractExecuteOptions {
   scrapeId?: string;
@@ -80,7 +81,10 @@ export async function handleInteractExecute(
       `Using scrape ${scrapeId}` + (storedUrl ? ` (${storedUrl})` : '') + '\n'
     );
 
-    const body: Record<string, unknown> = { origin: 'cli', integration: 'cli' };
+    const body: Record<string, unknown> = {
+      origin: 'cli',
+      integration: getIntegration(),
+    };
 
     if (options.code) {
       body.code = options.code;

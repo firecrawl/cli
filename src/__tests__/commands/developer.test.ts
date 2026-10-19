@@ -84,6 +84,21 @@ describe('handleDeveloperSearchCommand', () => {
       );
     });
 
+    it('tags the query with FIRECRAWL_INTEGRATION when set', async () => {
+      vi.stubEnv('FIRECRAWL_INTEGRATION', '_rtk');
+      mockHttpGet.mockResolvedValue(mockDeveloperResponse([sampleResult]));
+
+      try {
+        await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
+      } finally {
+        vi.unstubAllEnvs();
+      }
+
+      expect(mockHttpGet).toHaveBeenCalledWith(
+        '/v2/search/developer?query=tokio+spawn_blocking&integration=_rtk'
+      );
+    });
+
     it('passes apiUrl and apiKey to getClient when provided', async () => {
       mockHttpGet.mockResolvedValue(mockDeveloperResponse([]));
 

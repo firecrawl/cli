@@ -7,6 +7,7 @@ import { getApiKey } from '../utils/config';
 import { writeOutput } from '../utils/output';
 import { withoutResultPrices } from '../utils/alexandria-prices';
 import { TERMS_DASHBOARD_URL } from './terms';
+import { getIntegration } from '../utils/integration';
 
 type Call = AlexandriaCall & { options: Record<string, unknown> };
 export type AlexandriaOptions = {
@@ -213,7 +214,7 @@ export async function requestAlexandria(
     const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
     const result = await app.scrape({
       alexandria: calls,
-      integration: 'cli',
+      integration: getIntegration(),
       timeout: options.timeout,
       requestId,
     });

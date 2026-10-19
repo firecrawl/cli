@@ -8,6 +8,7 @@ import type {
   DeveloperSearchResponse,
   DeveloperSourceStatus,
 } from '../types/developer';
+import { getIntegration } from '../utils/integration';
 
 // The other mount, /v2/developer/search, rejects keyless callers and may be
 // withdrawn.
@@ -17,7 +18,7 @@ async function getDeveloper<T>(
   path: string,
   options: DeveloperSearchOptions
 ): Promise<T> {
-  const url = `${path}${path.includes('?') ? '&' : '?'}integration=cli`;
+  const url = `${path}${path.includes('?') ? '&' : '?'}integration=${encodeURIComponent(getIntegration())}`;
 
   if (isKeylessMode(options.apiKey, options.apiUrl)) {
     return (await keylessGet(url)) as T;

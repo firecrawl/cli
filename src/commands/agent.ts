@@ -27,6 +27,7 @@ import { writeOutput } from '../utils/output';
 import { createSpinner } from '../utils/spinner';
 import { TERMS_DASHBOARD_URL } from './terms';
 import { readFileSync } from 'fs';
+import { getIntegration } from '../utils/integration';
 
 /**
  * Extract detailed error message from API errors
@@ -309,7 +310,7 @@ export async function executeAgent(
       integration?: string;
     } = {
       prompt,
-      integration: 'cli',
+      integration: getIntegration(),
     };
 
     if (options.urls && options.urls.length > 0) {

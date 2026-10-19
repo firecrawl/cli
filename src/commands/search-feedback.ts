@@ -1,5 +1,6 @@
 import { getConfig, validateConfig } from '../utils/config';
 import { getClient } from '../utils/client';
+import { getIntegration } from '../utils/integration';
 
 export type SearchFeedbackRating = 'good' | 'bad' | 'partial';
 
@@ -107,7 +108,7 @@ export async function executeSearchFeedback(
     const body: Record<string, unknown> = {
       rating: options.rating,
       origin: 'cli',
-      integration: 'cli',
+      integration: getIntegration(),
     };
 
     if (options.valuableSources && options.valuableSources.length > 0) {

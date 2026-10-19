@@ -9,6 +9,7 @@ import {
   type SearchFeedbackRating,
   type ValuableSourceInput,
 } from './search-feedback';
+import { getIntegration } from '../utils/integration';
 
 export type EndpointFeedbackEndpoint = 'search' | 'scrape' | 'parse' | 'map';
 
@@ -259,7 +260,7 @@ export async function executeEndpointFeedback(
       ...(options.endpoint === 'alexandria' ? {} : { jobId: options.jobId }),
       rating: options.rating,
       origin: 'cli',
-      integration: 'cli',
+      integration: getIntegration(),
     };
 
     if (options.endpoint !== 'alexandria' && !options.jobId) {

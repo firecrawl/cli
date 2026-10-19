@@ -5,6 +5,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    env: { FIRECRAWL_INTEGRATION: '' },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

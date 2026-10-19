@@ -94,6 +94,44 @@ describe('executeScrape', () => {
       expect(mockClient.scrape).not.toHaveBeenCalled();
     });
 
+    it('sends the FIRECRAWL_INTEGRATION tag instead of cli', async () => {
+      vi.stubEnv('FIRECRAWL_INTEGRATION', '_rtk');
+      mockClient.scrape.mockResolvedValue({ markdown: '# Test Content' });
+      vi.mocked(isKeylessMode).mockReturnValueOnce(true);
+      vi.mocked(keylessRequest).mockResolvedValueOnce({
+        data: { markdown: '# Test Content' },
+      });
+      try {
+        await executeScrape({ url: 'https://example.com' });
+        await executeScrape({ url: 'https://example.com' });
+      } finally {
+        vi.unstubAllEnvs();
+      }
+      expect(keylessRequest).toHaveBeenCalledWith('/v2/scrape', {
+        url: 'https://example.com',
+        formats: ['markdown'],
+        integration: '_rtk',
+      });
+      expect(mockClient.scrape).toHaveBeenCalledWith('https://example.com', {
+        formats: ['markdown'],
+        integration: '_rtk',
+      });
+    });
+
+    it('ignores a FIRECRAWL_INTEGRATION tag without a leading underscore', async () => {
+      vi.stubEnv('FIRECRAWL_INTEGRATION', 'rtk');
+      mockClient.scrape.mockResolvedValue({ markdown: '# Test Content' });
+      try {
+        await executeScrape({ url: 'https://example.com' });
+      } finally {
+        vi.unstubAllEnvs();
+      }
+      expect(mockClient.scrape).toHaveBeenCalledWith('https://example.com', {
+        formats: ['markdown'],
+        integration: 'cli',
+      });
+    });
+
     it('should pass apiUrl to getClient when provided', async () => {
       const mockResponse = { markdown: '# Test Content' };
       mockClient.scrape.mockResolvedValue(mockResponse);

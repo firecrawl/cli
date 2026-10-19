@@ -14,6 +14,7 @@ import type { ScrapeFormat } from '../types/scrape';
 import { getClient, isKeylessMode, KEYLESS_CLI_HEADERS } from '../utils/client';
 import { getConfig, validateConfig } from '../utils/config';
 import { handleScrapeOutput } from '../utils/output';
+import { getIntegration } from '../utils/integration';
 
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
 
@@ -95,7 +96,7 @@ function buildFormats(options: ParseOptions): FormatOption[] {
 function buildOptionsPayload(options: ParseOptions): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     formats: buildFormats(options),
-    integration: 'cli',
+    integration: getIntegration(),
   };
 
   if (options.onlyMainContent !== undefined) {

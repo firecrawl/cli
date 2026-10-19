@@ -5,11 +5,12 @@ import type {
   GovSearchOptions,
   GovSearchResponse,
 } from '../types/gov';
+import { getIntegration } from '../utils/integration';
 
 const BASE = '/v2/search/gov';
 
 async function getGov<T>(path: string, options: GovSearchOptions): Promise<T> {
-  const url = `${path}${path.includes('?') ? '&' : '?'}integration=cli`;
+  const url = `${path}${path.includes('?') ? '&' : '?'}integration=${encodeURIComponent(getIntegration())}`;
 
   if (isKeylessMode(options.apiKey, options.apiUrl)) {
     return (await keylessGet(url)) as T;
