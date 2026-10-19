@@ -2748,7 +2748,7 @@ async function main() {
       return;
     }
 
-    // Authenticated - show banner and help
+    // Authenticated, or no terminal to prompt in - show banner and help
     printBanner();
     program.outputHelp();
     return;

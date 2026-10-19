@@ -95,9 +95,10 @@ describe('handleInitCommand', () => {
 
     await handleInitCommand({ yes: true, skipInstall: true });
 
-    const skillsOrder = vi.mocked(execSync).mock.invocationCallOrder[0];
+    const skillOrders = vi.mocked(execSync).mock.invocationCallOrder;
     const loginOrder = interactiveLoginMock.mock.invocationCallOrder[0];
-    expect(skillsOrder).toBeLessThan(loginOrder);
+    expect(skillOrders).toHaveLength(2);
+    expect(Math.max(...skillOrders)).toBeLessThan(loginOrder);
     expect(process.exitCode).toBe(1);
   });
 
