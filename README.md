@@ -1036,7 +1036,7 @@ To disable telemetry, set the environment variable:
 export FIRECRAWL_NO_TELEMETRY=1
 ```
 
-Requests to endpoints that accept an integration tag (scrape, search, map, crawl, agent, parse, interact, browser, feedback and the research, developer and gov searches) send `integration: cli`. A tool that wraps the CLI can tag those requests as its own by setting `FIRECRAWL_INTEGRATION` to a value that starts with an underscore (surrounding whitespace is ignored); other values are ignored and the tag stays `cli`:
+Requests to endpoints that accept an integration tag (scrape, search, map, crawl, agent, parse, interact, browser, feedback, search-feedback and the research, developer and gov searches) send `integration: cli`. A tool that wraps the CLI can tag those requests as its own by setting `FIRECRAWL_INTEGRATION` to a value that starts with an underscore (surrounding whitespace is ignored); other values are ignored and the tag stays `cli`:
 
 ```bash
 export FIRECRAWL_INTEGRATION=_my-tool
