@@ -164,7 +164,8 @@ function isCommandOnPath(command: string): boolean {
   if (process.platform === 'win32') {
     return resolveWindowsCommand(command, process.env) !== command;
   }
-  return (process.env.PATH ?? '').split(path.delimiter).some((directory) => {
+  if (!process.env.PATH) return false;
+  return process.env.PATH.split(path.delimiter).some((directory) => {
     const candidate = path.join(directory || '.', command);
     try {
       accessSync(candidate, fsConstants.X_OK);

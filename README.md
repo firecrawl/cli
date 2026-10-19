@@ -101,8 +101,9 @@ To install the Firecrawl MCP server into your editors (Cursor, Claude Code, VS C
 firecrawl setup mcp
 ```
 
-With a key saved by `firecrawl login`, export `FIRECRAWL_API_KEY` or add
-`--keyless`: setup never writes a stored key into client configs.
+With a key saved by `firecrawl login`, export `FIRECRAWL_API_KEY` and pass
+`--agent <agent>` (or `--agent all`), or add `--keyless`: setup never writes a
+stored key into client configs.
 
 Use `--agent <agent>` for one client, or `--agent all --global` to configure
 Claude Code, VS Code, Codex, OpenCode, Cursor, Gemini CLI, Windsurf,
