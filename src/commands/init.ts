@@ -56,67 +56,18 @@ const dim = '\x1b[2m';
 const bold = '\x1b[1m';
 const green = '\x1b[32m';
 
-const TEMPLATES_REPO = 'firecrawl/cli-templates';
-
 interface TemplateEntry {
   name: string;
   description: string;
-  path: string; // subdirectory within the templates repo
+  /** Public GitHub repository (owner/name) cloned as the template. */
+  repo: string;
 }
 
 export const TEMPLATES: TemplateEntry[] = [
-  // Scraping
-  {
-    name: 'Scrape / Basic',
-    description: 'Simple scrape + crawl scripts',
-    path: 'scrape-basic',
-  },
-  {
-    name: 'Scrape / Express',
-    description: 'Express server with scrape, crawl, and search endpoints',
-    path: 'scrape-express',
-  },
-  {
-    name: 'Scrape / Next.js',
-    description: 'Next.js app with server actions for scraping',
-    path: 'scrape-nextjs',
-  },
-
-  // Browser
-  {
-    name: 'Browser / Basic',
-    description: 'Playwright and Puppeteer CDP scripts with Firecrawl browser',
-    path: 'browser-basic',
-  },
-  {
-    name: 'Browser / Express',
-    description: 'Express server with browser automation endpoints',
-    path: 'browser-express',
-  },
-  {
-    name: 'Browser / AI SDK',
-    description:
-      'Next.js browser co-pilot with Vercel AI SDK and live session UI',
-    path: '_external:firecrawl/browser-ai-sdk',
-  },
-
-  // AI Frameworks
-  {
-    name: 'AI / Vercel AI SDK',
-    description: 'Firecrawl tools with Vercel AI SDK',
-    path: 'ai-vercel',
-  },
-  {
-    name: 'AI / LangChain',
-    description: 'Firecrawl tools with LangChain agents',
-    path: 'ai-langchain',
-  },
-
-  // Full apps
   {
     name: 'Open Lovable',
     description: 'Clone and recreate any website as a modern React app',
-    path: '_external:firecrawl/open-lovable',
+    repo: 'firecrawl/open-lovable',
   },
 ];
 
@@ -788,39 +739,18 @@ function copyTemplateFiles(
   }
 }
 
-async function downloadFromRepo(
-  repo: string,
-  subdir: string | null
-): Promise<void> {
+async function downloadFromRepo(repo: string): Promise<void> {
   const fs = await import('fs');
   const path = await import('path');
   const { execSync: exec } = await import('child_process');
   const targetDir = process.cwd();
   const tmpDir = path.join(targetDir, `.firecrawl-template-${Date.now()}`);
 
-  // Try sparse checkout for subdirectory, full clone for whole repo
   try {
-    if (subdir) {
-      fs.mkdirSync(tmpDir, { recursive: true });
-      exec(
-        `git clone --depth 1 --filter=blob:none --sparse https://github.com/${repo}.git "${tmpDir}"`,
-        { stdio: 'pipe' }
-      );
-      exec(`git -C "${tmpDir}" sparse-checkout set "${subdir}"`, {
-        stdio: 'pipe',
-      });
-      const srcDir = path.join(tmpDir, subdir);
-      if (!fs.existsSync(srcDir)) {
-        throw new Error(`Template directory "${subdir}" not found in ${repo}`);
-      }
-      copyTemplateFiles(srcDir, targetDir, fs, path);
-    } else {
-      exec(`git clone --depth 1 https://github.com/${repo}.git "${tmpDir}"`, {
-        stdio: 'pipe',
-      });
-      copyTemplateFiles(tmpDir, targetDir, fs, path);
-    }
-
+    exec(`git clone --depth 1 https://github.com/${repo}.git "${tmpDir}"`, {
+      stdio: 'pipe',
+    });
+    copyTemplateFiles(tmpDir, targetDir, fs, path);
     fs.rmSync(tmpDir, { recursive: true, force: true });
     return;
   } catch (gitError) {
@@ -872,16 +802,7 @@ async function downloadFromRepo(
                 `tar -xzf "${tmpTar}" -C "${extractDir}" --strip-components=1`,
                 { stdio: 'pipe' }
               );
-
-              const srcDir = subdir
-                ? path.join(extractDir, subdir)
-                : extractDir;
-              if (!fs.existsSync(srcDir)) {
-                throw new Error(
-                  `Template directory "${subdir}" not found in tarball`
-                );
-              }
-              copyTemplateFiles(srcDir, targetDir, fs, path);
+              copyTemplateFiles(extractDir, targetDir, fs, path);
 
               fs.rmSync(tmpTar, { force: true });
               fs.rmSync(extractDir, { recursive: true, force: true });
@@ -895,6 +816,28 @@ async function downloadFromRepo(
     };
     request(tarballUrl);
   });
+}
+
+/** Download a template into the current directory; returns false on failure. */
+async function downloadTemplate(template: TemplateEntry): Promise<boolean> {
+  console.log(`  ${dim}github.com/${template.repo}${reset}\n`);
+  try {
+    await downloadFromRepo(template.repo);
+    console.log(`\n  ${green}✓${reset} Template ready\n`);
+    return true;
+  } catch (error) {
+    console.error(`\n  ${bold}Could not download template.${reset}`);
+    console.error(
+      `  ${dim}${error instanceof Error ? error.message : 'Unknown error'}${reset}\n`
+    );
+    console.log(`  Clone it manually:\n`);
+    console.log(`    git clone https://github.com/${template.repo}.git\n`);
+    return false;
+  }
+}
+
+function templateKey(template: TemplateEntry): string {
+  return template.repo.split('/').pop() ?? '';
 }
 
 async function stepTemplate(): Promise<void> {
@@ -915,37 +858,15 @@ async function stepTemplate(): Promise<void> {
     })),
   });
 
-  const isExternal = template.path.startsWith('_external:');
-  const repo = isExternal
-    ? template.path.replace('_external:', '')
-    : TEMPLATES_REPO;
-  const subdir = isExternal ? null : template.path;
-
   console.log(`\n  Downloading ${bold}${template.name}${reset}...`);
-  console.log(
-    `  ${dim}github.com/${repo}${subdir ? '/' + subdir : ''}${reset}\n`
-  );
-  try {
-    await downloadFromRepo(repo, subdir);
-    console.log(`\n  ${green}✓${reset} Template ready\n`);
-  } catch (error) {
-    console.error(`\n  ${bold}Could not download template.${reset}`);
-    console.error(
-      `  ${dim}${error instanceof Error ? error.message : 'Unknown error'}${reset}\n`
-    );
-    console.log(`  Clone it manually:\n`);
-    console.log(
-      `    git clone https://github.com/${repo}.git${subdir ? ' && cp -r ' + repo.split('/')[1] + '/' + subdir + '/* .' : ''}\n`
-    );
-  }
+  await downloadTemplate(template);
 }
 
 export function findTemplate(name: string): TemplateEntry | undefined {
   const lower = name.toLowerCase();
-  return TEMPLATES.find((t) => {
-    const path = t.path.replace('_external:', '').split('/').pop() ?? '';
-    return path === lower || t.name.toLowerCase() === lower;
-  });
+  return TEMPLATES.find(
+    (t) => templateKey(t) === lower || t.name.toLowerCase() === lower
+  );
 }
 
 export async function scaffoldTemplate(templatePath: string): Promise<void> {
@@ -954,40 +875,19 @@ export async function scaffoldTemplate(templatePath: string): Promise<void> {
     console.error(`\n  Unknown template: ${bold}${templatePath}${reset}\n`);
     console.log(`  Available templates:\n`);
     for (const t of TEMPLATES) {
-      const key = t.path.replace('_external:', '').split('/').pop() ?? '';
-      console.log(`    ${bold}${key}${reset}  ${dim}${t.description}${reset}`);
+      console.log(
+        `    ${bold}${templateKey(t)}${reset}  ${dim}${t.description}${reset}`
+      );
     }
     console.log('');
     process.exit(1);
   }
 
-  const isExternal = template.path.startsWith('_external:');
-  const repo = isExternal
-    ? template.path.replace('_external:', '')
-    : TEMPLATES_REPO;
-  const subdir = isExternal ? null : template.path;
-
   console.log('');
   console.log(
     `  ${orange}🔥 ${bold}firecrawl${reset} ${dim}${template.name}${reset}`
   );
-  console.log(
-    `  ${dim}github.com/${repo}${subdir ? '/' + subdir : ''}${reset}\n`
-  );
-  try {
-    await downloadFromRepo(repo, subdir);
-    console.log(`\n  ${green}✓${reset} Template ready\n`);
-  } catch (error) {
-    console.error(`\n  ${bold}Could not download template.${reset}`);
-    console.error(
-      `  ${dim}${error instanceof Error ? error.message : 'Unknown error'}${reset}\n`
-    );
-    console.log(`  Clone it manually:\n`);
-    console.log(
-      `    git clone https://github.com/${repo}.git${subdir ? ' && cp -r ' + repo.split('/')[1] + '/' + subdir + '/* .' : ''}\n`
-    );
-    process.exit(1);
-  }
+  if (!(await downloadTemplate(template))) process.exit(1);
 }
 
 export async function handleInitCommand(
