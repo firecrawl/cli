@@ -165,8 +165,7 @@ function isCommandOnPath(command: string): boolean {
     return resolveWindowsCommand(command, process.env) !== command;
   }
   return (process.env.PATH ?? '').split(path.delimiter).some((directory) => {
-    if (!directory) return false;
-    const candidate = path.join(directory, command);
+    const candidate = path.join(directory || '.', command);
     try {
       accessSync(candidate, fsConstants.X_OK);
       return statSync(candidate).isFile();

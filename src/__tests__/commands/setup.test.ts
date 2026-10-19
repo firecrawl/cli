@@ -644,7 +644,8 @@ describe('handleSetupCommand', () => {
         readFileSync(path.join(home, '.hermes', 'config.yaml'), 'utf-8')
       ).toContain('Authorization: Bearer ${FIRECRAWL_API_KEY}');
     } finally {
-      process.env.PATH = originalPath;
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
       rmSync(home, { recursive: true, force: true });
     }
   });
@@ -675,7 +676,8 @@ describe('handleSetupCommand', () => {
         'Skipped: OpenClaw (openclaw not found on PATH)'
       );
     } finally {
-      process.env.PATH = originalPath;
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
       rmSync(home, { recursive: true, force: true });
     }
   });
@@ -710,7 +712,8 @@ describe('handleSetupCommand', () => {
         'Skipping Antigravity: no verified environment-variable syntax'
       );
     } finally {
-      process.env.PATH = originalPath;
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
       rmSync(home, { recursive: true, force: true });
     }
   });
@@ -741,7 +744,8 @@ describe('handleSetupCommand', () => {
       expect(existsSync(path.join(home, '.hermes', 'config.yaml'))).toBe(true);
     } finally {
       vi.mocked(execFileSync).mockReset();
-      process.env.PATH = originalPath;
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
       rmSync(home, { recursive: true, force: true });
     }
   });
