@@ -1,6 +1,6 @@
 {
   "name": "firecrawl-cli",
-  "version": "1.26.11",
+  "version": "1.26.13",
   "publishConfig": {
     "tag": "latest"
   },
@@ -86,6 +86,7 @@
     "@inquirer/prompts": "^8.2.1",
     "commander": "^14.0.2",
     "firecrawl": "4.48.0",
+    "string-width": "^4.2.3",
     "yaml": "^2.9.0",
     "zod-to-json-schema": "3.24.6"
   }

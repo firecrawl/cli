@@ -16,11 +16,15 @@ import { updateConfig, getApiKey } from '../utils/config';
 import {
   buildSkillsInstallArgs,
   cleanNpmEnv,
+  resolveSkillSelection,
   CLI_SKILL_SELECTION,
   WORKFLOW_SKILL_SELECTION,
-  WORKFLOW_SKILLS,
   type SkillSelection,
 } from './skills-install';
+import {
+  rememberCatalogNames,
+  rememberSkillInstall,
+} from '../utils/skill-update-notice';
 import {
   hasNpx,
   installSkillsNative,
@@ -166,6 +170,7 @@ async function installSkillRepoQuiet(
   if (useNative) {
     try {
       const result = await installSkillsNative(repo, {
+        family: selection.family,
         agent: options.agent,
         quiet: true,
         skills: selection.skills,
@@ -190,13 +195,14 @@ async function installSkillRepoQuiet(
 
   // Fallback: npx skills add (copies files, may spray to all agents)
   if (hasNpx()) {
+    const skills = await resolveSkillSelection(selection);
     const args = buildSkillsInstallArgs({
       repo,
       agent: options.agent,
       yes: options.yes || options.all || true,
       global: true,
       includeNpxYes: true,
-      skills: selection.skills,
+      skills,
     });
 
     const isTty = process.stdout.isTTY;
@@ -208,6 +214,7 @@ async function installSkillRepoQuiet(
         stdio: ['ignore', 'pipe', 'pipe'],
         env: cleanNpmEnv(),
       });
+      await rememberSkillInstall(repo, skills, selection.family);
       const count = parseSkillCount(stdout?.toString() ?? '');
       const suffix = count != null ? ` ${dim}(${count})${reset}` : '';
       const padding = ' '.repeat(20); // clears any leftover "Installing..." text
@@ -638,9 +645,12 @@ async function stepIntegrations(
       }
       case 'workflows': {
         const { checkbox: pickWorkflows } = await import('@inquirer/prompts');
+        const workflowNames = (await resolveSkillSelection(
+          WORKFLOW_SKILL_SELECTION
+        ))!;
         const chosen = await pickWorkflows<string>({
           message: 'Which workflow skills?',
-          choices: WORKFLOW_SKILLS.map((name) => ({
+          choices: workflowNames.map((name) => ({
             name,
             value: name,
             checked: true,
@@ -653,12 +663,14 @@ async function stepIntegrations(
         console.log(`\n  Installing workflow skills...`);
         try {
           const count = await installRepoAcrossAgents(
-            { ...WORKFLOW_SKILL_SELECTION, skills: chosen },
+            { ...WORKFLOW_SKILL_SELECTION, family: undefined, skills: chosen },
             options,
             targetAgents
           );
           skillsInstalled = true;
           if (count != null) totalSkills = (totalSkills ?? 0) + count;
+          // Unticked workflows were seen, so the notice does not offer them back.
+          await rememberCatalogNames(workflowNames);
         } catch {
           console.error(
             `  ${dim}Run "firecrawl setup workflows" later to retry (installs all workflow skills).${reset}`
