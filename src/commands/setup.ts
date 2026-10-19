@@ -303,6 +303,15 @@ function resolveMcpAgent(agent: string | undefined): ResolvedMcpAgent {
     case 'opencode':
     case 'open-code':
       return { kind: 'add-mcp', agent: 'opencode' };
+    case 'cursor':
+      return { kind: 'add-mcp', agent: 'cursor' };
+    case 'gemini':
+    case 'gemini-cli':
+      return { kind: 'add-mcp', agent: 'gemini-cli' };
+    case 'windsurf':
+      return { kind: 'add-mcp', agent: 'windsurf' };
+    case 'antigravity':
+      return { kind: 'add-mcp', agent: 'antigravity' };
     case 'hermes':
     case 'hermes-agent':
       return { kind: 'hermes' };
