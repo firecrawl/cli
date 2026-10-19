@@ -15,8 +15,8 @@ importers:
         specifier: ^14.0.2
         version: 14.0.2
       firecrawl:
-        specifier: 4.49.1
-        version: 4.49.1
+        specifier: 4.50.0
+        version: 4.50.0
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -667,9 +667,9 @@ packages:
     resolution: {integrity: sha512-YsGpe3WHLK8ZYi4tWDg2Jy3ebRz2rXowDxnld4bkQB00cc/1Zw9AWnC0i9ztDJitivtQvaI9KaLyKrc+hBW0yg==}
     engines: {node: '>=8'}
 
-  firecrawl@4.49.1:
-    resolution: {integrity: sha512-ssm5wDo3xwiPyb7uPMu9sfSx57VOztW2SgP6cmOgswxARrWuHUSHL5InF/rWhddRtgdhEXVhJlA+bk9mNOUMOQ==}
-    engines: {node: '>=22.0.0'}
+  firecrawl@4.50.0:
+    resolution: {integrity: sha512-8XKMYKjofhBjdii/0DZON7J9ISVVDAdJ3z2g/GdRhseWMANT5ELMI4Ov4WKs6bTrAH3n5+n0vRo+xd2evf0OcQ==}
+    engines: {node: '>=18.0.0'}
 
   follow-redirects@1.16.0:
     resolution: {integrity: sha512-y5rN/uOsadFT/JfYwhxRS5R7Qce+g3zG97+JrtFZlC9klX/W5hD7iiLzScI4nZqUS7DNUdhPgw4xI8W2LuXlUw==}
@@ -1569,7 +1569,7 @@ snapshots:
     dependencies:
       to-regex-range: 5.0.1
 
-  firecrawl@4.49.1:
+  firecrawl@4.50.0:
     dependencies:
       axios: 1.20.0
       typescript-event-target: 1.1.2
