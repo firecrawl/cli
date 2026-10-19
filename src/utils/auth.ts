@@ -714,7 +714,7 @@ function printBanner(): void {
   console.log(
     `  ${orange}🔥 ${bold}firecrawl${reset} ${dim}cli${reset} ${dim}v${version}${reset}`
   );
-  console.log(`  ${dim}Turn websites into LLM-ready data${reset}`);
+  console.log(`  ${dim}The context API for AI agents${reset}`);
   console.log('');
 }
 

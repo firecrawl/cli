@@ -317,7 +317,9 @@ const program = new Command();
 
 program
   .name('firecrawl')
-  .description('CLI tool for Firecrawl web scraping')
+  .description(
+    'Command-line interface for Firecrawl, the context API for AI agents: search, scrape, and interact with the web'
+  )
   .version(packageJson.version)
   .option(
     '-k, --api-key <key>',
