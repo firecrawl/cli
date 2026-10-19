@@ -30,7 +30,8 @@ const NO_LOGIN_INPUT_MESSAGE =
 /**
  * Prompt for input. Rejects when stdin ends before an answer (CI, agents,
  * `</dev/null`), so callers fail instead of the process exiting 0 mid-prompt.
- * readline drops an unterminated last line, so it is read from stdin directly.
+ * readline drops an unterminated last line, so piped input is read from stdin
+ * directly; a terminal's buffer may hold erased keystrokes, so it never is.
  */
 function promptInput(question: string): Promise<string> {
   const rl = readline.createInterface({
@@ -45,7 +46,7 @@ function promptInput(question: string): Promise<string> {
       const text = unterminated + chunk.toString();
       unterminated = text.slice(text.search(/[^\r\n]*$/));
     };
-    process.stdin.on('data', onData);
+    if (!process.stdin.isTTY) process.stdin.on('data', onData);
     rl.on('SIGINT', () => {
       rl.close();
       process.exit(130);

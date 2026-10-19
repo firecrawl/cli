@@ -153,6 +153,15 @@ describe('Authentication Utilities', () => {
       });
     });
 
+    it('ignores a terminal buffer when the terminal ends the prompt', async () => {
+      Object.assign(stdin, { isTTY: true });
+      const login = manualLogin();
+      stdin.write('fc-erased');
+      stdin.end();
+
+      await expect(login).rejects.toThrow(/No input to log in with/);
+    });
+
     it('still reads a piped API key', async () => {
       const login = manualLogin();
       stdin.end('fc-piped-key\n');
