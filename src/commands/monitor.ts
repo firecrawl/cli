@@ -7,10 +7,10 @@
  * firecrawl@4.22.2 exposes monitor methods (createMonitor,
  * listMonitors, getMonitor, updateMonitor, deleteMonitor, runMonitor,
  * listMonitorChecks, getMonitorCheck), but its HttpClient injects a top-level
- * `origin: js-sdk@<version>` field into every POST/PATCH body and the
- * /v2/monitor endpoint rejects that with "Unrecognized key in body". Until the
- * SDK strips `origin` for monitor requests (or the API accepts it), we hit
- * /v2/monitor directly via fetch — same pattern parse.ts uses.
+ * `origin: js-sdk@<version>` field into every POST/PATCH body, which older
+ * /v2/monitor deployments rejected with "Unrecognized key in body". The API now
+ * accepts `origin` on create and update, and we keep hitting /v2/monitor
+ * directly via fetch (same pattern parse.ts uses) to stamp the CLI origin.
  *
  * Subcommands:
  *   create | list | get | update | delete | run | checks | check

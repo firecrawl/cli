@@ -8,7 +8,10 @@ import { getClient, isKeylessMode } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { writeOutput } from '../../utils/output';
 import { setupTest, teardownTest } from '../utils/mock-client';
-import { getCliOrigin } from '../../utils/agent-origin';
+
+vi.mock('../../utils/agent-origin', () => ({
+  getCliOrigin: () => 'cli.test@1.0.0',
+}));
 
 vi.mock('../../utils/output', () => ({ writeOutput: vi.fn() }));
 
@@ -59,11 +62,11 @@ describe('handleGovSearchCommand', () => {
     it.each([
       [
         {},
-        `/v2/search/gov?query=food+labeling&integration=cli&origin=${encodeURIComponent(getCliOrigin())}`,
+        '/v2/search/gov?query=food+labeling&integration=cli&origin=cli.test%401.0.0',
       ],
       [
         { k: 5 },
-        `/v2/search/gov?query=food+labeling&k=5&integration=cli&origin=${encodeURIComponent(getCliOrigin())}`,
+        '/v2/search/gov?query=food+labeling&k=5&integration=cli&origin=cli.test%401.0.0',
       ],
     ])('calls /v2/search/gov with %o', async (extra, expectedUrl) => {
       mockHttpGet.mockResolvedValue(mockGovResponse([sampleResult]));
@@ -147,7 +150,7 @@ describe('handleGovSearchCommand', () => {
 
       expect(mockHttpGet).not.toHaveBeenCalled();
       expect(fetchMock).toHaveBeenCalledWith(
-        `https://api.firecrawl.dev/v2/search/gov?query=food+labeling&integration=cli&origin=${encodeURIComponent(getCliOrigin())}`,
+        'https://api.firecrawl.dev/v2/search/gov?query=food+labeling&integration=cli&origin=cli.test%401.0.0',
         expect.objectContaining({ method: 'GET' })
       );
       expect(vi.mocked(writeOutput).mock.calls[0][0]).toContain(

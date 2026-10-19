@@ -36,11 +36,29 @@ describe('detectAgent', () => {
     expect(detectAgent({ CLAUDECODE: '1', OPENCODE: '1' })).toBe('opencode');
   });
 
-  it('returns undefined when the opt-out is set', () => {
-    expect(
-      detectAgent({ CLAUDECODE: '1', FIRECRAWL_CLI_DISABLE_AGENT_ORIGIN: '1' })
-    ).toBe(undefined);
-  });
+  it.each(['1', 'true', 'YES', 'on'])(
+    'returns undefined when the opt-out is %s',
+    (value) => {
+      expect(
+        detectAgent({
+          CLAUDECODE: '1',
+          FIRECRAWL_CLI_DISABLE_AGENT_ORIGIN: value,
+        })
+      ).toBe(undefined);
+    }
+  );
+
+  it.each(['0', 'false', 'no', 'off', ''])(
+    'keeps the agent when the opt-out is %j',
+    (value) => {
+      expect(
+        detectAgent({
+          CLAUDECODE: '1',
+          FIRECRAWL_CLI_DISABLE_AGENT_ORIGIN: value,
+        })
+      ).toBe('claude-code');
+    }
+  );
 });
 
 describe('buildCliOrigin', () => {

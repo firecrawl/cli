@@ -39,7 +39,8 @@ function isSet(value: string | undefined): boolean {
 export function detectAgent(
   env: NodeJS.ProcessEnv = process.env
 ): string | undefined {
-  if (isSet(env.FIRECRAWL_CLI_DISABLE_AGENT_ORIGIN)) return undefined;
+  const optOut = env.FIRECRAWL_CLI_DISABLE_AGENT_ORIGIN?.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(optOut ?? '')) return undefined;
   return AGENT_ENV.find(([, vars]) =>
     vars.some((name) => isSet(env[name]))
   )?.[0];

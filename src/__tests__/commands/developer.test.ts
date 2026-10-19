@@ -8,7 +8,10 @@ import { getClient } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { writeOutput } from '../../utils/output';
 import { setupTest, teardownTest } from '../utils/mock-client';
-import { getCliOrigin } from '../../utils/agent-origin';
+
+vi.mock('../../utils/agent-origin', () => ({
+  getCliOrigin: () => 'cli.test@1.0.0',
+}));
 
 vi.mock('../../utils/output', () => ({ writeOutput: vi.fn() }));
 
@@ -68,7 +71,7 @@ describe('handleDeveloperSearchCommand', () => {
 
       expect(mockHttpGet).toHaveBeenCalledTimes(1);
       expect(mockHttpGet).toHaveBeenCalledWith(
-        `/v2/search/developer?query=tokio+spawn_blocking&integration=cli&origin=${encodeURIComponent(getCliOrigin())}`
+        '/v2/search/developer?query=tokio+spawn_blocking&integration=cli&origin=cli.test%401.0.0'
       );
     });
 
@@ -81,7 +84,7 @@ describe('handleDeveloperSearchCommand', () => {
       });
 
       expect(mockHttpGet).toHaveBeenCalledWith(
-        `/v2/search/developer?query=tokio+spawn_blocking&k=5&integration=cli&origin=${encodeURIComponent(getCliOrigin())}`
+        '/v2/search/developer?query=tokio+spawn_blocking&k=5&integration=cli&origin=cli.test%401.0.0'
       );
     });
 

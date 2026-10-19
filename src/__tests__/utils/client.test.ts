@@ -9,7 +9,10 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { keylessGet, keylessRequest } from '../../utils/client';
-import { getCliOrigin } from '../../utils/agent-origin';
+
+vi.mock('../../utils/agent-origin', () => ({
+  getCliOrigin: () => 'cli.test@1.0.0',
+}));
 
 const OWN_SIGNUP_URL = 'https://firecrawl.dev/k/7fq2xab9';
 
@@ -87,7 +90,7 @@ describe('keyless requests', () => {
     });
 
     const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
-    expect(body.origin).toBe(getCliOrigin());
+    expect(body.origin).toBe('cli.test@1.0.0');
     expect(body.integration).toBe('cli');
   });
 });
