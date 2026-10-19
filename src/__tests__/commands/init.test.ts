@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execSync } from 'child_process';
 import * as skillsNative from '../../commands/skills-native';
-import { handleInitCommand } from '../../commands/init';
+import {
+  TEMPLATES,
+  findTemplate,
+  handleInitCommand,
+  scaffoldTemplate,
+} from '../../commands/init';
 import { CLI_SKILLS, WORKFLOW_SKILLS } from '../../commands/skills-install';
 
 const cliSkillFlags = `--skill ${CLI_SKILLS.join(' ')}`;
@@ -330,4 +335,39 @@ describe('init global installation', () => {
       );
     }
   );
+});
+
+describe('init templates', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('only lists templates that are standalone public repositories', () => {
+    expect(TEMPLATES.map((template) => template.repo)).toEqual([
+      'firecrawl/open-lovable',
+    ]);
+    expect(findTemplate('open-lovable')?.repo).toBe('firecrawl/open-lovable');
+  });
+
+  it('rejects a template that is no longer offered without downloading anything', async () => {
+    vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit ${code}`);
+    }) as never);
+
+    expect(findTemplate('scrape-basic')).toBeUndefined();
+    await expect(scaffoldTemplate('scrape-basic')).rejects.toThrow('exit 1');
+    expect(execSync).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining('Unknown template')
+    );
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining('open-lovable')
+    );
+  });
 });
