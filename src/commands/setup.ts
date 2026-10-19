@@ -774,7 +774,9 @@ async function installAllMcpLaunchers(
   const failed: string[] = [];
   for (const client of clients) {
     if (client.skipReason) {
-      console.log(`Skipping ${client.label}: ${client.skipReason}.\n`);
+      if (!options.quiet) {
+        console.log(`Skipping ${client.label}: ${client.skipReason}.\n`);
+      }
       skipped.push(`${client.label} (${client.skipReason})`);
       continue;
     }
@@ -788,15 +790,17 @@ async function installAllMcpLaunchers(
     }
   }
 
-  console.log('Firecrawl MCP setup summary:');
-  console.log(
-    `  ${green}✓${reset} Configured: ${configured.join(', ') || 'none'}`
-  );
-  if (skipped.length > 0) {
-    console.log(`  ${dim}-${reset} Skipped: ${skipped.join('; ')}`);
+  if (!options.quiet) {
+    console.log('Firecrawl MCP setup summary:');
+    console.log(
+      `  ${green}✓${reset} Configured: ${configured.join(', ') || 'none'}`
+    );
+    if (skipped.length > 0) {
+      console.log(`  ${dim}-${reset} Skipped: ${skipped.join('; ')}`);
+    }
+    if (failed.length > 0) console.log(`  ✗ Failed: ${failed.join(', ')}`);
   }
   if (failed.length > 0) {
-    console.log(`  ✗ Failed: ${failed.join(', ')}`);
     throw new Error(
       `Failed to configure Firecrawl MCP for ${failed.join(', ')}.`
     );
