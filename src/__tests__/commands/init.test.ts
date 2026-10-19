@@ -7,14 +7,19 @@ import { CLI_SKILLS, WORKFLOW_SKILLS } from '../../commands/skills-install';
 const cliSkillFlags = `--skill ${CLI_SKILLS.join(' ')}`;
 const workflowSkillFlags = `--skill ${WORKFLOW_SKILLS.join(' ')}`;
 
-const { installMcpMock, getApiKeyMock, confirmMock, checkboxMock } = vi.hoisted(
-  () => ({
-    installMcpMock: vi.fn(),
-    getApiKeyMock: vi.fn(),
-    confirmMock: vi.fn(),
-    checkboxMock: vi.fn(),
-  })
-);
+const {
+  installMcpMock,
+  getApiKeyMock,
+  confirmMock,
+  checkboxMock,
+  interactiveLoginMock,
+} = vi.hoisted(() => ({
+  installMcpMock: vi.fn(),
+  getApiKeyMock: vi.fn(),
+  confirmMock: vi.fn(),
+  checkboxMock: vi.fn(),
+  interactiveLoginMock: vi.fn(),
+}));
 
 vi.mock('child_process', () => ({
   execSync: vi.fn(),
@@ -35,6 +40,11 @@ vi.mock('../../commands/setup', () => ({
 vi.mock('../../utils/config', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../utils/config')>()),
   getApiKey: getApiKeyMock,
+}));
+
+vi.mock('../../utils/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../utils/auth')>()),
+  interactiveLogin: interactiveLoginMock,
 }));
 
 vi.mock('@inquirer/prompts', () => ({
@@ -78,6 +88,17 @@ describe('handleInitCommand', () => {
       expect.stringContaining('firecrawl-build'),
       expect.anything()
     );
+  });
+
+  it('installs skills before a non-interactive login that can fail or wait', async () => {
+    interactiveLoginMock.mockRejectedValueOnce(new Error('No input'));
+
+    await handleInitCommand({ yes: true, skipInstall: true });
+
+    const skillsOrder = vi.mocked(execSync).mock.invocationCallOrder[0];
+    const loginOrder = interactiveLoginMock.mock.invocationCallOrder[0];
+    expect(skillsOrder).toBeLessThan(loginOrder);
+    expect(process.exitCode).toBe(1);
   });
 
   it('scopes non-interactive skills install to one agent when provided', async () => {

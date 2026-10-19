@@ -1042,9 +1042,9 @@ export async function handleInitCommand(
 async function runNonInteractive(options: InitOptions): Promise<void> {
   const failures: string[] = [];
   const steps: string[] = [];
-  if (!options.skipAuth) steps.push('auth');
   if (!options.skipInstall) steps.push('install');
   if (!options.skipSkills) steps.push('skills');
+  if (!options.skipAuth) steps.push('auth');
   const total = steps.length;
   let current = 0;
 
@@ -1052,6 +1052,31 @@ async function runNonInteractive(options: InitOptions): Promise<void> {
     current++;
     return `${bold}[${current}/${total}]${reset}`;
   };
+
+  if (!options.skipInstall) {
+    console.log(`${stepLabel()} Installing firecrawl-cli globally...`);
+    if (!installGlobalCli()) failures.push('global CLI installation');
+  }
+
+  let skillCount: number | null = null;
+  let skillsInstalled = false;
+  if (!options.skipSkills) {
+    console.log(
+      `${stepLabel()} Installing firecrawl skills for AI coding agents...`
+    );
+    for (const selection of [INIT_CLI_SELECTION, INIT_WORKFLOW_SELECTION]) {
+      try {
+        const count = await installSkillRepoQuiet(selection, options);
+        skillsInstalled = true;
+        if (count != null) skillCount = (skillCount ?? 0) + count;
+      } catch {
+        console.error(
+          `\n${dim}Failed to install ${selection.label}. Retry with: ${selection.retryCommand}${reset}`
+        );
+        failures.push(selection.label);
+      }
+    }
+  }
 
   if (!options.skipAuth) {
     if (options.apiKey) {
@@ -1090,31 +1115,6 @@ async function runNonInteractive(options: InitOptions): Promise<void> {
         );
         failures.push('authentication');
         console.log('You can authenticate later with: firecrawl login\n');
-      }
-    }
-  }
-
-  if (!options.skipInstall) {
-    console.log(`${stepLabel()} Installing firecrawl-cli globally...`);
-    if (!installGlobalCli()) failures.push('global CLI installation');
-  }
-
-  let skillCount: number | null = null;
-  let skillsInstalled = false;
-  if (!options.skipSkills) {
-    console.log(
-      `${stepLabel()} Installing firecrawl skills for AI coding agents...`
-    );
-    for (const selection of [INIT_CLI_SELECTION, INIT_WORKFLOW_SELECTION]) {
-      try {
-        const count = await installSkillRepoQuiet(selection, options);
-        skillsInstalled = true;
-        if (count != null) skillCount = (skillCount ?? 0) + count;
-      } catch {
-        console.error(
-          `\n${dim}Failed to install ${selection.label}. Retry with: ${selection.retryCommand}${reset}`
-        );
-        failures.push(selection.label);
       }
     }
   }

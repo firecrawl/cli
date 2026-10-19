@@ -13,10 +13,10 @@ import {
 } from 'fs';
 import os from 'os';
 import path from 'path';
-import readline from 'readline';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { getApiKey, updateConfig } from '../utils/config';
 import { browserLogin, isAuthenticated } from '../utils/auth';
+import { promptInput } from '../utils/prompt';
 import { saveCredentials } from '../utils/credentials';
 import {
   buildSkillsInstallArgs,
@@ -495,19 +495,6 @@ function resolveWebAgent(agent: string): WebAgent | null {
   return null;
 }
 
-function promptInput(question: string): Promise<string> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-  return new Promise((resolve) => {
-    rl.question(question, (answer: string) => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
-
 /**
  * Interactively ask which harnesses to apply the change to, one by one.
  * Returns the selected agents, or null if the user aborted.
@@ -526,7 +513,10 @@ async function pickWebAgents(undo: boolean): Promise<WebAgent[] | null> {
   const selected: WebAgent[] = [];
   for (const agent of WEB_AGENTS) {
     const answer = (
-      await promptInput(`  ${verb} ${agent}? [Y/n] `)
+      await promptInput(
+        `  ${verb} ${agent}? [Y/n] `,
+        'No answer received. Pass --agent <name> or --yes to skip the harness prompts.'
+      )
     ).toLowerCase();
     if (answer === '' || answer === 'y' || answer === 'yes') {
       selected.push(agent);

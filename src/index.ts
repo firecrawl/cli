@@ -2736,7 +2736,7 @@ async function main() {
   if (args.length === 0) {
     const { isAuthenticated } = await import('./utils/auth');
 
-    if (!isAuthenticated()) {
+    if (!isAuthenticated() && process.stdin.isTTY) {
       // Not authenticated - run the onboarding auth step, which offers logging in
       // OR continuing on the keyless free tier (no API key required).
       printBanner();

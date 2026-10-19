@@ -3,7 +3,6 @@
  * Provides automatic authentication prompts when credentials are missing
  */
 
-import * as readline from 'readline';
 import * as crypto from 'crypto';
 import {
   loadCredentials,
@@ -11,6 +10,7 @@ import {
   getConfigDirectoryPath,
 } from './credentials';
 import { updateConfig, getApiKey } from './config';
+import { promptInput } from './prompt';
 
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
 // The apex redirects to www, and egress allowlists often permit only www.
@@ -26,45 +26,6 @@ const MAX_SERVER_FAILURES = 5;
 
 const NO_LOGIN_INPUT_MESSAGE =
   'No input to log in with. Run "firecrawl login --browser", pass --api-key, or set FIRECRAWL_API_KEY.';
-
-/**
- * Prompt for input. Rejects when stdin ends before an answer (CI, agents,
- * `</dev/null`), so callers fail instead of the process exiting 0 mid-prompt.
- * readline drops an unterminated last line, so piped input is read from stdin
- * directly; a terminal's buffer may hold erased keystrokes, so it never is.
- */
-function promptInput(question: string): Promise<string> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise((resolve, reject) => {
-    let answered = false;
-    let unterminated = '';
-    const onData = (chunk: Buffer | string): void => {
-      const text = unterminated + chunk.toString();
-      unterminated = text.slice(text.search(/[^\r\n]*$/));
-    };
-    if (!process.stdin.isTTY) process.stdin.on('data', onData);
-    rl.on('SIGINT', () => {
-      rl.close();
-      process.exit(130);
-    });
-    rl.on('close', () => {
-      process.stdin.off('data', onData);
-      if (answered) return;
-      const answer = unterminated.trim();
-      if (answer) resolve(answer);
-      else reject(new Error(NO_LOGIN_INPUT_MESSAGE));
-    });
-    rl.question(question, (answer: string) => {
-      answered = true;
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
 
 /**
  * Open URL in the default browser
@@ -693,7 +654,8 @@ async function manualLogin(
 
   if (isCustomUrl) {
     const apiKey = await promptInput(
-      'Enter your API key (press Enter to skip): '
+      'Enter your API key (press Enter to skip): ',
+      NO_LOGIN_INPUT_MESSAGE
     );
     return {
       apiKey: apiKey.trim(),
@@ -701,7 +663,10 @@ async function manualLogin(
     };
   }
 
-  const apiKey = await promptInput('Enter your Firecrawl API key: ');
+  const apiKey = await promptInput(
+    'Enter your Firecrawl API key: ',
+    NO_LOGIN_INPUT_MESSAGE
+  );
 
   if (!apiKey || apiKey.trim().length === 0) {
     throw new Error('API key cannot be empty');
@@ -790,7 +755,10 @@ async function interactiveLogin(
   printEnvHint();
   printTelemetryNotice();
 
-  const choice = await promptInput('Enter choice [1/2]: ');
+  const choice = await promptInput(
+    'Enter choice [1/2]: ',
+    NO_LOGIN_INPUT_MESSAGE
+  );
 
   if (choice === '2' || choice.toLowerCase() === 'manual') {
     return manualLogin(effectiveApiUrl);
