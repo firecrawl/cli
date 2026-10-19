@@ -715,7 +715,7 @@ describe('handleSetupCommand', () => {
     }
   });
 
-  it('keeps configuring other clients and fails when an installed client fails', async () => {
+  it('keeps configuring other clients when one add-mcp client fails', async () => {
     const home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-all-fail-'));
     const originalPath = process.env.PATH;
     process.env.HOME = home;
