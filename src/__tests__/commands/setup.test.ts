@@ -738,9 +738,14 @@ describe('handleSetupCommand', () => {
         handleSetupCommand('mcp', { agent: 'all', global: true, yes: true })
       ).rejects.toThrow('Failed to configure Firecrawl MCP for Cursor.');
 
-      const commands = vi.mocked(execFileSync).mock.calls.map(([cmd]) => cmd);
-      expect(commands.filter((cmd) => cmd === 'npx')).toHaveLength(8);
-      expect(commands).toContain('openclaw');
+      // On win32, .cmd clients run through cmd.exe with the client in its args.
+      const invoked = vi
+        .mocked(execFileSync)
+        .mock.calls.map(([cmd, args]) =>
+          [cmd, ...((args as string[] | undefined) ?? [])].join(' ')
+        );
+      expect(invoked.filter((line) => /\bnpx\b/.test(line))).toHaveLength(8);
+      expect(invoked.some((line) => /\bopenclaw\b/.test(line))).toBe(true);
       expect(existsSync(path.join(home, '.hermes', 'config.yaml'))).toBe(true);
     } finally {
       vi.mocked(execFileSync).mockReset();
