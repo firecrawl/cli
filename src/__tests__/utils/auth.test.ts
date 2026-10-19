@@ -143,6 +143,16 @@ describe('Authentication Utilities', () => {
       await expect(login).rejects.toThrow(/No input to log in with/);
     });
 
+    it('reads a piped API key without a trailing newline', async () => {
+      const login = manualLogin();
+      stdin.end('fc-unterminated-key');
+
+      await expect(login).resolves.toEqual({
+        apiKey: 'fc-unterminated-key',
+        apiUrl: 'https://api.firecrawl.dev',
+      });
+    });
+
     it('still reads a piped API key', async () => {
       const login = manualLogin();
       stdin.end('fc-piped-key\n');
