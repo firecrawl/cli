@@ -9,7 +9,8 @@ const CACHE_FILENAME = 'update-check.json';
 const CACHE_TTL_MS = 20 * 60 * 60 * 1000;
 const NOTICE_TTL_MS = 12 * 60 * 60 * 1000;
 const RELEASE_NOTES_URL = 'https://github.com/firecrawl/cli/releases/latest';
-const INSTALL_COMMAND = 'npm install -g firecrawl-cli';
+const NPM_UPDATE_COMMAND = 'npm install -g firecrawl-cli';
+const BREW_UPDATE_COMMAND = 'brew upgrade firecrawl-cli';
 
 interface UpdateCache {
   latestVersion: string;
@@ -20,6 +21,7 @@ interface UpdateCache {
 
 export interface UpdateNoticeOptions {
   cacheDir?: string;
+  installPaths?: string[];
   now?: Date;
   stderr?: Pick<NodeJS.WriteStream, 'write' | 'isTTY'>;
 }
@@ -29,6 +31,18 @@ function getCachePath(cacheDir?: string): string {
     cacheDir ?? path.join(os.homedir(), '.firecrawl'),
     CACHE_FILENAME
   );
+}
+
+/**
+ * Homebrew installs live under a Cellar keg and must be upgraded with brew.
+ * Compiled binaries report a virtual __dirname, so the executable path is checked too.
+ */
+export function updateCommand(
+  installPaths: string[] = [__dirname, process.execPath]
+): string {
+  return installPaths.some((p) => /[\\/]Cellar[\\/]firecrawl-cli[\\/]/.test(p))
+    ? BREW_UPDATE_COMMAND
+    : NPM_UPDATE_COMMAND;
 }
 
 function updateCheckDisabled(): boolean {
@@ -83,11 +97,14 @@ async function writeCachedLatest(
   }
 }
 
-export function formatUpdateNotice(latestVersion: string): string {
+export function formatUpdateNotice(
+  latestVersion: string,
+  command: string = updateCommand()
+): string {
   const currentVersion = packageJson.version;
   const lines = [
     `✨ Update available! ${currentVersion} -> ${latestVersion}`,
-    `Run ${INSTALL_COMMAND} to update.`,
+    `Run ${command} to update.`,
     '',
     'See full release notes:',
     RELEASE_NOTES_URL,
@@ -149,12 +166,17 @@ export async function maybeShowUpdateNotice(
   if (!shouldShowNotice(latestVersion) || latestVersion === undefined) return;
   if (noticeWasRecentlyShown(cached, latestVersion, now)) return;
 
+  const command = updateCommand(options.installPaths);
   stderr.write(
-    `${colorizeUpdateNotice(formatUpdateNotice(latestVersion), stderr, {
-      title: 'Update available!',
-      commands: [INSTALL_COMMAND],
-      url: RELEASE_NOTES_URL,
-    })}\n\n`
+    `${colorizeUpdateNotice(
+      formatUpdateNotice(latestVersion, command),
+      stderr,
+      {
+        title: 'Update available!',
+        commands: [command],
+        url: RELEASE_NOTES_URL,
+      }
+    )}\n\n`
   );
   await writeCachedLatest(cachePath, {
     latestVersion,
