@@ -13,6 +13,12 @@ import {
   updateConfig,
   type GlobalConfig,
 } from './config';
+import { getCliOrigin } from './agent-origin';
+import { integrationHeaders, withIntegrationHeader } from './integration';
+
+// SDK versions without an origin option ignore it, so the request origin
+// reaches the API only once the SDK supports it.
+type ClientOptionsWithOrigin = FirecrawlClientOptions & { origin?: string };
 
 let clientInstance: Firecrawl | null = null;
 
@@ -48,6 +54,12 @@ export async function keylessRequest(
   const apiUrl = (getConfig().apiUrl || DEFAULT_API_URL).replace(/\/$/, '');
   const response = await fetch(`${apiUrl}${path}`, {
     method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...KEYLESS_CLI_HEADERS,
+      ...integrationHeaders(),
+    },
+    body: JSON.stringify({ origin: getCliOrigin(), ...body }),
   });
   const json: any = await response.json().catch(() => ({}));
   if (!response.ok) {

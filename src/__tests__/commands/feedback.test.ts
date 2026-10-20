@@ -187,7 +187,7 @@ describe('executeEndpointFeedback', () => {
     expect(endpointUrl).toBe('https://api.firecrawl.dev/v2/feedback');
     expect(endpointRequest.headers['X-Integration']).toBe('rtk');
     expect(JSON.parse(endpointRequest.body)).toMatchObject({
-      origin: 'cli',
+      origin: 'cli.test@1.0.0',
       integration: 'cli',
     });
     const [searchUrl, searchRequest] = mockFetch.mock.calls[1];
@@ -197,7 +197,7 @@ describe('executeEndpointFeedback', () => {
     expect(searchRequest.headers['X-Integration']).toBe('rtk');
     expect(JSON.parse(searchRequest.body)).toEqual({
       rating: 'good',
-      origin: 'cli',
+      origin: 'cli.test@1.0.0',
       integration: 'cli',
     });
   });
