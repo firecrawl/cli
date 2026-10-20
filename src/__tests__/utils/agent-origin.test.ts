@@ -12,6 +12,9 @@ describe('detectAgent', () => {
     [{ CODEX_SANDBOX_NETWORK_DISABLED: '1' }, 'codex'],
     [{ CODEX_THREAD_ID: 'abc' }, 'codex'],
     [{ CODEX_MANAGED_BY_NPM: '1' }, 'codex'],
+    [{ CODEX_MANAGED_BY_BUN: '1' }, 'codex'],
+    [{ CODEX_MANAGED_BY_PNPM: '1' }, 'codex'],
+    [{ CODEX_MANAGED_BY_VITE_PLUS: '1' }, 'codex'],
     [{ CURSOR_AGENT: '1' }, 'cursor'],
     [{ GEMINI_CLI: '1' }, 'gemini-cli'],
     [{ OPENCODE: '1' }, 'opencode'],
@@ -84,6 +87,23 @@ describe('getCliOrigin', () => {
   });
 
   it('computes the origin once per process', async () => {
+    for (const name of [
+      'CLAUDECODE',
+      'CLAUDE_CODE_ENTRYPOINT',
+      'CODEX_SANDBOX',
+      'CODEX_SANDBOX_NETWORK_DISABLED',
+      'CODEX_THREAD_ID',
+      'CODEX_MANAGED_BY_NPM',
+      'CODEX_MANAGED_BY_BUN',
+      'CODEX_MANAGED_BY_PNPM',
+      'CODEX_MANAGED_BY_VITE_PLUS',
+      'CURSOR_AGENT',
+      'OPENCODE',
+      'GOOSE_TERMINAL',
+      'CLINE_ACTIVE',
+      'FIRECRAWL_CLI_DISABLE_AGENT_ORIGIN',
+    ])
+      vi.stubEnv(name, '');
     vi.stubEnv('GEMINI_CLI', '1');
     vi.resetModules();
     const { getCliOrigin } = await import('../../utils/agent-origin');
