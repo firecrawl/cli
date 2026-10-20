@@ -670,6 +670,59 @@ it('executes Find Tools through the same API and refuses keyless access', async 
   });
 });
 
+it('finds and reads skills through the same API and refuses keyless access', async () => {
+  expect((await cli(['find-skills'], '')).code).toBe(1);
+  expect(requests).toHaveLength(0);
+  expect(
+    (await cli(['find-skills', 'weekly', 'digest', '--limit', '5'])).code
+  ).toBe(0);
+  expect(requests[0]).toMatchObject({
+    url: '/v2/scrape',
+    body: {
+      alexandria: [
+        {
+          provider: 'firecrawl',
+          capability: 'find-skills',
+          options: { query: 'weekly digest', limit: 5 },
+        },
+      ],
+    },
+  });
+  expect((await cli(['find-skills'])).code).toBe(0);
+  expect(requests[1].body.alexandria[0].options).toEqual({});
+  const read = await cli([
+    'read-skill',
+    'team:weekly-digest',
+    '--path',
+    'references/sources.md',
+    '--skill-version',
+    '2',
+  ]);
+  expect(read.code).toBe(0);
+  expect(read.stdout).not.toMatch(/^\d+\.\d+\.\d+\s*$/);
+  expect(requests[2].body.alexandria[0]).toEqual({
+    provider: 'firecrawl',
+    capability: 'read-skill',
+    options: {
+      id: 'team:weekly-digest',
+      path: 'references/sources.md',
+      version: 2,
+    },
+  });
+});
+
+it('refuses invalid skill options before calling the API', async () => {
+  expect((await cli(['find-skills', '--limit', '51'])).code).toBe(1);
+  expect(
+    (await cli(['read-skill', 'deep-research', '--skill-version', '0'])).code
+  ).toBe(1);
+  expect((await cli(['read-skill'])).code).toBe(1);
+  expect(requests).toHaveLength(0);
+  const help = await cli(['--help']);
+  expect(help.stdout).toContain('find-skills');
+  expect(help.stdout).toContain('read-skill');
+});
+
 it('preserves charged SDK failures', async () => {
   status = 402;
   response = {

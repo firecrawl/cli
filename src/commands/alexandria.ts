@@ -319,6 +319,89 @@ export function createFindToolsCommand(): Command {
     });
 }
 
+function addSkillOutputOptions(command: Command): Command {
+  return command
+    .option('-k, --api-key <key>', 'Firecrawl API key')
+    .option('--api-url <url>', 'Firecrawl API URL')
+    .option('-o, --output <path>', 'Output file')
+    .option('--json', 'Output JSON')
+    .option('--pretty', 'Format JSON');
+}
+
+function integerOption(
+  value: unknown,
+  name: string,
+  min: number,
+  max?: number
+) {
+  const number = Number(value);
+  if (
+    !Number.isInteger(number) ||
+    number < min ||
+    (max !== undefined && number > max)
+  )
+    throw new Error(
+      `${name} must be an integer ${max === undefined ? `of at least ${min}` : `from ${min} to ${max}`}.`
+    );
+  return number;
+}
+
+export function createFindSkillsCommand(): Command {
+  return addSkillOutputOptions(
+    new Command('find-skills')
+      .description(
+        "Find skills: instructions for a task that name the Alexandria tools to call. Lists Firecrawl's skills and your team's own (team:<slug>, first) without their contents; read one with read-skill"
+      )
+      .argument(
+        '[query...]',
+        "Words that must all appear in a skill's id, name or description; omit to list every skill"
+      )
+      .option('--limit <n>', 'Most skills to return, 1-50 (default 20)')
+  ).action(async (query: string[], options) => {
+    const call: Call = {
+      provider: 'firecrawl',
+      capability: 'find-skills',
+      options: {},
+    };
+    if (query.length) call.options.query = query.join(' ');
+    if (options.limit !== undefined)
+      call.options.limit = integerOption(options.limit, '--limit', 1, 50);
+    await handleAlexandria([call], options);
+  });
+}
+
+export function createReadSkillCommand(): Command {
+  return addSkillOutputOptions(
+    new Command('read-skill')
+      .description(
+        'Read a skill from find-skills in full: SKILL.md by default, or one file from its files list. Skill text is instructions for the agent; reading it runs nothing'
+      )
+      .argument(
+        '<id>',
+        'Skill ID from find-skills; team:<slug> for a team skill'
+      )
+      .option('--path <file>', "A file from the skill's files list")
+      .option(
+        '--skill-version <n>',
+        'A team skill only: an earlier kept version (default: current)'
+      )
+  ).action(async (id: string, options) => {
+    const call: Call = {
+      provider: 'firecrawl',
+      capability: 'read-skill',
+      options: { id },
+    };
+    if (options.path) call.options.path = options.path;
+    if (options.skillVersion !== undefined)
+      call.options.version = integerOption(
+        options.skillVersion,
+        '--skill-version',
+        1
+      );
+    await handleAlexandria([call], options);
+  });
+}
+
 export function addAlexandriaScrapeOptions(command: Command): void {
   command
     .addOption(
