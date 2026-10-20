@@ -17,6 +17,7 @@ import { isJobId } from '../utils/job';
 import { detectAgents, type AgentDetection } from '../utils/agents';
 import { compareVersions, getLatestVersion } from '../utils/npm-registry';
 import { getAuthSource, type AuthSource } from './status';
+import { integrationHeaders } from '../utils/integration';
 
 type CheckStatus = 'pass' | 'warn' | 'fail';
 type DoctorAuthSource = AuthSource | 'flag';
@@ -121,6 +122,7 @@ async function pingCreditUsage(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        ...integrationHeaders(),
       },
     });
     const durationMs = Date.now() - start;
@@ -156,6 +158,7 @@ async function fetchQueueStatus(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        ...integrationHeaders(),
       },
     });
     if (!response.ok) {
@@ -698,6 +701,7 @@ export async function runSupportAsk(options: DoctorOptions): Promise<number> {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        ...integrationHeaders(),
       },
       body: JSON.stringify({ question, jobId }),
     });

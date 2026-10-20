@@ -11,6 +11,7 @@ import {
   type ValuableResultInput,
   type ValuableSourceInput,
 } from './search-feedback';
+import { integrationHeaders } from '../utils/integration';
 
 export type EndpointFeedbackEndpoint = 'search' | 'scrape' | 'parse' | 'map';
 
@@ -313,6 +314,7 @@ export async function executeEndpointFeedback(
       headers: {
         ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         'Content-Type': 'application/json',
+        ...integrationHeaders(),
       },
       body: JSON.stringify(body),
     });

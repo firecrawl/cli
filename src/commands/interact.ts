@@ -11,6 +11,7 @@ import {
   clearInteractSession,
 } from '../utils/interact-session';
 import { writeOutput } from '../utils/output';
+import { integrationHeaders } from '../utils/integration';
 
 export interface InteractExecuteOptions {
   scrapeId?: string;
@@ -60,7 +61,7 @@ function buildHeaders(apiKey: string | undefined, keyless: boolean) {
     headers.Authorization = `Bearer ${apiKey}`;
   }
   if (keyless) Object.assign(headers, KEYLESS_CLI_HEADERS);
-  return headers;
+  return { ...headers, ...integrationHeaders() };
 }
 
 /**

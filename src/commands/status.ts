@@ -10,6 +10,7 @@ import { isAuthenticated } from '../utils/auth';
 import { getConfig, validateConfig } from '../utils/config';
 import { loadCredentials } from '../utils/credentials';
 import { isSearchFeedbackDisabledLocally } from './search-feedback';
+import { integrationHeaders } from '../utils/integration';
 
 export type AuthSource = 'env' | 'stored' | 'none';
 
@@ -81,6 +82,7 @@ async function fetchQueueStatus(
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
+      ...integrationHeaders(),
     },
   });
 
@@ -107,6 +109,7 @@ async function fetchCreditUsage(
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
+      ...integrationHeaders(),
     },
   });
 

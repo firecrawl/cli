@@ -7,6 +7,7 @@ import {
   parsePageNumbersArg,
 } from '../../commands/feedback';
 import {
+  executeSearchFeedback,
   parseValuableResultsArg,
   type ValuableResultInput,
 } from '../../commands/search-feedback';
@@ -156,6 +157,44 @@ describe('executeEndpointFeedback', () => {
       url: 'https://example.com/pricing',
       pageNumbers: [1, 2],
       metadata: { source: 'test' },
+    });
+  });
+
+  it('sends FIRECRAWL_INTEGRATION as X-Integration on endpoint and search feedback', async () => {
+    vi.stubEnv('FIRECRAWL_INTEGRATION', 'rtk');
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true, feedbackId: 'feedback-1' }),
+    });
+
+    try {
+      await executeEndpointFeedback({
+        endpoint: 'scrape',
+        jobId: '0193f6c5-1234-7890-abcd-1234567890ab',
+        rating: 'good',
+      });
+      await executeSearchFeedback({ searchId: 'search-1', rating: 'good' });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    const [endpointUrl, endpointRequest] = mockFetch.mock.calls[0];
+    expect(endpointUrl).toBe('https://api.firecrawl.dev/v2/feedback');
+    expect(endpointRequest.headers['X-Integration']).toBe('rtk');
+    expect(JSON.parse(endpointRequest.body)).toMatchObject({
+      origin: 'cli',
+      integration: 'cli',
+    });
+    const [searchUrl, searchRequest] = mockFetch.mock.calls[1];
+    expect(searchUrl).toBe(
+      'https://api.firecrawl.dev/v2/search/search-1/feedback'
+    );
+    expect(searchRequest.headers['X-Integration']).toBe('rtk');
+    expect(JSON.parse(searchRequest.body)).toEqual({
+      rating: 'good',
+      origin: 'cli',
+      integration: 'cli',
     });
   });
 

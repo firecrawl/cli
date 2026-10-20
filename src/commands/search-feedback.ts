@@ -1,5 +1,6 @@
 import { getConfig, validateConfig } from '../utils/config';
 import { getClient } from '../utils/client';
+import { integrationHeaders } from '../utils/integration';
 
 export type SearchFeedbackRating = 'good' | 'bad' | 'partial';
 
@@ -156,6 +157,7 @@ export async function executeSearchFeedback(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        ...integrationHeaders(),
       },
       body: JSON.stringify(body),
     });
