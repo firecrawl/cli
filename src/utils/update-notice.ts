@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import packageJson from '../../package.json';
 import { compareVersions, getLatestVersion } from './npm-registry';
+import { colorizeUpdateNotice, formatUpdateBox } from './update-notice-format';
 
 const CACHE_FILENAME = 'update-check.json';
 const CACHE_TTL_MS = 20 * 60 * 60 * 1000;
@@ -33,13 +34,6 @@ function getCachePath(cacheDir?: string): string {
 function updateCheckDisabled(): boolean {
   const value = process.env.FIRECRAWL_NO_UPDATE_CHECK;
   return value === '1' || value === 'true';
-}
-
-function supportsColor(stderr: Pick<NodeJS.WriteStream, 'isTTY'>): boolean {
-  if (process.env.NO_COLOR !== undefined) return false;
-  if (process.env.FORCE_COLOR !== undefined)
-    return process.env.FORCE_COLOR !== '0';
-  return Boolean(stderr.isTTY);
 }
 
 async function readCachedLatest(
@@ -89,14 +83,6 @@ async function writeCachedLatest(
   }
 }
 
-function colorize(message: string, stderr: Pick<NodeJS.WriteStream, 'isTTY'>) {
-  if (!supportsColor(stderr)) return message;
-  return message
-    .replace('Update available!', '\x1b[1;36mUpdate available!\x1b[0m')
-    .replace(INSTALL_COMMAND, `\x1b[36m${INSTALL_COMMAND}\x1b[0m`)
-    .replace(RELEASE_NOTES_URL, `\x1b[36;4m${RELEASE_NOTES_URL}\x1b[0m`);
-}
-
 export function formatUpdateNotice(latestVersion: string): string {
   const currentVersion = packageJson.version;
   const lines = [
@@ -106,11 +92,7 @@ export function formatUpdateNotice(latestVersion: string): string {
     'See full release notes:',
     RELEASE_NOTES_URL,
   ];
-  const width = Math.max(...lines.map((line) => line.length));
-  const top = `╭${'─'.repeat(width + 2)}╮`;
-  const bottom = `╰${'─'.repeat(width + 2)}╯`;
-  const body = lines.map((line) => `│ ${line.padEnd(width)} │`);
-  return [top, ...body, bottom].join('\n');
+  return formatUpdateBox(lines);
 }
 
 function shouldShowNotice(latestVersion: string | undefined): boolean {
@@ -167,7 +149,13 @@ export async function maybeShowUpdateNotice(
   if (!shouldShowNotice(latestVersion) || latestVersion === undefined) return;
   if (noticeWasRecentlyShown(cached, latestVersion, now)) return;
 
-  stderr.write(`${colorize(formatUpdateNotice(latestVersion), stderr)}\n\n`);
+  stderr.write(
+    `${colorizeUpdateNotice(formatUpdateNotice(latestVersion), stderr, {
+      title: 'Update available!',
+      commands: [INSTALL_COMMAND],
+      url: RELEASE_NOTES_URL,
+    })}\n\n`
+  );
   await writeCachedLatest(cachePath, {
     latestVersion,
     checkedAt: checkedAt ?? now.toISOString(),

@@ -4,9 +4,11 @@ import { getConfig, isCustomApiUrl, validateConfig } from '../utils/config';
 import { getClient } from '../utils/client';
 import {
   parseMissingContentArg,
+  parseValuableResultsArg,
   parseValuableSourcesArg,
   type MissingContentInput,
   type SearchFeedbackRating,
+  type ValuableResultInput,
   type ValuableSourceInput,
 } from './search-feedback';
 
@@ -25,6 +27,7 @@ export interface EndpointFeedbackOptions {
   tags?: string[];
   note?: string;
   valuableSources?: ValuableSourceInput[];
+  valuableResults?: ValuableResultInput[];
   missingContent?: MissingContentInput[];
   querySuggestions?: string;
   url?: string;
@@ -213,6 +216,7 @@ export function parseEndpointFeedbackCliOptions(options: {
   metadata?: string;
   metadataFile?: string;
   valuableSources?: string;
+  valuableResults?: string;
   missingContent?: string | string[];
   rating?: string;
 }) {
@@ -223,6 +227,7 @@ export function parseEndpointFeedbackCliOptions(options: {
     pageNumbers: parsePageNumbersArg(options.pageNumbers),
     metadata: parseMetadataArg(options.metadata, options.metadataFile),
     valuableSources: parseValuableSourcesArg(options.valuableSources),
+    valuableResults: parseValuableResultsArg(options.valuableResults),
     missingContent: parseMissingContentArg(options.missingContent),
   };
 }
@@ -265,6 +270,15 @@ export async function executeEndpointFeedback(
     if (options.endpoint !== 'alexandria' && !options.jobId) {
       throw new Error('Job feedback requires a job ID.');
     }
+    // Positions in `valuableResults` are 1-indexed within a search result
+    // group (web/images/news), so they are meaningless anywhere else. Reject
+    // rather than drop: silently ignoring the flag would let a caller believe
+    // the results were recorded.
+    if (options.endpoint !== 'search' && options.valuableResults?.length) {
+      throw new Error(
+        '--valuable-results is only supported for search feedback.'
+      );
+    }
     const entries: Array<[string, unknown]> =
       options.endpoint === 'alexandria'
         ? [
@@ -279,6 +293,7 @@ export async function executeEndpointFeedback(
             ['tags', normalizeList(options.tags)],
             ['note', options.note],
             ['valuableSources', options.valuableSources],
+            ['valuableResults', options.valuableResults],
             ['missingContent', options.missingContent],
             ['querySuggestions', options.querySuggestions],
             ['url', options.url],

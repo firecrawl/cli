@@ -8,7 +8,7 @@ Command-line interface for Firecrawl. Search, scrape, interact, crawl, map, sear
 npm install -g firecrawl-cli
 ```
 
-Or set up everything in one command (install CLI globally, authenticate, and add skills across all detected coding editors):
+Or set up everything in one command (install CLI globally, authenticate, and install shared skills for your detected coding editors):
 
 ```bash
 npx -y firecrawl-cli@latest init -y --browser
@@ -16,7 +16,7 @@ npx -y firecrawl-cli@latest init -y --browser
 
 - `-y` runs setup non-interactively
 - `--browser` opens the browser for Firecrawl authentication automatically
-- skills install globally to every detected AI coding agent by default
+- skills install globally in the shared skills directory and are made available to detected AI coding agents by default
 
 ### Setup Skills, Workflows, and MCP
 
@@ -37,7 +37,7 @@ firecrawl setup seo-audit
 
 If no API key is found afterwards, an interactive terminal offers a browser login (pass `--browser` to log in without the prompt); non-interactive runs never block — they print a hint and the skills walk agents through setup on first use.
 
-These install globally across all detected coding editors by default. Use `--agent <agent>` to scope any of them to one editor.
+Default installs use the shared `~/.agents/skills` directory and the coding editors detected by Firecrawl. The npx installer always includes Codex as the shared-directory target, even when Codex is not detected, preserving shared files and agent links. If no editors are detected, only the shared directory is populated. The npx path detects supported global targets, including Kiro and custom configuration locations such as `CLAUDE_CONFIG_DIR` and `XDG_CONFIG_HOME`. Project-only targets are excluded. Use `--agent <agent>` to target a specific editor.
 
 #### Scope setup to a single harness
 
@@ -95,11 +95,50 @@ firecrawl setup build
 firecrawl setup workflows
 ```
 
+### Skill updates
+
+Interactive CLI sessions (except `init`, `setup`, and the `-y`/`--yes` init
+shorthand) show a boxed notice when installed Firecrawl skills differ from the
+current catalog. The check includes supporting reference files and runs
+independently of CLI releases. Installs record which catalog skills existed, so
+the notice announces skills published later, once, in families whose umbrella
+skill is installed. Skills skipped during setup are not offered again.
+
+Each affected family gets one command: `firecrawl setup core`,
+`firecrawl setup build`, or `firecrawl setup workflows`. These commands install
+the entire current family, including previously skipped skills and
+new skills added since your CLI was released. When installing through npx, failed
+catalog API discovery falls back to this CLI release's known names with a warning.
+Native installs discover skills directly from the Git repository and require that
+repository to be available. An explicit refresh replaces installed files, including
+local edits; the notice itself never changes them.
+
+Checks cover global installations recorded in `~/.agents/.skill-lock.json` with
+files in `~/.agents/skills`. They cache catalog results for 20 hours, repeat the
+notice at most once every 12 hours, and retry failed checks after an hour.
+Non-interactive runs stay quiet. Set `FIRECRAWL_NO_UPDATE_CHECK=1` to disable both
+CLI and skill update notices.
+
+### MCP and web defaults
+
 To install the Firecrawl MCP server into your editors (Cursor, Claude Code, VS Code, etc.):
 
 ```bash
 firecrawl setup mcp
 ```
+
+With a key saved by `firecrawl login`, export `FIRECRAWL_API_KEY` and pass
+`--agent <agent>` (or `--agent all`), or add `--keyless`: setup never writes a
+stored key into client configs.
+
+Use `--agent <agent>` for one client, or `--agent all --global` to configure
+Claude Code, VS Code, Codex, OpenCode, Cursor, Gemini CLI, Windsurf,
+Antigravity, Hermes Agent, and OpenClaw in one run. Clients that cannot be
+configured on this machine (for example OpenClaw when the `openclaw` command is
+not installed) are skipped and listed in the summary; the command only fails
+when a client it tried to configure fails. When `FIRECRAWL_API_KEY` is set,
+Antigravity is skipped because it has no verified way to reference the key from
+the environment; add `--keyless` to include it.
 
 To make Firecrawl the default web provider for supported AI agents:
 
@@ -524,20 +563,21 @@ endpoint feedback calls silently.
 
 #### Feedback Options
 
-| Option                           | Description                                  |
-| -------------------------------- | -------------------------------------------- |
-| `--rating <rating>`              | Required: `good`, `partial`, or `bad`        |
-| `--issues <codesOrJson>`         | Comma-separated issue codes or JSON array    |
-| `--tags <codesOrJson>`           | Comma-separated tags or JSON array           |
-| `--note <text>`                  | Short human-readable feedback                |
-| `--valuable-sources <json>`      | JSON array of `{url, reason}` entries        |
-| `--missing-content <json>`       | JSON array of `{topic, description}` entries |
-| `--query-suggestions <text>`     | Search/query improvement notes               |
-| `--url <url>`                    | Relevant URL for scrape or parse feedback    |
-| `--page-numbers <numbersOrJson>` | Comma-separated page numbers or JSON array   |
-| `--metadata <json>`              | Small JSON object with extra context         |
-| `--metadata-file <path>`         | Path to small metadata JSON object           |
-| `--silent`                       | Suppress output for background agent calls   |
+| Option                                 | Description                                                                                                                  |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `--rating <rating>`                    | Required: `good`, `partial`, or `bad`                                                                                        |
+| `--issues <codesOrJson>`               | Comma-separated issue codes or JSON array                                                                                    |
+| `--tags <codesOrJson>`                 | Comma-separated tags or JSON array                                                                                           |
+| `--note <text>`                        | Short human-readable feedback                                                                                                |
+| `--valuable-sources <json>`            | JSON array of `{url, reason}` entries                                                                                        |
+| `--valuable-results <positionsOrJson>` | Search only: every useful result as `source:position`, e.g. `web:1,news:2`, or a JSON array of `{source, position, reason?}` |
+| `--missing-content <json>`             | JSON array of `{topic, description}` entries                                                                                 |
+| `--query-suggestions <text>`           | Search/query improvement notes                                                                                               |
+| `--url <url>`                          | Relevant URL for scrape or parse feedback                                                                                    |
+| `--page-numbers <numbersOrJson>`       | Comma-separated page numbers or JSON array                                                                                   |
+| `--metadata <json>`                    | Small JSON object with extra context                                                                                         |
+| `--metadata-file <path>`               | Path to small metadata JSON object                                                                                           |
+| `--silent`                             | Suppress output for background agent calls                                                                                   |
 
 ---
 

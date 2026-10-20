@@ -5,10 +5,13 @@
 
 import { execFileSync } from 'child_process';
 import {
+  accessSync,
   chmodSync,
+  constants as fsConstants,
   existsSync,
   mkdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from 'fs';
 import os from 'os';
@@ -18,12 +21,15 @@ import { getApiKey, updateConfig } from '../utils/config';
 import { browserLogin, isAuthenticated } from '../utils/auth';
 import { promptInput } from '../utils/prompt';
 import { saveCredentials } from '../utils/credentials';
+import { getCatalogSkills } from '../utils/skill-catalog';
+import { rememberSkillInstall } from '../utils/skill-update-notice';
 import {
   buildSkillsInstallArgs,
   BUILD_SKILL_SELECTION,
   BUILD_SKILLS,
   CATALOG_REPO,
   cleanNpmEnv,
+  resolveSkillSelection,
   CLI_SKILL_SELECTION,
   CLI_SKILLS,
   SKILL_REPOS,
@@ -79,13 +85,16 @@ const dim = '\x1b[2m';
 const reset = '\x1b[0m';
 const ADD_MCP_PACKAGE = 'add-mcp@1.14.0';
 const ENV_API_KEY = 'FIRECRAWL_API_KEY';
-const ADD_MCP_LAUNCH_AGENTS = [
-  'claude-code',
-  'vscode',
-  'codex',
-  'opencode',
-  'cursor',
-] as const;
+const ADD_MCP_LAUNCH_AGENTS: Record<string, string> = {
+  'claude-code': 'Claude Code',
+  vscode: 'VS Code',
+  codex: 'Codex',
+  opencode: 'OpenCode',
+  cursor: 'Cursor',
+  'gemini-cli': 'Gemini CLI',
+  windsurf: 'Windsurf',
+  antigravity: 'Antigravity',
+};
 
 const SKILL_REPO_LABELS: Record<string, string> = {
   'firecrawl/cli': 'Core CLI skills',
@@ -152,6 +161,22 @@ function resolveWindowsCommand(
   // Let CreateProcess perform its normal resolution for native executables.
   // Crucially, do not silently rewrite an unknown command to `<name>.cmd`.
   return command;
+}
+
+function isCommandOnPath(command: string): boolean {
+  if (process.platform === 'win32') {
+    return resolveWindowsCommand(command, process.env) !== command;
+  }
+  if (!process.env.PATH) return false;
+  return process.env.PATH.split(path.delimiter).some((directory) => {
+    const candidate = path.join(directory || '.', command);
+    try {
+      accessSync(candidate, fsConstants.X_OK);
+      return statSync(candidate).isFile();
+    } catch {
+      return false;
+    }
+  });
 }
 
 /**
@@ -223,11 +248,13 @@ function assertSubprocessSafeCredential(
 function environmentHeaderForAgent(agent?: string): string | undefined {
   switch (agent) {
     case 'claude-code':
+    case 'gemini-cli':
     case 'hermes':
     case 'openclaw':
       return `Bearer \${${ENV_API_KEY}}`;
     case 'cursor':
     case 'vscode':
+    case 'windsurf':
       return `Bearer \${env:${ENV_API_KEY}}`;
     case 'opencode':
       return `Bearer {env:${ENV_API_KEY}}`;
@@ -279,6 +306,15 @@ function resolveMcpAgent(agent: string | undefined): ResolvedMcpAgent {
     case 'opencode':
     case 'open-code':
       return { kind: 'add-mcp', agent: 'opencode' };
+    case 'cursor':
+      return { kind: 'add-mcp', agent: 'cursor' };
+    case 'gemini':
+    case 'gemini-cli':
+      return { kind: 'add-mcp', agent: 'gemini-cli' };
+    case 'windsurf':
+      return { kind: 'add-mcp', agent: 'windsurf' };
+    case 'antigravity':
+      return { kind: 'add-mcp', agent: 'antigravity' };
     case 'hermes':
     case 'hermes-agent':
       return { kind: 'hermes' };
@@ -323,7 +359,7 @@ export async function handleSetupCommand(
       await handleMakeDefaultCommand(options);
       break;
     default: {
-      const skill = resolveCatalogSkill(subcommand);
+      const skill = await resolveCatalogSkill(subcommand);
       if (skill) {
         await installSkills(options, [
           { repo: CATALOG_REPO, skills: [skill], label: `${skill} skill` },
@@ -416,11 +452,18 @@ const ALL_CATALOG_SKILLS: readonly string[] = [
  * matched before this runs, so `build` means the group while `firecrawl-build`
  * still reaches the skill.
  */
-function resolveCatalogSkill(name: string): string | undefined {
+async function resolveCatalogSkill(name: string): Promise<string | undefined> {
   if (ALL_CATALOG_SKILLS.includes(name)) return name;
   const prefixed = `firecrawl-${name}`;
   if (ALL_CATALOG_SKILLS.includes(prefixed)) return prefixed;
-  return undefined;
+  if (!/^firecrawl(?:-[a-z0-9]+)+$/.test(name)) return undefined;
+  // Skills published after this release: confirm against the catalog when it is reachable.
+  try {
+    const catalog = await getCatalogSkills();
+    return catalog.some((skill) => skill.name === name) ? name : undefined;
+  } catch {
+    return name;
+  }
 }
 
 async function handleSetupBundle(options: SetupOptions): Promise<void> {
@@ -577,6 +620,7 @@ async function installSkills(
     if (options.nativeSkills) {
       try {
         const result = await installSkillsNative(repo, {
+          family: selection.family,
           agent: options.agent,
           quiet: options.quiet,
           skills: selection.skills,
@@ -597,13 +641,14 @@ async function installSkills(
     }
 
     if (hasNpx()) {
+      const skills = await resolveSkillSelection(selection);
       const args = buildSkillsInstallArgs({
         repo,
         agent: options.agent,
         global: true,
         yes: options.yes,
         includeNpxYes: true,
-        skills: selection.skills,
+        skills,
       });
 
       console.log(`Running: ${args.join(' ')}\n`);
@@ -613,6 +658,7 @@ async function installSkills(
           stdio: 'inherit',
           env: cleanNpmEnv(),
         });
+        await rememberSkillInstall(repo, skills, selection.family);
         continue;
       } catch {
         process.exit(1);
@@ -622,6 +668,7 @@ async function installSkills(
     // Fallback: native install (no npx/Node required)
     try {
       await installSkillsNative(repo, {
+        family: selection.family,
         agent: options.agent,
         skills: selection.skills,
       });
@@ -688,19 +735,89 @@ export async function installMcp(
   await installAddMcp(options, resolvedAgent, runtimeEnv);
 }
 
+/** Why --agent all cannot configure an add-mcp client, or undefined when it can. */
+function addMcpSkipReason(
+  agent: string,
+  apiKey: string | undefined
+): string | undefined {
+  if (!apiKey) return undefined;
+  if (agent === 'codex') {
+    return isCommandOnPath('codex') ? undefined : 'codex not found on PATH';
+  }
+  if (environmentHeaderForAgent(agent)) return undefined;
+  return 'no verified environment-variable syntax for the API key, rerun with --keyless or configure it manually';
+}
+
+/**
+ * Configure every launch integration. A client that cannot be configured here
+ * is skipped and reported; only a failure in a client we attempted is an error.
+ */
 async function installAllMcpLaunchers(
   options: SetupOptions,
   runtimeEnv: NodeJS.ProcessEnv
 ): Promise<void> {
-  for (const agent of ADD_MCP_LAUNCH_AGENTS) {
-    await installAddMcp(
-      { ...options, yes: true },
-      { kind: 'add-mcp', agent },
-      runtimeEnv
+  const apiKey = options.keyless ? undefined : getApiKey();
+  const clients = [
+    ...Object.entries(ADD_MCP_LAUNCH_AGENTS).map(([agent, label]) => ({
+      label,
+      skipReason: addMcpSkipReason(agent, apiKey),
+      install: () =>
+        installAddMcp(
+          { ...options, yes: true },
+          { kind: 'add-mcp', agent },
+          runtimeEnv
+        ),
+    })),
+    {
+      label: 'Hermes Agent',
+      skipReason: undefined,
+      install: () => installHermesMcp(runtimeEnv, options.keyless),
+    },
+    {
+      label: 'OpenClaw',
+      skipReason: isCommandOnPath('openclaw')
+        ? undefined
+        : 'openclaw not found on PATH',
+      install: () => installOpenClawMcp(runtimeEnv, options.keyless),
+    },
+  ];
+
+  const configured: string[] = [];
+  const skipped: string[] = [];
+  const failed: string[] = [];
+  for (const client of clients) {
+    if (client.skipReason) {
+      if (!options.quiet) {
+        console.log(`Skipping ${client.label}: ${client.skipReason}.\n`);
+      }
+      skipped.push(`${client.label} (${client.skipReason})`);
+      continue;
+    }
+    try {
+      await client.install();
+      configured.push(client.label);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`${client.label}: ${message}\n`);
+      failed.push(client.label);
+    }
+  }
+
+  if (!options.quiet) {
+    console.log('Firecrawl MCP setup summary:');
+    console.log(
+      `  ${green}✓${reset} Configured: ${configured.join(', ') || 'none'}`
+    );
+    if (skipped.length > 0) {
+      console.log(`  ${dim}-${reset} Skipped: ${skipped.join('; ')}`);
+    }
+    if (failed.length > 0) console.log(`  ✗ Failed: ${failed.join(', ')}`);
+  }
+  if (failed.length > 0) {
+    throw new Error(
+      `Failed to configure Firecrawl MCP for ${failed.join(', ')}.`
     );
   }
-  await installHermesMcp(runtimeEnv, options.keyless);
-  await installOpenClawMcp(runtimeEnv, options.keyless);
 }
 
 async function installAddMcp(

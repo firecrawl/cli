@@ -7,6 +7,33 @@ describe('CLI argv parsing', () => {
   const cliPath = resolve(process.cwd(), 'dist/index.js');
   const testWithBuiltCli = existsSync(cliPath) ? it : it.skip;
 
+  testWithBuiltCli(
+    'skips skill notices for setup commands, not matching query words',
+    () => {
+      for (const [args, expected] of [
+        [['search', 'setup', '--help'], true],
+        [['search', 'init', '--help'], true],
+        [['init', '--help'], false],
+        [['setup', '--help'], false],
+        [['-y'], false],
+        [['--yes'], false],
+      ] as const) {
+        const script = `
+        require('./dist/utils/update-notice').maybeShowUpdateNotice = async () => {};
+        require('./dist/utils/skill-update-notice').maybeShowSkillUpdateNotice = async () => console.log('SKILL_NOTICE_CHECK');
+        require('./dist/commands/init').handleInitCommand = async () => {};
+        process.argv = [process.execPath, ${JSON.stringify(cliPath)}, ...${JSON.stringify(args)}];
+        require(${JSON.stringify(cliPath)});
+      `;
+        const result = spawnSync(process.execPath, ['-e', script], {
+          encoding: 'utf8',
+        });
+        expect(result.status).toBe(0);
+        expect(result.stdout.includes('SKILL_NOTICE_CHECK')).toBe(expected);
+      }
+    }
+  );
+
   testWithBuiltCli('rejects invalid PDF page caps before scraping', () => {
     for (const value of ['0', '10001', '2.5', '3pages']) {
       const result = spawnSync(

@@ -7,6 +7,8 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import type { SkillFamily } from '../utils/skill-catalog';
+import { rememberCatalogNames } from '../utils/skill-update-notice';
 
 const green = '\x1b[32m';
 const dim = '\x1b[2m';
@@ -25,6 +27,8 @@ interface AgentConfig {
 }
 
 export interface NativeSkillsInstallOptions {
+  /** Select a whole catalog family directly from the downloaded repository. */
+  family?: SkillFamily;
   /** Link skills only into this agent's global skills directory. */
   agent?: string;
   /** Suppress per-repo status lines; caller will render its own summary. */
@@ -413,12 +417,18 @@ export async function installSkillsNative(
       throw new Error(`No ${SKILLS_SUBDIR}/ directory found in repository`);
     }
 
-    let skills = discoverSkills(skillsDir);
+    const discovered = discoverSkills(skillsDir);
+    let skills = discovered;
+    if (options.family) {
+      skills = skills.filter(
+        (skill) => skill.skillPath.split(path.sep)[0] === options.family
+      );
+    }
     if (skills.length === 0) {
       throw new Error('No skills found in repository');
     }
 
-    if (options.skills) {
+    if (options.skills && !options.family) {
       const wanted = new Set(options.skills);
       skills = skills.filter((skill) => wanted.has(skill.name));
       const missing = options.skills.filter(
@@ -542,6 +552,15 @@ export async function installSkillsNative(
         );
       }
     }
+
+    // Every skill in an installed family counts as seen, including ones the user skipped.
+    const familyOf = (skill: SkillEntry) => skill.skillPath.split(path.sep)[0];
+    const families = new Set(skills.map(familyOf));
+    await rememberCatalogNames(
+      discovered
+        .filter((skill) => families.has(familyOf(skill)))
+        .map((skill) => skill.name)
+    );
 
     return { skillCount: skills.length, linkedAgents };
   } finally {

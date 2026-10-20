@@ -9,6 +9,7 @@ import {
   type UpdateNoticeOptions,
 } from '../../utils/update-notice';
 import { getLatestVersion } from '../../utils/npm-registry';
+import { formatUpdateBox } from '../../utils/update-notice-format';
 
 vi.mock('../../utils/npm-registry', async () => {
   const actual = await vi.importActual<
@@ -59,6 +60,28 @@ describe('update notice', () => {
     );
     expect(notice.startsWith('╭')).toBe(true);
     expect(notice.endsWith('╯')).toBe(true);
+  });
+
+  it('aligns borders by terminal columns for emoji, color and combining characters', () => {
+    expect(
+      formatUpdateBox([
+        '✨ Done',
+        'abc',
+        'e\u0301',
+        '\x1b[36mOK\x1b[0m',
+        '更新',
+      ])
+    ).toBe(
+      [
+        '╭─────────╮',
+        '│ ✨ Done │',
+        '│ abc     │',
+        '│ e\u0301       │',
+        '│ \x1b[36mOK\x1b[0m      │',
+        '│ 更新    │',
+        '╰─────────╯',
+      ].join('\n')
+    );
   });
 
   it('does not check or print outside a TTY', async () => {

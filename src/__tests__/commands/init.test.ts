@@ -1,11 +1,29 @@
+import { detectGlobalSkillAgents } from '../../utils/skill-install-agents';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execSync } from 'child_process';
 import * as skillsNative from '../../commands/skills-native';
-import { handleInitCommand } from '../../commands/init';
+import {
+  TEMPLATES,
+  findTemplate,
+  handleInitCommand,
+  scaffoldTemplate,
+} from '../../commands/init';
 import { CLI_SKILLS, WORKFLOW_SKILLS } from '../../commands/skills-install';
+import { getCatalogSkills } from '../../utils/skill-catalog';
 
 const cliSkillFlags = `--skill ${CLI_SKILLS.join(' ')}`;
 const workflowSkillFlags = `--skill ${WORKFLOW_SKILLS.join(' ')}`;
+
+vi.mock('../../utils/skill-catalog', () => ({
+  getCatalogSkills: vi.fn(async () => [
+    ...CLI_SKILLS.map((name) => ({ name, family: 'core', files: {} })),
+    ...WORKFLOW_SKILLS.map((name) => ({
+      name,
+      family: 'workflows',
+      files: {},
+    })),
+  ]),
+}));
 
 const {
   installMcpMock,
@@ -23,6 +41,10 @@ const {
 
 vi.mock('child_process', () => ({
   execSync: vi.fn(),
+}));
+
+vi.mock('../../utils/skill-install-agents', () => ({
+  detectGlobalSkillAgents: vi.fn(() => []),
 }));
 
 vi.mock('../../commands/skills-native', () => ({
@@ -56,6 +78,8 @@ vi.mock('@inquirer/prompts', () => ({
 describe('handleInitCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(detectGlobalSkillAgents).mockReturnValue([]);
+    vi.mocked(skillsNative.detectInstalledAgentNames).mockReturnValue([]);
     process.exitCode = 0;
     getApiKeyMock.mockReturnValue(undefined);
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -76,11 +100,11 @@ describe('handleInitCommand', () => {
     });
 
     expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --yes ${cliSkillFlags}`,
+      `npx -y skills@1.7.2 add firecrawl/skills --full-depth --global --yes --agent codex ${cliSkillFlags}`,
       expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'] })
     );
     expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --yes ${workflowSkillFlags}`,
+      `npx -y skills@1.7.2 add firecrawl/skills --full-depth --global --yes --agent codex ${workflowSkillFlags}`,
       expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'] })
     );
     // Build skills are intentionally no longer installed by init.
@@ -102,6 +126,27 @@ describe('handleInitCommand', () => {
     expect(process.exitCode).toBe(1);
   });
 
+  it('preserves detected targets when native installation falls back to npx', async () => {
+    vi.mocked(skillsNative.detectInstalledAgentNames).mockReturnValue([
+      'claude-code',
+      'cursor',
+    ]);
+
+    vi.mocked(detectGlobalSkillAgents).mockReturnValue([
+      'claude-code',
+      'cursor',
+    ]);
+
+    await handleInitCommand({ yes: true, skipInstall: true, skipAuth: true });
+
+    for (const flags of [cliSkillFlags, workflowSkillFlags]) {
+      expect(execSync).toHaveBeenCalledWith(
+        `npx -y skills@1.7.2 add firecrawl/skills --full-depth --global --yes --agent codex claude-code cursor ${flags}`,
+        expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'] })
+      );
+    }
+  });
+
   it('scopes non-interactive skills install to one agent when provided', async () => {
     await handleInitCommand({
       yes: true,
@@ -111,11 +156,26 @@ describe('handleInitCommand', () => {
     });
 
     expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --yes --agent cursor ${cliSkillFlags}`,
+      `npx -y skills@1.7.2 add firecrawl/skills --full-depth --global --yes --agent cursor ${cliSkillFlags}`,
       expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'] })
     );
     expect(execSync).toHaveBeenCalledWith(
-      `npx -y skills add firecrawl/skills --full-depth --global --yes --agent cursor ${workflowSkillFlags}`,
+      `npx -y skills@1.7.2 add firecrawl/skills --full-depth --global --yes --agent cursor ${workflowSkillFlags}`,
+      expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'] })
+    );
+  });
+
+  it('installs newly published workflows during non-interactive init', async () => {
+    vi.mocked(getCatalogSkills)
+      .mockResolvedValueOnce(
+        CLI_SKILLS.map((name) => ({ name, family: 'core', files: {} }))
+      )
+      .mockResolvedValueOnce([
+        { name: 'firecrawl-new-workflow', family: 'workflows', files: {} },
+      ]);
+    await handleInitCommand({ yes: true, skipInstall: true, skipAuth: true });
+    expect(execSync).toHaveBeenCalledWith(
+      'npx -y skills@1.7.2 add firecrawl/skills --full-depth --global --yes --agent codex --skill firecrawl-new-workflow',
       expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'] })
     );
   });
@@ -157,10 +217,39 @@ describe('handleInitCommand', () => {
       })
     );
     expect(execSync).toHaveBeenCalledWith(
-      'npx -y skills add firecrawl/skills --full-depth --global --yes --agent codex --skill firecrawl-lead-gen firecrawl-lead-research',
+      'npx -y skills@1.7.2 add firecrawl/skills --full-depth --global --yes --agent codex --skill firecrawl-lead-gen firecrawl-lead-research',
       expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'] })
     );
     expect(execSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('continues interactive workflow installation when catalog discovery fails', async () => {
+    confirmMock
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false);
+    checkboxMock
+      .mockResolvedValueOnce(['workflows'])
+      .mockResolvedValueOnce(['firecrawl-lead-research']);
+    vi.mocked(getCatalogSkills).mockRejectedValueOnce(new Error('HTTP 403'));
+    await handleInitCommand({ skipInstall: true, skipAuth: true });
+    expect(checkboxMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Which workflow skills?',
+        choices: WORKFLOW_SKILLS.map((name) => ({
+          name,
+          value: name,
+          checked: true,
+        })),
+      })
+    );
+    expect(execSync).toHaveBeenCalledWith(
+      'npx -y skills@1.7.2 add firecrawl/skills --full-depth --global --yes --agent codex --skill firecrawl-lead-research',
+      expect.anything()
+    );
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining('Skills installed')
+    );
   });
 
   it('summarizes native interactive installation independently of its count', async () => {
@@ -352,4 +441,39 @@ describe('init global installation', () => {
       );
     }
   );
+});
+
+describe('init templates', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('only lists templates that are standalone public repositories', () => {
+    expect(TEMPLATES.map((template) => template.repo)).toEqual([
+      'firecrawl/open-lovable',
+    ]);
+    expect(findTemplate('open-lovable')?.repo).toBe('firecrawl/open-lovable');
+  });
+
+  it('rejects a template that is no longer offered without downloading anything', async () => {
+    vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit ${code}`);
+    }) as never);
+
+    expect(findTemplate('scrape-basic')).toBeUndefined();
+    await expect(scaffoldTemplate('scrape-basic')).rejects.toThrow('exit 1');
+    expect(execSync).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining('Unknown template')
+    );
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining('open-lovable')
+    );
+  });
 });
