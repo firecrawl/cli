@@ -11,7 +11,7 @@ import * as path from 'path';
 import type { FormatOption } from 'firecrawl';
 import type { ParseOptions, ParseResult } from '../types/parse';
 import type { ScrapeFormat } from '../types/scrape';
-import { getClient, isKeylessMode, KEYLESS_CLI_HEADERS } from '../utils/client';
+import { getClient, isKeylessMode, keylessHeaders } from '../utils/client';
 import { getConfig, validateConfig } from '../utils/config';
 import { handleScrapeOutput } from '../utils/output';
 import { integrationHeaders } from '../utils/integration';
@@ -189,7 +189,7 @@ export async function executeParse(
       // CLI origin to the keyless check.
       headers: {
         ...(!keyless && apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-        ...(keyless ? KEYLESS_CLI_HEADERS : {}),
+        ...(keyless ? keylessHeaders() : {}),
         ...integrationHeaders(),
       },
       body: form,
