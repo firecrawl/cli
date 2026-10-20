@@ -13,6 +13,8 @@ import {
   createFindToolsCommand,
   createFindSkillsCommand,
   createReadSkillCommand,
+  createCreateSkillCommand,
+  createUpdateSkillCommand,
   handleAlexandria,
 } from './commands/alexandria';
 import { readFileSync } from 'fs';
@@ -2403,6 +2405,8 @@ program.addCommand(createSearchCommand());
 program.addCommand(createFindToolsCommand());
 program.addCommand(createFindSkillsCommand());
 program.addCommand(createReadSkillCommand());
+program.addCommand(createCreateSkillCommand());
+program.addCommand(createUpdateSkillCommand());
 program.addCommand(createListCommand());
 program.addCommand(createAlexandriaCommand());
 program.addCommand(createDeveloperCommand());
