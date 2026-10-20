@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PassThrough } from 'stream';
 import {
+  ensureAuthenticated,
   interactiveLogin,
   isAuthenticated,
   manualLogin,
@@ -104,6 +105,50 @@ describe('Authentication Utilities', () => {
       initializeConfig({});
 
       expect(isAuthenticated()).toBe(true);
+    });
+  });
+
+  describe('ensureAuthenticated without a terminal', () => {
+    const originalIsTTY = process.stdin.isTTY;
+
+    beforeEach(() => {
+      Object.defineProperty(process.stdin, 'isTTY', {
+        value: undefined,
+        configurable: true,
+      });
+      vi.spyOn(process, 'exit').mockImplementation((code) => {
+        throw new Error(`process.exit(${code})`);
+      });
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.spyOn(console, 'log').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      Object.defineProperty(process.stdin, 'isTTY', {
+        value: originalIsTTY,
+        configurable: true,
+      });
+      vi.restoreAllMocks();
+    });
+
+    it('returns the configured key without prompting', async () => {
+      initializeConfig({ apiKey: 'fc-test-api-key' });
+
+      await expect(ensureAuthenticated()).resolves.toBe('fc-test-api-key');
+      expect(process.exit).not.toHaveBeenCalled();
+    });
+
+    it('exits non-zero instead of showing the login prompt', async () => {
+      initializeConfig({});
+
+      await expect(ensureAuthenticated()).rejects.toThrow('process.exit(1)');
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining('Not authenticated')
+      );
+      expect(console.log).not.toHaveBeenCalledWith(
+        expect.stringContaining('Welcome!')
+      );
+      expect(credentials.saveCredentials).not.toHaveBeenCalled();
     });
   });
 

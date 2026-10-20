@@ -810,7 +810,7 @@ export function isAuthenticated(): boolean {
 
 /**
  * Ensure user is authenticated before running a command
- * If not authenticated, prompts for login
+ * If not authenticated, prompts for login in a terminal and exits with status 1 without one
  * Returns the API key
  */
 export async function ensureAuthenticated(): Promise<string> {
@@ -818,6 +818,14 @@ export async function ensureAuthenticated(): Promise<string> {
   const existingKey = getApiKey();
   if (existingKey) {
     return existingKey;
+  }
+
+  // Without a terminal the login prompt can never be answered.
+  if (!process.stdin.isTTY) {
+    console.error(
+      'Error: Not authenticated. Set FIRECRAWL_API_KEY, pass --api-key, or run "firecrawl login" in a terminal.'
+    );
+    process.exit(1);
   }
 
   // No credentials found - prompt for login
