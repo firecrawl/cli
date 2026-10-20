@@ -558,7 +558,7 @@ async function pickWebAgents(undo: boolean): Promise<WebAgent[] | null> {
     const answer = (
       await promptInput(
         `  ${verb} ${agent}? [Y/n] `,
-        'No answer received. Pass --agent <name> or --yes to skip the harness prompts.'
+        'No answer received. Run "firecrawl setup defaults --agent <name>" or "firecrawl setup defaults --yes" to skip the harness prompts.'
       )
     ).toLowerCase();
     if (answer === '' || answer === 'y' || answer === 'yes') {

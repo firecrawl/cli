@@ -655,7 +655,7 @@ async function manualLogin(
   if (isCustomUrl) {
     const apiKey = await promptInput(
       'Enter your API key (press Enter to skip): ',
-      NO_LOGIN_INPUT_MESSAGE
+      'No input to configure this API URL. Pass --api-key or set FIRECRAWL_API_KEY.'
     );
     return {
       apiKey: apiKey.trim(),
