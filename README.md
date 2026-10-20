@@ -133,12 +133,19 @@ stored key into client configs.
 
 Use `--agent <agent>` for one client, or `--agent all --global` to configure
 Claude Code, VS Code, Codex, OpenCode, Cursor, Gemini CLI, Windsurf,
-Antigravity, Hermes Agent, and OpenClaw in one run. Clients that cannot be
+Antigravity, Amp, Grok Build, Zed, Hermes Agent, and OpenClaw in one run. The
+`--agent` values for the newer clients are `amp` (or `ampcode`, `amp-code`),
+`grok` (or `grok-build`, `grok-cli`), and `zed`. Amp, Grok Build, and Zed are written to their user settings, so they do not take
+`--project`: Amp to `~/.config/amp/settings.json` (or an existing
+`settings.jsonc` when there is no `settings.json`), Grok Build to
+`~/.grok/config.toml`, and Zed to `~/.config/zed/settings.json`
+(`$XDG_CONFIG_HOME/zed/settings.json` on Linux when it is set,
+`%APPDATA%\Zed\settings.json` on Windows). Clients that cannot be
 configured on this machine (for example OpenClaw when the `openclaw` command is
 not installed) are skipped and listed in the summary; the command only fails
 when a client it tried to configure fails. When `FIRECRAWL_API_KEY` is set,
-Antigravity is skipped because it has no verified way to reference the key from
-the environment; add `--keyless` to include it.
+Antigravity and Zed are skipped because they have no verified way to reference
+the key from the environment; add `--keyless` to include them.
 
 To make Firecrawl the default web provider for supported AI agents:
 

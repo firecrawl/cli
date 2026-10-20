@@ -11,6 +11,8 @@ import {
 } from 'fs';
 import os from 'os';
 import path from 'path';
+import { parse as parseJsonc } from 'jsonc-parser';
+import { parse as parseToml } from 'smol-toml';
 import {
   handleMakeDefaultCommand,
   handleSetupCommand,
@@ -978,6 +980,318 @@ describe('handleSetupCommand', () => {
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
+  });
+
+  describe('config-file clients (Amp, Grok Build, Zed)', () => {
+    let home: string;
+    let originalXdg: string | undefined;
+    let originalAppData: string | undefined;
+
+    beforeEach(() => {
+      home = mkdtempSync(path.join(os.tmpdir(), 'firecrawl-config-file-'));
+      process.env.HOME = home;
+      vi.spyOn(os, 'homedir').mockReturnValue(home);
+      originalXdg = process.env.XDG_CONFIG_HOME;
+      delete process.env.XDG_CONFIG_HOME;
+      originalAppData = process.env.APPDATA;
+      process.env.APPDATA = path.join(home, 'AppData', 'Roaming');
+      vi.spyOn(console, 'log').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdg;
+      if (originalAppData === undefined) delete process.env.APPDATA;
+      else process.env.APPDATA = originalAppData;
+      vi.mocked(os.homedir).mockRestore();
+      rmSync(home, { recursive: true, force: true });
+    });
+
+    const ampPath = () => path.join(home, '.config', 'amp', 'settings.json');
+    const grokPath = () => path.join(home, '.grok', 'config.toml');
+    const zedPath = () =>
+      process.platform === 'win32'
+        ? path.join(home, 'AppData', 'Roaming', 'Zed', 'settings.json')
+        : path.join(home, '.config', 'zed', 'settings.json');
+    const readJsonc = (filePath: string) =>
+      parseJsonc(readFileSync(filePath, 'utf-8')) as Record<string, any>;
+
+    it('writes an environment-backed Amp entry and keeps existing settings and comments', async () => {
+      process.env.FIRECRAWL_API_KEY = 'fc-test-key';
+      mkdirSync(path.dirname(ampPath()), { recursive: true });
+      writeFileSync(
+        ampPath(),
+        '{\n  // keep me\n  "amp.notifications.enabled": false,\n  "amp.mcpServers": {\n    "linear": { "url": "https://mcp.linear.app/sse" }\n  }\n}\n'
+      );
+
+      await handleSetupCommand('mcp', { agent: 'amp', yes: true });
+      const first = readFileSync(ampPath(), 'utf-8');
+      await handleSetupCommand('mcp', { agent: 'ampcode', yes: true });
+
+      const raw = readFileSync(ampPath(), 'utf-8');
+      expect(raw).toBe(first);
+      expect(raw.match(/"firecrawl"/g)).toHaveLength(1);
+      expect(raw).toContain('// keep me');
+      expect(raw).not.toContain('fc-test-key');
+      const settings = readJsonc(ampPath());
+      expect(settings['amp.notifications.enabled']).toBe(false);
+      expect(settings['amp.mcpServers']).toEqual({
+        linear: { url: 'https://mcp.linear.app/sse' },
+        firecrawl: {
+          url: 'https://mcp.firecrawl.dev/v2/mcp',
+          headers: { Authorization: 'Bearer ${FIRECRAWL_API_KEY}' },
+        },
+      });
+      expect(execFileSync).not.toHaveBeenCalled();
+    });
+
+    it('writes a keyless Amp entry to settings.jsonc when only that file exists', async () => {
+      const jsoncPath = `${ampPath()}c`;
+      mkdirSync(path.dirname(jsoncPath), { recursive: true });
+      writeFileSync(jsoncPath, '// amp\n{}\n');
+
+      await installMcp({ agent: 'amp', keyless: true });
+
+      expect(existsSync(ampPath())).toBe(false);
+      expect(readJsonc(jsoncPath)['amp.mcpServers']).toEqual({
+        firecrawl: { url: 'https://mcp.firecrawl.dev/v2/mcp' },
+      });
+    });
+
+    it('rejects a stored key before writing Amp settings', async () => {
+      await expect(
+        handleSetupCommand('mcp', { agent: 'amp', yes: true })
+      ).rejects.toThrow('Export FIRECRAWL_API_KEY');
+      expect(existsSync(ampPath())).toBe(false);
+    });
+
+    it('replaces the Grok Build firecrawl table and keeps the rest of config.toml', async () => {
+      process.env.FIRECRAWL_API_KEY = 'fc-test-key';
+      mkdirSync(path.dirname(grokPath()), { recursive: true });
+      const before =
+        '# my grok config\n[models]\ndefault = "grok-build"   \n\n';
+      const after =
+        '[mcp_servers.linear]\nurl = "https://mcp.linear.app/mcp"\n';
+      writeFileSync(
+        grokPath(),
+        before +
+          '[mcp_servers.firecrawl]\nurl = "https://old.example.com/mcp"\n\n' +
+          '[mcp_servers.firecrawl.headers]\nAuthorization = "Bearer old"\n\n' +
+          after
+      );
+
+      await handleSetupCommand('mcp', { agent: 'grok', yes: true });
+      const first = readFileSync(grokPath(), 'utf-8');
+      await handleSetupCommand('mcp', { agent: 'grok-build', yes: true });
+
+      const raw = readFileSync(grokPath(), 'utf-8');
+      expect(raw).toBe(first);
+      expect(raw.startsWith(before + after)).toBe(true);
+      expect(raw).not.toContain('old.example.com');
+      expect(raw).not.toContain('fc-test-key');
+      expect(raw.match(/\[mcp_servers\.firecrawl\]/g)).toHaveLength(1);
+      const config = parseToml(raw) as Record<string, any>;
+      expect(config.models).toEqual({ default: 'grok-build' });
+      expect(config.mcp_servers).toEqual({
+        linear: { url: 'https://mcp.linear.app/mcp' },
+        firecrawl: {
+          url: 'https://mcp.firecrawl.dev/v2/mcp',
+          headers: { Authorization: 'Bearer ${FIRECRAWL_API_KEY}' },
+        },
+      });
+    });
+
+    it('keeps CRLF line endings in a Grok Build config.toml', async () => {
+      mkdirSync(path.dirname(grokPath()), { recursive: true });
+      const original = '[models]\r\ndefault = "grok-build"\r\n';
+      writeFileSync(grokPath(), original);
+
+      await installMcp({ agent: 'grok-build', keyless: true });
+
+      const raw = readFileSync(grokPath(), 'utf-8');
+      expect(raw.startsWith(original)).toBe(true);
+      expect(raw.replace(/\r\n/g, '')).not.toContain('\n');
+      expect(parseToml(raw)).toEqual({
+        models: { default: 'grok-build' },
+        mcp_servers: { firecrawl: { url: 'https://mcp.firecrawl.dev/v2/mcp' } },
+      });
+    });
+
+    it('ignores a Grok Build table header inside a multiline string', async () => {
+      mkdirSync(path.dirname(grokPath()), { recursive: true });
+      const original = [
+        '[agent]',
+        'notes = """',
+        '[mcp_servers.firecrawl]',
+        'kept as text',
+        '"""',
+        '',
+      ].join('\n');
+      writeFileSync(grokPath(), original);
+
+      await installMcp({ agent: 'grok-build', keyless: true });
+
+      const raw = readFileSync(grokPath(), 'utf-8');
+      expect(raw.startsWith(original)).toBe(true);
+      expect(parseToml(raw)).toEqual({
+        agent: { notes: '[mcp_servers.firecrawl]\nkept as text\n' },
+        mcp_servers: { firecrawl: { url: 'https://mcp.firecrawl.dev/v2/mcp' } },
+      });
+    });
+
+    it('writes a keyless Grok Build entry into a fresh home', async () => {
+      await installMcp({ agent: 'grok-build', keyless: true });
+
+      expect(parseToml(readFileSync(grokPath(), 'utf-8'))).toEqual({
+        mcp_servers: { firecrawl: { url: 'https://mcp.firecrawl.dev/v2/mcp' } },
+      });
+    });
+
+    it('leaves an invalid Grok Build config.toml untouched', async () => {
+      process.env.FIRECRAWL_API_KEY = 'fc-test-key';
+      mkdirSync(path.dirname(grokPath()), { recursive: true });
+      writeFileSync(grokPath(), '[models\n');
+
+      await expect(
+        handleSetupCommand('mcp', { agent: 'grok', yes: true })
+      ).rejects.toThrow('is not valid TOML');
+      expect(readFileSync(grokPath(), 'utf-8')).toBe('[models\n');
+    });
+
+    it('refuses a Grok Build firecrawl entry it cannot replace', async () => {
+      process.env.FIRECRAWL_API_KEY = 'fc-test-key';
+      mkdirSync(path.dirname(grokPath()), { recursive: true });
+      const original =
+        '[mcp_servers]\nfirecrawl = { url = "https://old.example.com/mcp" }\n';
+      writeFileSync(grokPath(), original);
+
+      await expect(
+        handleSetupCommand('mcp', { agent: 'grok', yes: true })
+      ).rejects.toThrow('in a form setup cannot replace');
+      expect(readFileSync(grokPath(), 'utf-8')).toBe(original);
+    });
+
+    it('writes a keyless Zed context server and keeps settings comments', async () => {
+      mkdirSync(path.dirname(zedPath()), { recursive: true });
+      writeFileSync(
+        zedPath(),
+        '// Zed settings\n{\n  "theme": "One Dark",\n  "context_servers": {\n    "github": { "url": "https://api.githubcopilot.com/mcp/" },\n  },\n}\n'
+      );
+
+      await installMcp({ agent: 'zed', keyless: true });
+
+      const raw = readFileSync(zedPath(), 'utf-8');
+      expect(raw).toContain('// Zed settings');
+      const settings = readJsonc(zedPath());
+      expect(settings.theme).toBe('One Dark');
+      expect(settings.context_servers).toEqual({
+        github: { url: 'https://api.githubcopilot.com/mcp/' },
+        firecrawl: { url: 'https://mcp.firecrawl.dev/v2/mcp' },
+      });
+    });
+
+    it('adds the Zed entry to a settings file that holds only comments', async () => {
+      mkdirSync(path.dirname(zedPath()), { recursive: true });
+      writeFileSync(zedPath(), '// Zed settings\n');
+
+      await installMcp({ agent: 'zed', keyless: true });
+
+      expect(readFileSync(zedPath(), 'utf-8')).toContain('// Zed settings');
+      expect(readJsonc(zedPath()).context_servers).toEqual({
+        firecrawl: { url: 'https://mcp.firecrawl.dev/v2/mcp' },
+      });
+    });
+
+    it('honors XDG_CONFIG_HOME for Zed on Linux', async () => {
+      if (process.platform !== 'linux') return;
+      const xdg = path.join(home, 'xdg');
+      process.env.XDG_CONFIG_HOME = xdg;
+
+      await installMcp({ agent: 'zed', keyless: true });
+
+      expect(existsSync(path.join(xdg, 'zed', 'settings.json'))).toBe(true);
+      expect(existsSync(zedPath())).toBe(false);
+    });
+
+    it('rejects an environment-backed key for Zed instead of writing it', async () => {
+      process.env.FIRECRAWL_API_KEY = 'fc-test-key';
+
+      await expect(
+        handleSetupCommand('mcp', { agent: 'zed', yes: true })
+      ).rejects.toThrow('does not have a verified environment-variable syntax');
+      expect(existsSync(zedPath())).toBe(false);
+    });
+
+    it('rejects --project for config-file clients', async () => {
+      await expect(
+        installMcp({ agent: 'amp', project: true, keyless: true })
+      ).rejects.toThrow('Firecrawl configures Amp in its user settings only');
+      expect(existsSync(path.join(process.cwd(), '.amp'))).toBe(false);
+    });
+
+    it('configures Amp and Grok Build and skips Zed with --agent all and an environment key', async () => {
+      const originalPath = process.env.PATH;
+      process.env.FIRECRAWL_API_KEY = 'fc-test-key';
+      process.env.PATH = stubCommands(home, []);
+
+      try {
+        await handleSetupCommand('mcp', {
+          agent: 'all',
+          global: true,
+          yes: true,
+        });
+
+        expect(
+          readJsonc(ampPath())['amp.mcpServers'].firecrawl.headers
+        ).toEqual({ Authorization: 'Bearer ${FIRECRAWL_API_KEY}' });
+        expect(readFileSync(grokPath(), 'utf-8')).toContain(
+          'Authorization = "Bearer ${FIRECRAWL_API_KEY}"'
+        );
+        expect(existsSync(zedPath())).toBe(false);
+        const output = vi.mocked(console.log).mock.calls.flat().join('\n');
+        expect(output).toMatch(/Configured: .*Amp, Grok Build/);
+        expect(output).toContain(
+          'Skipping Zed: no verified environment-variable syntax'
+        );
+      } finally {
+        if (originalPath === undefined) delete process.env.PATH;
+        else process.env.PATH = originalPath;
+      }
+    });
+
+    it('includes Zed in keyless --agent all and skips all three for --project', async () => {
+      const originalPath = process.env.PATH;
+      process.env.PATH = stubCommands(home, []);
+      vi.mocked(getApiKey).mockReturnValue(undefined);
+
+      try {
+        await handleSetupCommand('mcp', {
+          agent: 'all',
+          global: true,
+          yes: true,
+        });
+        expect(readJsonc(zedPath()).context_servers.firecrawl).toEqual({
+          url: 'https://mcp.firecrawl.dev/v2/mcp',
+        });
+
+        rmSync(path.join(home, '.config'), { recursive: true, force: true });
+        rmSync(path.join(home, '.grok'), { recursive: true, force: true });
+        await handleSetupCommand('mcp', {
+          agent: 'all',
+          project: true,
+          yes: true,
+        });
+        expect(existsSync(ampPath())).toBe(false);
+        expect(existsSync(grokPath())).toBe(false);
+        expect(existsSync(zedPath())).toBe(false);
+        expect(vi.mocked(console.log).mock.calls.flat().join('\n')).toContain(
+          'Skipped: Amp (configured in user settings only, rerun without --project); Grok Build'
+        );
+      } finally {
+        if (originalPath === undefined) delete process.env.PATH;
+        else process.env.PATH = originalPath;
+      }
+    });
   });
 
   it('requires a client selection for no-agent environment-backed setup', async () => {
