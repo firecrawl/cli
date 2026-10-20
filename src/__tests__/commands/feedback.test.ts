@@ -160,8 +160,8 @@ describe('executeEndpointFeedback', () => {
     });
   });
 
-  it('sends the FIRECRAWL_INTEGRATION tag in endpoint and search feedback', async () => {
-    vi.stubEnv('FIRECRAWL_INTEGRATION', '_rtk');
+  it('sends FIRECRAWL_INTEGRATION as X-Integration on endpoint and search feedback', async () => {
+    vi.stubEnv('FIRECRAWL_INTEGRATION', 'rtk');
     mockFetch.mockResolvedValue({
       ok: true,
       status: 200,
@@ -181,18 +181,20 @@ describe('executeEndpointFeedback', () => {
 
     const [endpointUrl, endpointRequest] = mockFetch.mock.calls[0];
     expect(endpointUrl).toBe('https://api.firecrawl.dev/v2/feedback');
+    expect(endpointRequest.headers['X-Integration']).toBe('rtk');
     expect(JSON.parse(endpointRequest.body)).toMatchObject({
       origin: 'cli',
-      integration: '_rtk',
+      integration: 'cli',
     });
     const [searchUrl, searchRequest] = mockFetch.mock.calls[1];
     expect(searchUrl).toBe(
       'https://api.firecrawl.dev/v2/search/search-1/feedback'
     );
+    expect(searchRequest.headers['X-Integration']).toBe('rtk');
     expect(JSON.parse(searchRequest.body)).toEqual({
       rating: 'good',
       origin: 'cli',
-      integration: '_rtk',
+      integration: 'cli',
     });
   });
 

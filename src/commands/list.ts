@@ -11,6 +11,7 @@ import {
 } from './alexandria';
 import { writeOutput } from '../utils/output';
 import { getApiKey, getConfig } from '../utils/config';
+import { integrationHeaders } from '../utils/integration';
 
 type Selectors = Record<string, unknown>;
 type ListOptions = AlexandriaOptions & {
@@ -97,6 +98,7 @@ async function requestCategories(
       headers: {
         Authorization: `Bearer ${getApiKey(options.apiKey)}`,
         'X-Request-ID': requestId,
+        ...integrationHeaders(),
       },
       signal: AbortSignal.timeout(getConfig().timeoutMs ?? 30000),
       redirect: 'error',

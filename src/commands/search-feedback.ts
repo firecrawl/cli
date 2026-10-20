@@ -1,6 +1,6 @@
 import { getConfig, validateConfig } from '../utils/config';
 import { getClient } from '../utils/client';
-import { getIntegration } from '../utils/integration';
+import { integrationHeaders } from '../utils/integration';
 
 export type SearchFeedbackRating = 'good' | 'bad' | 'partial';
 
@@ -126,7 +126,7 @@ export async function executeSearchFeedback(
     const body: Record<string, unknown> = {
       rating: options.rating,
       origin: 'cli',
-      integration: getIntegration(),
+      integration: 'cli',
     };
 
     if (options.valuableSources && options.valuableSources.length > 0) {
@@ -157,6 +157,7 @@ export async function executeSearchFeedback(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        ...integrationHeaders(),
       },
       body: JSON.stringify(body),
     });

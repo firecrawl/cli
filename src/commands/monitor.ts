@@ -20,6 +20,7 @@ import * as fs from 'fs';
 import { Command } from 'commander';
 import { getConfig, validateConfig } from '../utils/config';
 import { writeOutput } from '../utils/output';
+import { integrationHeaders } from '../utils/integration';
 
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
 
@@ -63,6 +64,7 @@ async function monitorRequest(
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
     'X-Origin': 'cli',
+    ...integrationHeaders(),
   };
   if (init.body !== undefined) headers['Content-Type'] = 'application/json';
 

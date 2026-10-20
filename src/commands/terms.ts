@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { getApiKey, getConfig } from '../utils/config';
 import { writeOutput } from '../utils/output';
+import { integrationHeaders } from '../utils/integration';
 
 type TermsOptions = {
   apiKey?: string;
@@ -42,6 +43,7 @@ export async function requestTerms(
     headers: {
       Authorization: `Bearer ${key}`,
       'Content-Type': 'application/json',
+      ...integrationHeaders(),
     },
     redirect: 'error',
     signal: AbortSignal.timeout(getConfig().timeoutMs ?? 30000),

@@ -18,7 +18,6 @@ import { getApiKey } from '../utils/config';
 import { writeOutput } from '../utils/output';
 import { withoutToolPrice } from '../utils/alexandria-prices';
 import { apiFailure, requireAlexandriaKey } from './alexandria';
-import { getIntegration } from '../utils/integration';
 
 const DEFAULT_SEARCH_LIMIT = 5;
 
@@ -40,7 +39,7 @@ export async function executeSearch(
     // Build search options for the SDK
     const searchParams: Record<string, any> = {
       limit: options.limit ?? DEFAULT_SEARCH_LIMIT,
-      integration: getIntegration(),
+      integration: 'cli',
     };
     searchParams.toolDetail = options.toolDetail ?? 'compact';
 
@@ -129,7 +128,7 @@ export async function executeSearch(
     let envelope: Record<string, any>;
     if (isKeylessMode(options.apiKey, options.apiUrl)) {
       // Keyless free tier: header-less request. The API identifies the CLI via
-      // the `integration` field already in searchParams.
+      // the `integration: 'cli'` field already in searchParams.
       envelope = (await keylessRequest('/v2/search', searchBody)) as Record<
         string,
         any

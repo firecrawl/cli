@@ -1063,10 +1063,10 @@ To disable telemetry, set the environment variable:
 export FIRECRAWL_NO_TELEMETRY=1
 ```
 
-Requests to endpoints that accept an integration tag (scrape, search, map, crawl, agent, parse, interact, browser, feedback, search-feedback and the research, developer and gov searches) send `integration: cli`. A tool that wraps the CLI can tag those requests as its own by setting `FIRECRAWL_INTEGRATION` to a value that starts with an underscore (surrounding whitespace is ignored); other values are ignored and the tag stays `cli`:
+Requests from the CLI are tagged `integration: cli`. A tool that wraps the CLI can tag them as its own by setting `FIRECRAWL_INTEGRATION`: the CLI sends the value, trimmed, as the `X-Integration` header on every API request, and the API attributes the request to it when it is a recognized integration name. An unrecognized value is ignored by the API and never makes a request fail.
 
 ```bash
-export FIRECRAWL_INTEGRATION=_my-tool
+export FIRECRAWL_INTEGRATION=my-tool
 ```
 
 ---

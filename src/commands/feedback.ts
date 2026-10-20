@@ -11,7 +11,7 @@ import {
   type ValuableResultInput,
   type ValuableSourceInput,
 } from './search-feedback';
-import { getIntegration } from '../utils/integration';
+import { integrationHeaders } from '../utils/integration';
 
 export type EndpointFeedbackEndpoint = 'search' | 'scrape' | 'parse' | 'map';
 
@@ -265,7 +265,7 @@ export async function executeEndpointFeedback(
       ...(options.endpoint === 'alexandria' ? {} : { jobId: options.jobId }),
       rating: options.rating,
       origin: 'cli',
-      integration: getIntegration(),
+      integration: 'cli',
     };
 
     if (options.endpoint !== 'alexandria' && !options.jobId) {
@@ -314,6 +314,7 @@ export async function executeEndpointFeedback(
       headers: {
         ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         'Content-Type': 'application/json',
+        ...integrationHeaders(),
       },
       body: JSON.stringify(body),
     });

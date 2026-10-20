@@ -13,6 +13,7 @@ import {
   updateConfig,
   type GlobalConfig,
 } from './config';
+import { integrationHeaders, withIntegrationHeader } from './integration';
 
 let clientInstance: Firecrawl | null = null;
 
@@ -47,7 +48,11 @@ export async function keylessRequest(
   const apiUrl = (getConfig().apiUrl || DEFAULT_API_URL).replace(/\/$/, '');
   const response = await fetch(`${apiUrl}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...KEYLESS_CLI_HEADERS },
+    headers: {
+      'Content-Type': 'application/json',
+      ...KEYLESS_CLI_HEADERS,
+      ...integrationHeaders(),
+    },
     body: JSON.stringify(body),
   });
   const json: any = await response.json().catch(() => ({}));
@@ -63,7 +68,11 @@ export async function keylessGet(path: string): Promise<any> {
   const apiUrl = (getConfig().apiUrl || DEFAULT_API_URL).replace(/\/$/, '');
   const response = await fetch(`${apiUrl}${path}`, {
     method: 'GET',
-    headers: { 'Content-Type': 'application/json', ...KEYLESS_CLI_HEADERS },
+    headers: {
+      'Content-Type': 'application/json',
+      ...KEYLESS_CLI_HEADERS,
+      ...integrationHeaders(),
+    },
   });
   const json: any = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -128,7 +137,7 @@ export function getClient(
       backoffFactor: options.backoffFactor ?? config.backoffFactor,
     };
 
-    return new Firecrawl(clientOptions);
+    return withIntegrationHeader(new Firecrawl(clientOptions));
   }
 
   // Return singleton instance or create one
@@ -144,7 +153,7 @@ export function getClient(
       backoffFactor: config.backoffFactor,
     };
 
-    clientInstance = new Firecrawl(clientOptions);
+    clientInstance = withIntegrationHeader(new Firecrawl(clientOptions));
   }
 
   return clientInstance;

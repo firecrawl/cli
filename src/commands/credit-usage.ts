@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getConfig, validateConfig } from '../utils/config';
 import { getClient } from '../utils/client';
+import { integrationHeaders } from '../utils/integration';
 
 export interface CreditUsageResult {
   success: boolean;
@@ -58,6 +59,7 @@ export async function executeCreditUsage(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        ...integrationHeaders(),
       },
     });
 

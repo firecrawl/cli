@@ -12,7 +12,6 @@ import {
   getSessionId,
 } from '../utils/browser-session';
 import { writeOutput } from '../utils/output';
-import { getIntegration } from '../utils/integration';
 
 export interface BrowserLaunchOptions {
   ttl?: number;
@@ -78,7 +77,7 @@ export async function handleBrowserLaunch(
         saveChanges?: boolean;
       };
       integration?: string;
-    } = { integration: getIntegration() };
+    } = { integration: 'cli' };
     if (options.ttl !== undefined) args.ttl = options.ttl;
     if (options.ttlInactivity !== undefined)
       args.activityTtl = options.ttlInactivity;
@@ -298,7 +297,7 @@ export async function handleBrowserQuickExecute(
         saveChanges?: boolean;
       };
       integration?: string;
-    } = { integration: getIntegration() };
+    } = { integration: 'cli' };
     if (options.profile) {
       launchArgs.profile = {
         name: options.profile,

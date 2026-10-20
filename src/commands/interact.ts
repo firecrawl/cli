@@ -11,7 +11,7 @@ import {
   clearInteractSession,
 } from '../utils/interact-session';
 import { writeOutput } from '../utils/output';
-import { getIntegration } from '../utils/integration';
+import { integrationHeaders } from '../utils/integration';
 
 export interface InteractExecuteOptions {
   scrapeId?: string;
@@ -61,7 +61,7 @@ function buildHeaders(apiKey: string | undefined, keyless: boolean) {
     headers.Authorization = `Bearer ${apiKey}`;
   }
   if (keyless) Object.assign(headers, KEYLESS_CLI_HEADERS);
-  return headers;
+  return { ...headers, ...integrationHeaders() };
 }
 
 /**
@@ -81,10 +81,7 @@ export async function handleInteractExecute(
       `Using scrape ${scrapeId}` + (storedUrl ? ` (${storedUrl})` : '') + '\n'
     );
 
-    const body: Record<string, unknown> = {
-      origin: 'cli',
-      integration: getIntegration(),
-    };
+    const body: Record<string, unknown> = { origin: 'cli', integration: 'cli' };
 
     if (options.code) {
       body.code = options.code;

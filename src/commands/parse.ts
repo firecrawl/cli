@@ -14,7 +14,7 @@ import type { ScrapeFormat } from '../types/scrape';
 import { getClient, isKeylessMode, KEYLESS_CLI_HEADERS } from '../utils/client';
 import { getConfig, validateConfig } from '../utils/config';
 import { handleScrapeOutput } from '../utils/output';
-import { getIntegration } from '../utils/integration';
+import { integrationHeaders } from '../utils/integration';
 
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
 
@@ -96,7 +96,7 @@ function buildFormats(options: ParseOptions): FormatOption[] {
 function buildOptionsPayload(options: ParseOptions): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     formats: buildFormats(options),
-    integration: getIntegration(),
+    integration: 'cli',
   };
 
   if (options.onlyMainContent !== undefined) {
@@ -187,12 +187,11 @@ export async function executeParse(
       method: 'POST',
       // Multipart options are parsed after auth, so the header carries the
       // CLI origin to the keyless check.
-      headers:
-        !keyless && apiKey
-          ? { Authorization: `Bearer ${apiKey}` }
-          : keyless
-            ? { ...KEYLESS_CLI_HEADERS }
-            : undefined,
+      headers: {
+        ...(!keyless && apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        ...(keyless ? KEYLESS_CLI_HEADERS : {}),
+        ...integrationHeaders(),
+      },
       body: form,
     });
 

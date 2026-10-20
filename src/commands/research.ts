@@ -10,7 +10,6 @@ import type {
   SearchGitHubOptions,
   SearchPapersOptions,
 } from '../types/research';
-import { getIntegration } from '../utils/integration';
 
 const BASE = '/v2/search/research';
 const MAX_AUTHORS = 15;
@@ -45,7 +44,7 @@ async function getResearch<T>(
   path: string,
   options: ResearchBaseOptions
 ): Promise<T> {
-  const url = `${path}${path.includes('?') ? '&' : '?'}integration=${encodeURIComponent(getIntegration())}`;
+  const url = `${path}${path.includes('?') ? '&' : '?'}integration=cli`;
 
   if (isKeylessMode(options.apiKey, options.apiUrl)) {
     return (await keylessGet(url)) as T;

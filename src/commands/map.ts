@@ -5,7 +5,6 @@
 import type { MapOptions, MapResult } from '../types/map';
 import { getClient } from '../utils/client';
 import { writeOutput } from '../utils/output';
-import { getIntegration } from '../utils/integration';
 
 /**
  * Execute map command
@@ -17,7 +16,7 @@ export async function executeMap(options: MapOptions): Promise<MapResult> {
 
     // Build map options
     const mapOptions: any = {
-      integration: getIntegration(),
+      integration: 'cli',
     };
 
     if (options.limit !== undefined) {

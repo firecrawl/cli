@@ -10,7 +10,6 @@ import type {
 import { getClient } from '../utils/client';
 import { isJobId } from '../utils/job';
 import { writeOutput } from '../utils/output';
-import { getIntegration } from '../utils/integration';
 
 /**
  * Execute crawl status check
@@ -86,7 +85,7 @@ export async function executeCrawl(
 
     // Build crawl options
     const crawlOptions: any = {
-      integration: getIntegration(),
+      integration: 'cli',
     };
 
     if (options.limit !== undefined) {

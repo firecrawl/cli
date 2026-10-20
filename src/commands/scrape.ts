@@ -20,7 +20,6 @@ import { executeMap } from './map';
 import { getStatus } from './status';
 import { requireAlexandriaKey } from './alexandria';
 import { withoutToolPrice } from '../utils/alexandria-prices';
-import { getIntegration } from '../utils/integration';
 
 /**
  * Output timing information if requested
@@ -94,7 +93,7 @@ export async function executeScrape(
 
   const scrapeParams: Record<string, unknown> = {
     formats: resolvedFormats,
-    integration: getIntegration(),
+    integration: 'cli',
   };
 
   if (options.onlyMainContent !== undefined) {
@@ -158,7 +157,7 @@ export async function executeScrape(
     let result: any;
     if (isKeylessMode(options.apiKey, options.apiUrl)) {
       // Keyless free tier: header-less request. The API identifies the CLI via
-      // the `integration` field already in scrapeParams.
+      // the `integration: 'cli'` field already in scrapeParams.
       const json = await keylessRequest('/v2/scrape', {
         url: options.url,
         ...scrapeParams,
