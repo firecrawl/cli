@@ -33,7 +33,8 @@ export function isKeylessMode(apiKey?: string, apiUrl?: string): boolean {
 /**
  * Headers for keyless requests. The API reads X-Origin to attribute keyless
  * use, and a keyless prompt's signup link, to the CLI; requests without a body
- * (GET research and developer lookups, interact stop) carry nothing else.
+ * (GET research and developer lookups, interact stop) carry only this and
+ * X-Integration.
  * Keyless error messages are printed as the API sends them: their
  * firecrawl.dev/k/<id> link already resolves to CLI attribution.
  */
