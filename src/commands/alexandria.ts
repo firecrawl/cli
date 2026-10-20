@@ -430,6 +430,10 @@ export function createCreateSkillCommand(): Command {
       .option('--body <markdown>', 'Instructions (required without --from)')
       .option('--body-file <path>', 'Read the instructions from a file')
       .option('--slug <slug>', 'Lowercase words joined by hyphens')
+      .option(
+        '--request-id <id>',
+        'Reuse after a timeout to recover the same save; a completed save replays instead of running again'
+      )
   ).action(async (options) => {
     const call: Call = {
       provider: 'firecrawl',
@@ -465,6 +469,10 @@ export function createUpdateSkillCommand(): Command {
       .option('--body-file <path>', 'Read the new instructions from a file')
       .option('--enabled <true|false>', 'Turn the skill on or off')
       .option('--discoverable <true|false>', 'Whether find-skills lists it')
+      .option(
+        '--request-id <id>',
+        'Reuse after a timeout to recover the same save; a completed save replays instead of running again'
+      )
   ).action(async (id: string, options) => {
     const call: Call = {
       provider: 'firecrawl',

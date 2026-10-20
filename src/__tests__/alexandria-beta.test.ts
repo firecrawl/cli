@@ -755,6 +755,19 @@ it('creates and updates team skills through the same API', async () => {
     (
       await cli([
         'create-skill',
+        '--from',
+        'firecrawl-deep-research',
+        '--request-id',
+        'save-1',
+      ])
+    ).code
+  ).toBe(0);
+  expect(requests.at(-1)!.headers['x-request-id']).toBe('save-1');
+  requests.splice(1);
+  expect(
+    (
+      await cli([
+        'create-skill',
         '--name',
         'Digest',
         '--description',
