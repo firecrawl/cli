@@ -21,12 +21,15 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { getApiKey, updateConfig } from '../utils/config';
 import { browserLogin, isAuthenticated } from '../utils/auth';
 import { saveCredentials } from '../utils/credentials';
+import { getCatalogSkills } from '../utils/skill-catalog';
+import { rememberSkillInstall } from '../utils/skill-update-notice';
 import {
   buildSkillsInstallArgs,
   BUILD_SKILL_SELECTION,
   BUILD_SKILLS,
   CATALOG_REPO,
   cleanNpmEnv,
+  resolveSkillSelection,
   CLI_SKILL_SELECTION,
   CLI_SKILLS,
   SKILL_REPOS,
@@ -356,7 +359,7 @@ export async function handleSetupCommand(
       await handleMakeDefaultCommand(options);
       break;
     default: {
-      const skill = resolveCatalogSkill(subcommand);
+      const skill = await resolveCatalogSkill(subcommand);
       if (skill) {
         await installSkills(options, [
           { repo: CATALOG_REPO, skills: [skill], label: `${skill} skill` },
@@ -449,11 +452,18 @@ const ALL_CATALOG_SKILLS: readonly string[] = [
  * matched before this runs, so `build` means the group while `firecrawl-build`
  * still reaches the skill.
  */
-function resolveCatalogSkill(name: string): string | undefined {
+async function resolveCatalogSkill(name: string): Promise<string | undefined> {
   if (ALL_CATALOG_SKILLS.includes(name)) return name;
   const prefixed = `firecrawl-${name}`;
   if (ALL_CATALOG_SKILLS.includes(prefixed)) return prefixed;
-  return undefined;
+  if (!/^firecrawl(?:-[a-z0-9]+)+$/.test(name)) return undefined;
+  // Skills published after this release: confirm against the catalog when it is reachable.
+  try {
+    const catalog = await getCatalogSkills();
+    return catalog.some((skill) => skill.name === name) ? name : undefined;
+  } catch {
+    return name;
+  }
 }
 
 async function handleSetupBundle(options: SetupOptions): Promise<void> {
@@ -620,6 +630,7 @@ async function installSkills(
     if (options.nativeSkills) {
       try {
         const result = await installSkillsNative(repo, {
+          family: selection.family,
           agent: options.agent,
           quiet: options.quiet,
           skills: selection.skills,
@@ -640,13 +651,14 @@ async function installSkills(
     }
 
     if (hasNpx()) {
+      const skills = await resolveSkillSelection(selection);
       const args = buildSkillsInstallArgs({
         repo,
         agent: options.agent,
         global: true,
         yes: options.yes,
         includeNpxYes: true,
-        skills: selection.skills,
+        skills,
       });
 
       console.log(`Running: ${args.join(' ')}\n`);
@@ -656,6 +668,7 @@ async function installSkills(
           stdio: 'inherit',
           env: cleanNpmEnv(),
         });
+        await rememberSkillInstall(repo, skills, selection.family);
         continue;
       } catch {
         process.exit(1);
@@ -665,6 +678,7 @@ async function installSkills(
     // Fallback: native install (no npx/Node required)
     try {
       await installSkillsNative(repo, {
+        family: selection.family,
         agent: options.agent,
         skills: selection.skills,
       });
