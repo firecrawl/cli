@@ -717,7 +717,16 @@ it('refuses invalid skill options before calling the API', async () => {
     (await cli(['read-skill', 'deep-research', '--skill-version', '0'])).code
   ).toBe(1);
   expect((await cli(['read-skill'])).code).toBe(1);
+  for (const value of ['0x10', '1e1', ' 5', '5.0'])
+    expect((await cli(['find-skills', '--limit', value])).code).toBe(1);
   expect(requests).toHaveLength(0);
+  expect((await cli(['read-skill', 'deep-research', '--path', ''])).code).toBe(
+    0
+  );
+  expect(requests[0].body.alexandria[0].options).toEqual({
+    id: 'deep-research',
+    path: '',
+  });
   const help = await cli(['--help']);
   expect(help.stdout).toContain('find-skills');
   expect(help.stdout).toContain('read-skill');

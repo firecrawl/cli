@@ -336,6 +336,8 @@ function integerOption(
 ) {
   const number = Number(value);
   if (
+    typeof value !== 'string' ||
+    !/^\d+$/.test(value) ||
     !Number.isInteger(number) ||
     number < min ||
     (max !== undefined && number > max)
@@ -391,7 +393,7 @@ export function createReadSkillCommand(): Command {
       capability: 'read-skill',
       options: { id },
     };
-    if (options.path) call.options.path = options.path;
+    if (options.path !== undefined) call.options.path = options.path;
     if (options.skillVersion !== undefined)
       call.options.version = integerOption(
         options.skillVersion,
