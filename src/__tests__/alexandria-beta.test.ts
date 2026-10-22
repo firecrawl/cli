@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -668,6 +668,178 @@ it('executes Find Tools through the same API and refuses keyless access', async 
       ],
     },
   });
+});
+
+it('finds and reads skills through the same API and refuses keyless access', async () => {
+  expect((await cli(['find-skills'], '')).code).toBe(1);
+  expect(requests).toHaveLength(0);
+  expect(
+    (await cli(['find-skills', 'weekly', 'digest', '--limit', '5'])).code
+  ).toBe(0);
+  expect(requests[0]).toMatchObject({
+    url: '/v2/scrape',
+    body: {
+      alexandria: [
+        {
+          provider: 'firecrawl',
+          capability: 'find-skills',
+          options: { query: 'weekly digest', limit: 5 },
+        },
+      ],
+    },
+  });
+  expect((await cli(['find-skills'])).code).toBe(0);
+  expect(requests[1].body.alexandria[0].options).toEqual({});
+  const read = await cli([
+    'read-skill',
+    'team:weekly-digest',
+    '--path',
+    'references/sources.md',
+    '--skill-version',
+    '2',
+  ]);
+  expect(read.code).toBe(0);
+  expect(read.stdout).not.toMatch(/^\d+\.\d+\.\d+\s*$/);
+  expect(requests[2].body.alexandria[0]).toEqual({
+    provider: 'firecrawl',
+    capability: 'read-skill',
+    options: {
+      id: 'team:weekly-digest',
+      path: 'references/sources.md',
+      version: 2,
+    },
+  });
+});
+
+it('refuses invalid skill options before calling the API', async () => {
+  expect((await cli(['find-skills', '--limit', '51'])).code).toBe(1);
+  expect(
+    (await cli(['read-skill', 'deep-research', '--skill-version', '0'])).code
+  ).toBe(1);
+  expect((await cli(['read-skill'])).code).toBe(1);
+  for (const value of ['0x10', '1e1', ' 5', '5.0'])
+    expect((await cli(['find-skills', '--limit', value])).code).toBe(1);
+  expect(requests).toHaveLength(0);
+  expect((await cli(['read-skill', 'deep-research', '--path', ''])).code).toBe(
+    0
+  );
+  expect(requests[0].body.alexandria[0].options).toEqual({
+    id: 'deep-research',
+    path: '',
+  });
+  const help = await cli(['--help']);
+  expect(help.stdout).toContain('find-skills');
+  expect(help.stdout).toContain('read-skill');
+});
+
+it('creates and updates team skills through the same API', async () => {
+  const bodyFile = join(home, 'skill.md');
+  writeFileSync(bodyFile, 'Run @fred/series/observations.');
+  expect(
+    (
+      await cli([
+        'create-skill',
+        '--from',
+        'firecrawl-deep-research',
+        '--slug',
+        'our-research',
+      ])
+    ).code
+  ).toBe(0);
+  expect(requests[0].body.alexandria[0]).toEqual({
+    provider: 'firecrawl',
+    capability: 'create-skill',
+    options: { from: 'firecrawl-deep-research', slug: 'our-research' },
+  });
+  expect(
+    (
+      await cli([
+        'create-skill',
+        '--from',
+        'firecrawl-deep-research',
+        '--request-id',
+        'save-1',
+      ])
+    ).code
+  ).toBe(0);
+  expect(requests.at(-1)!.headers['x-request-id']).toBe('save-1');
+  requests.splice(1);
+  expect(
+    (
+      await cli([
+        'create-skill',
+        '--name',
+        'Digest',
+        '--description',
+        'Summarise.',
+        '--body-file',
+        bodyFile,
+      ])
+    ).code
+  ).toBe(0);
+  expect(requests[1].body.alexandria[0].options).toEqual({
+    name: 'Digest',
+    description: 'Summarise.',
+    body: 'Run @fred/series/observations.',
+  });
+  expect(
+    (
+      await cli([
+        'update-skill',
+        'team:digest',
+        '--base-version',
+        '2',
+        '--enabled',
+        'false',
+        '--name',
+        'Weekly digest',
+      ])
+    ).code
+  ).toBe(0);
+  expect(requests[2].body.alexandria[0]).toEqual({
+    provider: 'firecrawl',
+    capability: 'update-skill',
+    options: {
+      id: 'team:digest',
+      baseVersion: 2,
+      name: 'Weekly digest',
+      enabled: false,
+    },
+  });
+});
+
+it('refuses invalid skill writes before calling the API', async () => {
+  expect((await cli(['update-skill', 'team:digest', '--name', 'x'])).code).toBe(
+    1
+  );
+  expect(
+    (
+      await cli([
+        'update-skill',
+        'team:digest',
+        '--base-version',
+        '0',
+        '--name',
+        'x',
+      ])
+    ).code
+  ).toBe(1);
+  expect(
+    (
+      await cli([
+        'update-skill',
+        'team:digest',
+        '--base-version',
+        '1',
+        '--enabled',
+        'yes',
+      ])
+    ).code
+  ).toBe(1);
+  expect(
+    (await cli(['create-skill', '--body', 'x', '--body-file', 'x.md'])).code
+  ).toBe(1);
+  expect(requests).toHaveLength(0);
 });
 
 it('preserves charged SDK failures', async () => {

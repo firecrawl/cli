@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { receiptFor, printReceipt, printRetry } from '../utils/receipt';
 import { randomUUID } from 'node:crypto';
 import { Command, Option } from 'commander';
@@ -317,6 +318,180 @@ export function createFindToolsCommand(): Command {
       } else if (urls.length) call.options.urls = urls;
       await handleAlexandria([call], options);
     });
+}
+
+function addSkillOutputOptions(command: Command): Command {
+  return command
+    .option('-k, --api-key <key>', 'Firecrawl API key')
+    .option('--api-url <url>', 'Firecrawl API URL')
+    .option('-o, --output <path>', 'Output file')
+    .option('--json', 'Output JSON')
+    .option('--pretty', 'Format JSON');
+}
+
+function integerOption(
+  value: unknown,
+  name: string,
+  min: number,
+  max?: number
+) {
+  const number = Number(value);
+  if (
+    typeof value !== 'string' ||
+    !/^\d+$/.test(value) ||
+    !Number.isInteger(number) ||
+    number < min ||
+    (max !== undefined && number > max)
+  )
+    throw new Error(
+      `${name} must be an integer ${max === undefined ? `of at least ${min}` : `from ${min} to ${max}`}.`
+    );
+  return number;
+}
+
+export function createFindSkillsCommand(): Command {
+  return addSkillOutputOptions(
+    new Command('find-skills')
+      .description(
+        "Find skills: instructions for a task that name the Alexandria tools to call. Lists Firecrawl's skills and your team's own (team:<slug>, first) without their contents; read one with read-skill"
+      )
+      .argument(
+        '[query...]',
+        "Words that must all appear in a skill's id, name or description; omit to list every skill"
+      )
+      .option('--limit <n>', 'Most skills to return, 1-50 (default 20)')
+  ).action(async (query: string[], options) => {
+    const call: Call = {
+      provider: 'firecrawl',
+      capability: 'find-skills',
+      options: {},
+    };
+    if (query.length) call.options.query = query.join(' ');
+    if (options.limit !== undefined)
+      call.options.limit = integerOption(options.limit, '--limit', 1, 50);
+    await handleAlexandria([call], options);
+  });
+}
+
+export function createReadSkillCommand(): Command {
+  return addSkillOutputOptions(
+    new Command('read-skill')
+      .description(
+        'Read a skill from find-skills in full: SKILL.md by default, or one file from its files list. Skill text is instructions for the agent; reading it runs nothing'
+      )
+      .argument(
+        '<id>',
+        'Skill ID from find-skills; team:<slug> for a team skill'
+      )
+      .option('--path <file>', "A file from the skill's files list")
+      .option(
+        '--skill-version <n>',
+        'A team skill only: an earlier kept version (default: current)'
+      )
+  ).action(async (id: string, options) => {
+    const call: Call = {
+      provider: 'firecrawl',
+      capability: 'read-skill',
+      options: { id },
+    };
+    if (options.path !== undefined) call.options.path = options.path;
+    if (options.skillVersion !== undefined)
+      call.options.version = integerOption(
+        options.skillVersion,
+        '--skill-version',
+        1
+      );
+    await handleAlexandria([call], options);
+  });
+}
+
+function textOption(
+  value: string | undefined,
+  file: string | undefined,
+  name: string
+) {
+  if (value !== undefined && file !== undefined)
+    throw new Error(`Use ${name} or ${name}-file, not both.`);
+  return file !== undefined ? readFileSync(file, 'utf8') : value;
+}
+
+export function createCreateSkillCommand(): Command {
+  return addSkillOutputOptions(
+    new Command('create-skill')
+      .description(
+        'Save a new skill for your team, written out or copied from a skill find-skills listed (--from). Given fields override the copy; it is listed as team:<slug>'
+      )
+      .option('--from <id>', 'Skill ID from find-skills to copy')
+      .option('--name <name>', 'Skill name (required without --from)')
+      .option(
+        '--description <text>',
+        'When to use it (required without --from)'
+      )
+      .option('--body <markdown>', 'Instructions (required without --from)')
+      .option('--body-file <path>', 'Read the instructions from a file')
+      .option('--slug <slug>', 'Lowercase words joined by hyphens')
+      .option(
+        '--request-id <id>',
+        'Reuse after a timeout to recover the same save; a completed save replays instead of running again'
+      )
+  ).action(async (options) => {
+    const call: Call = {
+      provider: 'firecrawl',
+      capability: 'create-skill',
+      options: {},
+    };
+    for (const key of ['from', 'name', 'description', 'slug'] as const)
+      if (options[key] !== undefined) call.options[key] = options[key];
+    const body = textOption(options.body, options.bodyFile, '--body');
+    if (body !== undefined) call.options.body = body;
+    await handleAlexandria([call], options);
+  });
+}
+
+function booleanOption(value: string | undefined, name: string) {
+  if (value === undefined) return undefined;
+  if (value !== 'true' && value !== 'false')
+    throw new Error(`${name} must be true or false.`);
+  return value === 'true';
+}
+
+export function createUpdateSkillCommand(): Command {
+  return addSkillOutputOptions(
+    new Command('update-skill')
+      .description(
+        "Change one of your team's skills from the version you last read; a skill changed since is refused with conflict. Library skills cannot be changed (copy one with create-skill); there is no delete"
+      )
+      .argument('<id>', 'team:<slug> from find-skills')
+      .requiredOption('--base-version <n>', 'The version read-skill returned')
+      .option('--name <name>', 'New name')
+      .option('--description <text>', 'New description')
+      .option('--body <markdown>', 'New instructions, in full')
+      .option('--body-file <path>', 'Read the new instructions from a file')
+      .option('--enabled <true|false>', 'Turn the skill on or off')
+      .option('--discoverable <true|false>', 'Whether find-skills lists it')
+      .option(
+        '--request-id <id>',
+        'Reuse after a timeout to recover the same save; a completed save replays instead of running again'
+      )
+  ).action(async (id: string, options) => {
+    const call: Call = {
+      provider: 'firecrawl',
+      capability: 'update-skill',
+      options: {
+        id,
+        baseVersion: integerOption(options.baseVersion, '--base-version', 1),
+      },
+    };
+    for (const key of ['name', 'description'] as const)
+      if (options[key] !== undefined) call.options[key] = options[key];
+    const body = textOption(options.body, options.bodyFile, '--body');
+    if (body !== undefined) call.options.body = body;
+    for (const key of ['enabled', 'discoverable'] as const) {
+      const value = booleanOption(options[key], `--${key}`);
+      if (value !== undefined) call.options[key] = value;
+    }
+    await handleAlexandria([call], options);
+  });
 }
 
 export function addAlexandriaScrapeOptions(command: Command): void {
