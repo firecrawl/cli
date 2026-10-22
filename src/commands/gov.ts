@@ -13,8 +13,6 @@ const FILTERS = [
   'courtType',
   'cites',
   'domain',
-  'yearFrom',
-  'yearTo',
 ] as const;
 
 async function getGov<T>(path: string, options: GovSearchOptions): Promise<T> {
@@ -75,19 +73,6 @@ export async function handleGovSearchCommand(
   options: GovSearchOptions
 ): Promise<void> {
   try {
-    const { yearFrom, yearTo } = options;
-    if (
-      (yearFrom != null || yearTo != null) &&
-      !options.court &&
-      !options.courtType
-    ) {
-      throw new Error(
-        '--year-from and --year-to require --court or --court-type. Most pages other than court documents carry no reliable date, so a year filter alone would leave most of them out.'
-      );
-    }
-    if (yearFrom != null && yearTo != null && yearFrom > yearTo) {
-      throw new Error('--year-from must not be later than --year-to.');
-    }
     const params = new URLSearchParams();
     params.append('query', options.query);
     if (options.k != null) params.append('k', String(options.k));

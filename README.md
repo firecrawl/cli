@@ -480,13 +480,11 @@ firecrawl gov "food labeling requirements for allergens"
 | `--court-type <type>`   | Keep only pages from one type of court: `federal-supreme`, `federal-appellate`, `federal-district`, `federal-bankruptcy`, `federal-special`, `military`, `state-supreme`, `state-appellate`, `state-trial`, `state-special`, or `state-attorney-general` |
 | `--cites <citation>`    | Keep only pages that cite one law or case, as a printed citation such as `"42 U.S.C. § 1983"` or `"5 U.S. 137"`, or a citation id such as `us:usc:42:1983`                                                                                               |
 | `--domain <domain>`     | Keep only pages from one site, such as `irs.gov`                                                                                                                                                                                                         |
-| `--year-from <year>`    | Keep only documents published or filed in this year or later. Requires `--court` or `--court-type`                                                                                                                                                       |
-| `--year-to <year>`      | Keep only documents published or filed in this year or earlier. Requires `--court` or `--court-type`                                                                                                                                                     |
 | `-o, --output <path>`   | Save to file                                                                                                                                                                                                                                             |
 | `--json`                | Output the raw response as JSON                                                                                                                                                                                                                          |
 | `--pretty`              | Pretty print JSON output                                                                                                                                                                                                                                 |
 
-Filters combine with AND. `--year-from` and `--year-to` need `--court` or `--court-type` because most pages other than court documents carry no reliable date. Filters keep only pages the index has labeled, so a filtered search can leave out relevant pages, and no results does not mean none exist. Court labels are most complete for federal courts and case-law collections.
+Filters combine with AND. Filters keep only pages the index has labeled, so a filtered search can leave out relevant pages, and no results does not mean none exist. Court labels are most complete for federal courts and case-law collections.
 
 #### Examples
 
@@ -494,8 +492,8 @@ Filters combine with AND. `--year-from` and `--year-to` need `--court` or `--cou
 # Find state statutes on a topic
 firecrawl gov "California data breach notification statute" --limit 10
 
-# Narrow to one court and a year range
-firecrawl gov "qualified immunity excessive force" --court ca9 --year-from 2020
+# Narrow to one court
+firecrawl gov "qualified immunity excessive force" --court ca9
 
 # Keep only pages that cite a statute
 firecrawl gov "civil rights claims against police officers" --cites "42 U.S.C. § 1983"

@@ -259,13 +259,6 @@ function parseJurisdiction(value: string): string {
   return jurisdiction;
 }
 
-function parseYear(value: string): number {
-  if (!/^[1-9]\d{3}$/.test(value)) {
-    throw new InvalidArgumentError('Must be a year from 1000 to 9999.');
-  }
-  return Number(value);
-}
-
 function parseAgentWebhookOption(
   raw: string | undefined,
   label: string
@@ -1394,16 +1387,6 @@ function createGovCommand(): Command {
       parseNonEmpty
     )
     .option(
-      '--year-from <year>',
-      'Keep only documents published or filed in this year or later. Requires --court or --court-type',
-      parseYear
-    )
-    .option(
-      '--year-to <year>',
-      'Keep only documents published or filed in this year or earlier. Requires --court or --court-type',
-      parseYear
-    )
-    .option(
       '-k, --api-key <key>',
       'Firecrawl API key (overrides global --api-key)'
     )
@@ -1421,7 +1404,7 @@ most complete for federal courts and case-law collections.
 Examples:
   $ firecrawl gov "food labeling requirements for allergens" --limit 10
   $ firecrawl gov "California data breach notification statute" --json
-  $ firecrawl gov "qualified immunity excessive force" --court ca9 --year-from 2020
+  $ firecrawl gov "qualified immunity excessive force" --court ca9
 `
     )
     .action(async (query, options) => {
@@ -1433,8 +1416,6 @@ Examples:
         courtType: options.courtType,
         cites: options.cites,
         domain: options.domain,
-        yearFrom: options.yearFrom,
-        yearTo: options.yearTo,
         apiKey: options.apiKey,
         apiUrl: options.apiUrl,
         output: options.output,

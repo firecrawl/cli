@@ -6,8 +6,6 @@ export interface GovSearchOptions {
   courtType?: string;
   cites?: string;
   domain?: string;
-  yearFrom?: number;
-  yearTo?: number;
   apiKey?: string;
   apiUrl?: string;
   output?: string;
