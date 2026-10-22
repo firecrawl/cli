@@ -459,7 +459,7 @@ export function createUpdateSkillCommand(): Command {
   return addSkillOutputOptions(
     new Command('update-skill')
       .description(
-        "Change one of your team's skills from the version you last read; a skill changed since is refused with conflict. Library skills cannot be changed (copy one with create-skill); there is no delete"
+        "Change one of your team's skills from the version you last read; a skill changed since is refused with conflict. Library skills cannot be changed (copy one with create-skill); a team skill can be deleted, or a turned-off skill turned back on, only by a team admin in the Firecrawl dashboard"
       )
       .argument('<id>', 'team:<slug> from find-skills')
       .requiredOption('--base-version <n>', 'The version read-skill returned')
