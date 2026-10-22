@@ -50,7 +50,7 @@ Follow this escalation pattern:
 
 For detailed command reference, run `firecrawl <command> --help`.
 
-For US legal or regulatory source discovery, start with `firecrawl gov "<question, jurisdiction, and date>" --limit 10`. If the user supplies a source URL, read it directly with `scrape`. Results are excerpts, not a guarantee of official-only sources or current governing law: verify the issuer, jurisdiction, enacted/effective status, and version before citing a controlling section and supporting passage. Ask for a missing jurisdiction before identifying the governing rule. Use general search for non-US questions or missing coverage; no hits does not establish that no applicable law exists.
+For US legal or regulatory source discovery, start with `firecrawl gov "<question, jurisdiction, and date>" --limit 10`. To narrow, add `--jurisdiction`, `--court`, `--court-type`, `--cites`, or `--domain`; filters keep only pages the index has labeled, so a filtered search can leave out relevant pages. If the user supplies a source URL, read it directly with `scrape`. Results are excerpts, not a guarantee of official-only sources or current governing law: verify the issuer, jurisdiction, enacted/effective status, and version before citing a controlling section and supporting passage. Ask for a missing jurisdiction before identifying the governing rule. Use general search for non-US questions or missing coverage; no hits does not establish that no applicable law exists.
 
 **Done when:** the narrowest suitable command has completed the request, its output was inspected, and the answer cites the saved source files.
 
