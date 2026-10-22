@@ -1,6 +1,6 @@
 # 🔥 Firecrawl CLI
 
-Command-line interface for Firecrawl. Search, scrape, interact, crawl, map, search research papers, developer sources, and government sources, and run agent jobs directly from your terminal.
+Command-line interface for Firecrawl, the context API for AI agents. Search, scrape, parse, crawl, map, and interact with the web, search research papers, developer sources, and government sources, and run agent jobs directly from your terminal.
 
 ## Installation
 
@@ -133,12 +133,19 @@ stored key into client configs.
 
 Use `--agent <agent>` for one client, or `--agent all --global` to configure
 Claude Code, VS Code, Codex, OpenCode, Cursor, Gemini CLI, Windsurf,
-Antigravity, Hermes Agent, and OpenClaw in one run. Clients that cannot be
+Antigravity, Amp, Grok Build, Zed, Hermes Agent, and OpenClaw in one run. The
+`--agent` values for the newer clients are `amp` (or `ampcode`, `amp-code`),
+`grok` (or `grok-build`, `grok-cli`), and `zed`. Amp, Grok Build, and Zed are written to their user settings, so they do not take
+`--project`: Amp to `~/.config/amp/settings.json` (or an existing
+`settings.jsonc` when there is no `settings.json`), Grok Build to
+`~/.grok/config.toml`, and Zed to `~/.config/zed/settings.json`
+(`$XDG_CONFIG_HOME/zed/settings.json` on Linux when it is set,
+`%APPDATA%\Zed\settings.json` on Windows). Clients that cannot be
 configured on this machine (for example OpenClaw when the `openclaw` command is
 not installed) are skipped and listed in the summary; the command only fails
 when a client it tried to configure fails. When `FIRECRAWL_API_KEY` is set,
-Antigravity is skipped because it has no verified way to reference the key from
-the environment; add `--keyless` to include it.
+Antigravity and Zed are skipped because they have no verified way to reference
+the key from the environment; add `--keyless` to include them.
 
 To make Firecrawl the default web provider for supported AI agents:
 
@@ -465,18 +472,31 @@ firecrawl gov "food labeling requirements for allergens"
 
 #### Options
 
-| Option                | Description                               |
-| --------------------- | ----------------------------------------- |
-| `--limit <n>`         | Number of results (default: 10, max: 100) |
-| `-o, --output <path>` | Save to file                              |
-| `--json`              | Output the raw response as JSON           |
-| `--pretty`            | Pretty print JSON output                  |
+| Option                  | Description                                                                                                                                                                                                                                              |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--limit <n>`           | Number of results (default: 10, max: 100)                                                                                                                                                                                                                |
+| `--jurisdiction <code>` | Keep only pages of one jurisdiction: `us` for federal, or `us-` plus a two-letter state or territory code, such as `us-ca` or `us-dc`                                                                                                                    |
+| `--court <id>`          | Keep only pages labeled for one court, by CourtListener court id, such as `scotus`, `ca9`, or `nysd`                                                                                                                                                     |
+| `--court-type <type>`   | Keep only pages from one type of court: `federal-supreme`, `federal-appellate`, `federal-district`, `federal-bankruptcy`, `federal-special`, `military`, `state-supreme`, `state-appellate`, `state-trial`, `state-special`, or `state-attorney-general` |
+| `--cites <citation>`    | Keep only pages that cite one law or case, as a printed citation such as `"42 U.S.C. § 1983"` or `"5 U.S. 137"`, or a citation id such as `us:usc:42:1983`                                                                                               |
+| `--domain <domain>`     | Keep only pages from one site, such as `irs.gov`                                                                                                                                                                                                         |
+| `-o, --output <path>`   | Save to file                                                                                                                                                                                                                                             |
+| `--json`                | Output the raw response as JSON                                                                                                                                                                                                                          |
+| `--pretty`              | Pretty print JSON output                                                                                                                                                                                                                                 |
+
+Filters combine with AND. Filters keep only pages the index has labeled, so a filtered search can leave out relevant pages, and no results does not mean none exist. Court labels are most complete for federal courts and case-law collections.
 
 #### Examples
 
 ```bash
 # Find state statutes on a topic
 firecrawl gov "California data breach notification statute" --limit 10
+
+# Narrow to one court
+firecrawl gov "qualified immunity excessive force" --court ca9
+
+# Keep only pages that cite a statute
+firecrawl gov "civil rights claims against police officers" --cites "42 U.S.C. § 1983"
 
 # Keep the raw response
 firecrawl gov "FDA food labeling regulations" --json -o results.json
@@ -692,6 +712,67 @@ firecrawl crawl https://example.com --limit 1000 --max-depth 10 --wait --progres
 
 # Save results
 firecrawl crawl https://example.com --wait -o crawl-results.json --pretty
+```
+
+---
+
+### `batch-scrape` - Scrape a list of URLs
+
+Scrape many known URLs as one async job. Unlike multi-URL `scrape`, every requested format is kept and results come back as JSON.
+
+```bash
+# Start a batch scrape (returns job ID)
+firecrawl batch-scrape https://example.com https://example.org
+
+# Read URLs from a file (one per line; blank lines and # comments ignored)
+firecrawl batch-scrape --urls-file urls.txt
+
+# Wait for results
+firecrawl batch-scrape --urls-file urls.txt --format markdown,links --wait --progress
+
+# Check status (returns documents scraped so far)
+firecrawl batch-scrape <job-id>
+
+# Cancel a job
+firecrawl batch-scrape <job-id> --cancel
+```
+
+#### Batch Scrape Options
+
+| Option                         | Description                                     |
+| ------------------------------ | ----------------------------------------------- |
+| `--urls-file <path>`           | File with one URL per line                      |
+| `-f, --format <formats>`       | Output format(s), comma-separated               |
+| `--only-main-content`          | Extract only main content                       |
+| `--wait-for <ms>`              | Wait time before scraping each page             |
+| `--max-age <milliseconds>`     | Maximum age of cached content in milliseconds   |
+| `--schema <json>`              | JSON schema for extraction (adds `json` format) |
+| `--schema-file <path>`         | Path to JSON schema file                        |
+| `--prompt <text>`              | Extraction prompt (adds `json` format)          |
+| `--scrape-options <json>`      | JSON scrape options applied to every URL        |
+| `--scrape-options-file <path>` | Path to scrape options JSON file                |
+| `--wait`                       | Wait for the job to complete                    |
+| `--progress`                   | Show progress while waiting                     |
+| `--timeout <seconds>`          | Timeout when waiting                            |
+| `--poll-interval <seconds>`    | Status check interval (default: 2)              |
+| `--webhook <url-or-json>`      | Webhook URL or configuration                    |
+| `--max-concurrency <n>`        | Max concurrent scrapes for this job             |
+| `--ignore-invalid-urls`        | Skip invalid URLs instead of failing the job    |
+| `--status`                     | Check status of a job by job ID                 |
+| `--cancel`                     | Cancel an active job by job ID                  |
+| `-o, --output <path>`          | Save output to file                             |
+| `--pretty`                     | Pretty print JSON output                        |
+
+#### Examples
+
+```bash
+# Extract the same fields from every page
+firecrawl batch-scrape --urls-file products.txt --wait \
+  --schema '{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"string"}}}' \
+  -o products.json --pretty
+
+# Notify a webhook instead of waiting
+firecrawl batch-scrape --urls-file urls.txt --webhook https://example.com/hooks/firecrawl
 ```
 
 ---
@@ -1019,6 +1100,9 @@ firecrawl https://example.com --format markdown,links,images
 ```bash
 # Just pass multiple URLs -- results are saved to .firecrawl/
 firecrawl scrape https://firecrawl.dev https://firecrawl.dev/blog https://docs.firecrawl.dev
+
+# Many URLs, other formats, or JSON extraction: run one batch job
+firecrawl batch-scrape --urls-file urls.txt --format markdown,links --wait -o results.json
 ```
 
 ### Combine with other tools

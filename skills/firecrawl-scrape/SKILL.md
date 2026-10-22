@@ -24,7 +24,7 @@ firecrawl scrape "<url>" --only-main-content -o .firecrawl/page.md
 # Wait for JS to render, then scrape
 firecrawl scrape "<url>" --wait-for 3000 -o .firecrawl/page.md
 
-# Multiple URLs (markdown only; each saved to .firecrawl/; -o is ignored)
+# A few URLs (markdown only; each saved to .firecrawl/; -o is ignored)
 firecrawl scrape https://example.com https://example.com/blog https://example.com/docs
 
 # Get markdown and links together
@@ -37,6 +37,40 @@ firecrawl scrape "https://example.com/pricing" --query "What is the enterprise p
 Run `firecrawl scrape --help` for the full option list.
 
 **Done when:** the page content or provider result has been checked for errors and inspected in bounded sections to answer the request. Preserve source links and disclose partial results.
+
+## Structured JSON from a page
+
+Pass a JSON schema with the `json` format to get typed fields instead of markdown:
+
+```bash
+firecrawl scrape "<url>" --format json \
+  --schema '{"type":"object","properties":{"plan":{"type":"string"},"price":{"type":"string"}},"required":["plan"]}' \
+  -o .firecrawl/pricing.json
+
+# Large schemas: keep them in a file
+firecrawl scrape "<url>" --format json --schema-file schema.json -o .firecrawl/page.json
+```
+
+The result is under `.json` in the output. `--schema` only applies when `json` is in `--format`; add other formats with commas (`--format markdown,json`). For the same schema across many URLs, use `batch-scrape --schema` below.
+
+## Many known URLs
+
+Use `firecrawl batch-scrape` for a list of known URLs when you need formats other than markdown, JSON extraction, a webhook, or a job you can check later. Keep the multi-URL `scrape` above for a few pages of markdown.
+
+```bash
+# Start a job (prints a job ID), then check it later
+firecrawl batch-scrape https://example.com/a https://example.com/b
+firecrawl batch-scrape <job-id>
+
+# Wait and save every document as JSON (urls.txt: one URL per line, # comments ok)
+firecrawl batch-scrape --urls-file urls.txt --format markdown,links --wait -o .firecrawl/batch.json
+
+# Same extraction for every URL (--schema or --prompt adds the json format)
+firecrawl batch-scrape --urls-file urls.txt --wait \
+  --schema '{"type":"object","properties":{"title":{"type":"string"}}}' -o .firecrawl/batch.json
+```
+
+Results are in `.data[]`, one document per URL with `metadata.sourceURL`. Add `--webhook <url>` to get notified, `--ignore-invalid-urls` to skip bad entries, and `--cancel` with a job ID to stop a job. Run `firecrawl batch-scrape --help` for all options.
 
 ## Find tools, inspect inputs, and get help
 
@@ -98,7 +132,7 @@ The cap applies to each PDF, not the whole command or total credits. Extra forma
 
 - **Prefer plain scrape over `--query`.** Scrape to a file, then use `grep`, `head`, or read the markdown directly — you can search and reason over the full content yourself. Use `--query` only when you want a single targeted answer without saving the page (costs 5 extra credits).
 - **Scrape handles static pages and JS-rendered SPAs.** Escalate to `interact` when the page needs interaction (clicks, form fills, pagination) or scrape misses content.
-- Multiple URLs are scraped concurrently — check `firecrawl --status` for your concurrency limit. This mode saves markdown only and ignores `-o`; other requested formats are dropped. If markdown wasn't requested, the whole JSON response is written into the `.md` file.
+- Multiple URLs are scraped concurrently — check `firecrawl --status` for your concurrency limit. This mode saves markdown only and ignores `-o`; other requested formats are dropped. If markdown wasn't requested, the whole JSON response is written into the `.md` file. Use `batch-scrape` when you need other formats or JSON extraction.
 - Single format outputs raw content. Multiple formats (e.g., `--format markdown,links`) output JSON.
 - Always quote URLs — shell interprets `?` and `&` as special characters.
 - Naming convention: `.firecrawl/{site}-{path}.md`

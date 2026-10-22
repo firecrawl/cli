@@ -6,6 +6,7 @@ import packageJson from '../../../package.json';
 import {
   maybeShowUpdateNotice,
   formatUpdateNotice,
+  updateCommand,
   type UpdateNoticeOptions,
 } from '../../utils/update-notice';
 import { getLatestVersion } from '../../utils/npm-registry';
@@ -60,6 +61,63 @@ describe('update notice', () => {
     );
     expect(notice.startsWith('╭')).toBe(true);
     expect(notice.endsWith('╯')).toBe(true);
+  });
+
+  it('suggests brew upgrade for a Homebrew install', () => {
+    const cellar =
+      '/opt/homebrew/Cellar/firecrawl-cli/1.26.9/libexec/lib/node_modules/firecrawl-cli/dist/utils';
+
+    expect(updateCommand([cellar])).toBe('brew upgrade firecrawl-cli');
+    expect(formatUpdateNotice('99.99.99', updateCommand([cellar]))).toContain(
+      'Run brew upgrade firecrawl-cli to update.'
+    );
+  });
+
+  it('suggests brew upgrade for a compiled binary in a Homebrew Cellar', () => {
+    expect(
+      updateCommand([
+        '/$bunfs/root',
+        '/opt/homebrew/Cellar/firecrawl-cli/1.26.9/bin/firecrawl',
+      ])
+    ).toBe('brew upgrade firecrawl-cli');
+  });
+
+  it('suggests npm for installs outside a Homebrew Cellar', () => {
+    expect(
+      updateCommand([
+        '/opt/homebrew/lib/node_modules/firecrawl-cli/dist/utils',
+        '/opt/homebrew/Cellar/node/24.10.0/bin/node',
+      ])
+    ).toBe('npm install -g firecrawl-cli');
+    expect(
+      updateCommand(['/usr/local/lib/node_modules/firecrawl-cli/dist/utils'])
+    ).toBe('npm install -g firecrawl-cli');
+  });
+
+  it('prints the brew command when installed from Homebrew', async () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'update-check.json'),
+      JSON.stringify({
+        latestVersion: '99.99.99',
+        checkedAt: new Date('2026-06-04T12:00:00.000Z').toISOString(),
+      })
+    );
+
+    await maybeShowUpdateNotice({
+      cacheDir: tmpDir,
+      installPaths: [
+        '/home/linuxbrew/.linuxbrew/Cellar/firecrawl-cli/1.26.9/libexec/lib/node_modules/firecrawl-cli/dist/utils',
+      ],
+      now: new Date('2026-06-04T13:00:00.000Z'),
+      stderr: stderr(),
+    });
+
+    expect(write).toHaveBeenCalledWith(
+      expect.stringContaining('brew upgrade firecrawl-cli')
+    );
+    expect(write).not.toHaveBeenCalledWith(
+      expect.stringContaining('npm install -g')
+    );
   });
 
   it('aligns borders by terminal columns for emoji, color and combining characters', () => {

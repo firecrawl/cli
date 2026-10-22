@@ -16,10 +16,18 @@ import {
 } from 'fs';
 import os from 'os';
 import path from 'path';
-import readline from 'readline';
+import {
+  applyEdits,
+  modify,
+  parse as parseJsonc,
+  stripComments,
+  type ParseError,
+} from 'jsonc-parser';
+import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { getApiKey, updateConfig } from '../utils/config';
 import { browserLogin, isAuthenticated } from '../utils/auth';
+import { promptInput } from '../utils/prompt';
 import { saveCredentials } from '../utils/credentials';
 import { getCatalogSkills } from '../utils/skill-catalog';
 import { rememberSkillInstall } from '../utils/skill-update-notice';
@@ -56,6 +64,7 @@ type SetupIntegration = SetupSubcommand;
 
 type ResolvedMcpAgent =
   | { kind: 'add-mcp'; agent?: string; all?: boolean }
+  | { kind: 'config-file'; client: ConfigFileClient }
   | { kind: 'hermes' }
   | { kind: 'openclaw' }
   | { kind: 'all-launchers' };
@@ -95,6 +104,14 @@ const ADD_MCP_LAUNCH_AGENTS: Record<string, string> = {
   windsurf: 'Windsurf',
   antigravity: 'Antigravity',
 };
+
+/** Clients whose MCP entry this command writes straight into their user settings. */
+const CONFIG_FILE_CLIENTS = {
+  amp: 'Amp',
+  'grok-build': 'Grok Build',
+  zed: 'Zed',
+} as const;
+type ConfigFileClient = keyof typeof CONFIG_FILE_CLIENTS;
 
 const SKILL_REPO_LABELS: Record<string, string> = {
   'firecrawl/cli': 'Core CLI skills',
@@ -247,8 +264,10 @@ function assertSubprocessSafeCredential(
 
 function environmentHeaderForAgent(agent?: string): string | undefined {
   switch (agent) {
+    case 'amp':
     case 'claude-code':
     case 'gemini-cli':
+    case 'grok-build':
     case 'hermes':
     case 'openclaw':
       return `Bearer \${${ENV_API_KEY}}`;
@@ -315,6 +334,16 @@ function resolveMcpAgent(agent: string | undefined): ResolvedMcpAgent {
       return { kind: 'add-mcp', agent: 'windsurf' };
     case 'antigravity':
       return { kind: 'add-mcp', agent: 'antigravity' };
+    case 'amp':
+    case 'ampcode':
+    case 'amp-code':
+      return { kind: 'config-file', client: 'amp' };
+    case 'grok':
+    case 'grok-build':
+    case 'grok-cli':
+      return { kind: 'config-file', client: 'grok-build' };
+    case 'zed':
+      return { kind: 'config-file', client: 'zed' };
     case 'hermes':
     case 'hermes-agent':
       return { kind: 'hermes' };
@@ -538,19 +567,6 @@ function resolveWebAgent(agent: string): WebAgent | null {
   return null;
 }
 
-function promptInput(question: string): Promise<string> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-  return new Promise((resolve) => {
-    rl.question(question, (answer: string) => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
-
 /**
  * Interactively ask which harnesses to apply the change to, one by one.
  * Returns the selected agents, or null if the user aborted.
@@ -569,7 +585,10 @@ async function pickWebAgents(undo: boolean): Promise<WebAgent[] | null> {
   const selected: WebAgent[] = [];
   for (const agent of WEB_AGENTS) {
     const answer = (
-      await promptInput(`  ${verb} ${agent}? [Y/n] `)
+      await promptInput(
+        `  ${verb} ${agent}? [Y/n] `,
+        'No answer received. Run "firecrawl setup defaults --agent <name>" or "firecrawl setup defaults --yes" to skip the harness prompts.'
+      )
     ).toLowerCase();
     if (answer === '' || answer === 'y' || answer === 'yes') {
       selected.push(agent);
@@ -741,6 +760,19 @@ export async function installMcp(
     await installAllMcpLaunchers(options, runtimeEnv);
     return;
   }
+  if (resolvedAgent.kind === 'config-file') {
+    if (options.project) {
+      throw new Error(
+        `Firecrawl configures ${CONFIG_FILE_CLIENTS[resolvedAgent.client]} in its user settings only; rerun without --project.`
+      );
+    }
+    await installConfigFileMcp(
+      resolvedAgent.client,
+      runtimeEnv,
+      options.keyless
+    );
+    return;
+  }
 
   await installAddMcp(options, resolvedAgent, runtimeEnv);
 }
@@ -755,6 +787,17 @@ function addMcpSkipReason(
     return isCommandOnPath('codex') ? undefined : 'codex not found on PATH';
   }
   if (environmentHeaderForAgent(agent)) return undefined;
+  return 'no verified environment-variable syntax for the API key, rerun with --keyless or configure it manually';
+}
+
+function configFileSkipReason(
+  client: ConfigFileClient,
+  apiKey: string | undefined,
+  project: boolean | undefined
+): string | undefined {
+  if (project)
+    return 'configured in user settings only, rerun without --project';
+  if (!apiKey || environmentHeaderForAgent(client)) return undefined;
   return 'no verified environment-variable syntax for the API key, rerun with --keyless or configure it manually';
 }
 
@@ -778,6 +821,14 @@ async function installAllMcpLaunchers(
           runtimeEnv
         ),
     })),
+    ...(Object.keys(CONFIG_FILE_CLIENTS) as ConfigFileClient[]).map(
+      (client) => ({
+        label: CONFIG_FILE_CLIENTS[client],
+        skipReason: configFileSkipReason(client, apiKey, options.project),
+        install: () =>
+          installConfigFileMcp(client, runtimeEnv, options.keyless),
+      })
+    ),
     {
       label: 'Hermes Agent',
       skipReason: undefined,
@@ -950,6 +1001,216 @@ function firecrawlMcpConfig(
       runtimeEnv
     ),
   };
+}
+
+/** User settings file each config-file client reads its MCP servers from. */
+function configFileMcpPath(client: ConfigFileClient): string {
+  const home = os.homedir();
+  switch (client) {
+    case 'amp': {
+      const settings = path.join(home, '.config', 'amp', 'settings.json');
+      return !existsSync(settings) && existsSync(`${settings}c`)
+        ? `${settings}c`
+        : settings;
+    }
+    case 'grok-build':
+      return path.join(home, '.grok', 'config.toml');
+    case 'zed': {
+      if (process.platform === 'win32') {
+        const appData =
+          process.env.APPDATA ?? path.join(home, 'AppData', 'Roaming');
+        return path.join(appData, 'Zed', 'settings.json');
+      }
+      const configHome =
+        process.platform === 'linux' && process.env.XDG_CONFIG_HOME
+          ? process.env.XDG_CONFIG_HOME
+          : path.join(home, '.config');
+      return path.join(configHome, 'zed', 'settings.json');
+    }
+  }
+}
+
+/** Set one server in a JSON or JSONC settings file, keeping comments and formatting. */
+function upsertJsoncServer(
+  content: string,
+  keyPath: string[],
+  entry: Record<string, unknown>,
+  filePath: string
+): string {
+  if (stripComments(content).trim() !== '') {
+    const errors: ParseError[] = [];
+    const root = parseJsonc(content, errors, { allowTrailingComma: true });
+    if (
+      errors.length > 0 ||
+      typeof root !== 'object' ||
+      root === null ||
+      Array.isArray(root)
+    ) {
+      throw new Error(
+        `${filePath} is not valid JSON. Fix it, then rerun setup.`
+      );
+    }
+  }
+  try {
+    const next = applyEdits(
+      content,
+      modify(content, keyPath, entry, {
+        formattingOptions: { insertSpaces: true, tabSize: 2 },
+      })
+    );
+    return content ? next : `${next}\n`;
+  } catch {
+    throw new Error(
+      `${filePath} has a ${keyPath[0]} value setup cannot update. Fix it, then rerun setup.`
+    );
+  }
+}
+
+/** Replace the [mcp_servers.firecrawl] table in a Grok config.toml, keeping everything else. */
+function upsertGrokServer(
+  content: string,
+  entry: Record<string, unknown>,
+  filePath: string
+): string {
+  const parseConfig = (text: string): Record<string, unknown> => {
+    try {
+      return parseToml(text);
+    } catch {
+      throw new Error(
+        `${filePath} is not valid TOML. Fix it, then rerun setup.`
+      );
+    }
+  };
+  parseConfig(content);
+
+  const firecrawlTable =
+    /^\s*\[\s*mcp_servers\s*\.\s*(?:firecrawl|"firecrawl"|'firecrawl')\s*(?:\.[^\]]*)?\]\s*(?:#.*)?$/;
+  const topLevel = tomlTopLevelLineStarts(content);
+  let kept = '';
+  let skipping = false;
+  let offset = 0;
+  for (const line of content.split(/(?<=\n)/)) {
+    if (topLevel.has(offset) && /^\s*\[/.test(line)) {
+      skipping = firecrawlTable.test(line.replace(/\r?\n$/, ''));
+    }
+    if (!skipping) kept += line;
+    offset += line.length;
+  }
+
+  const servers = parseConfig(kept).mcp_servers;
+  if (
+    typeof servers === 'object' &&
+    servers !== null &&
+    'firecrawl' in servers
+  ) {
+    throw new Error(
+      `${filePath} defines mcp_servers.firecrawl in a form setup cannot replace. Remove it, then rerun setup.`
+    );
+  }
+
+  const eol = content.includes('\r\n') ? '\r\n' : '\n';
+  const block = stringifyToml({ mcp_servers: { firecrawl: entry } })
+    .trimEnd()
+    .split('\n')
+    .join(eol);
+  let prefix = kept;
+  if (prefix.trim()) {
+    if (!prefix.endsWith('\n')) prefix += eol;
+    if (!/\n\s*\n$/.test(prefix)) prefix += eol;
+  }
+  const next = `${prefix}${block}${eol}`;
+  parseConfig(next);
+  return next;
+}
+
+/** Offsets of the lines in a TOML document that start outside a string or comment. */
+function tomlTopLevelLineStarts(content: string): Set<number> {
+  const starts = new Set<number>();
+  let state:
+    | 'none'
+    | 'basic'
+    | 'literal'
+    | 'ml-basic'
+    | 'ml-literal'
+    | 'comment' = 'none';
+  for (let i = 0; i < content.length; i++) {
+    if ((i === 0 || content[i - 1] === '\n') && state === 'none') starts.add(i);
+    const char = content[i];
+    if (char === '\n' && state !== 'ml-basic' && state !== 'ml-literal') {
+      state = 'none';
+      continue;
+    }
+    switch (state) {
+      case 'comment':
+        break;
+      case 'basic':
+        if (char === '\\') i++;
+        else if (char === '"') state = 'none';
+        break;
+      case 'literal':
+        if (char === "'") state = 'none';
+        break;
+      case 'ml-basic':
+        if (char === '\\') i++;
+        else if (content.startsWith('"""', i)) {
+          i += 2;
+          while (content[i + 1] === '"') i++;
+          state = 'none';
+        }
+        break;
+      case 'ml-literal':
+        if (content.startsWith("'''", i)) {
+          i += 2;
+          while (content[i + 1] === "'") i++;
+          state = 'none';
+        }
+        break;
+      case 'none':
+        if (char === '#') state = 'comment';
+        else if (content.startsWith('"""', i)) {
+          state = 'ml-basic';
+          i += 2;
+        } else if (content.startsWith("'''", i)) {
+          state = 'ml-literal';
+          i += 2;
+        } else if (char === '"') state = 'basic';
+        else if (char === "'") state = 'literal';
+        break;
+    }
+  }
+  return starts;
+}
+
+/** Write the hosted Firecrawl MCP entry into Amp, Grok Build or Zed user settings. */
+async function installConfigFileMcp(
+  client: ConfigFileClient,
+  runtimeEnv: NodeJS.ProcessEnv = process.env,
+  keyless = false
+): Promise<void> {
+  const { url, headers } = firecrawlMcpConfig(client, runtimeEnv, keyless);
+  const entry = headers ? { url, headers } : { url };
+  const configPath = configFileMcpPath(client);
+  const existing = existsSync(configPath)
+    ? readFileSync(configPath, 'utf-8')
+    : '';
+  const next =
+    client === 'grok-build'
+      ? upsertGrokServer(existing, entry, configPath)
+      : upsertJsoncServer(
+          existing,
+          [
+            client === 'amp' ? 'amp.mcpServers' : 'context_servers',
+            'firecrawl',
+          ],
+          entry,
+          configPath
+        );
+
+  mkdirSync(path.dirname(configPath), { recursive: true });
+  writeFileSync(configPath, next, 'utf-8');
+  console.log(
+    `${CONFIG_FILE_CLIENTS[client]} MCP configured at ${configPath}.`
+  );
 }
 
 export async function installHermesMcp(

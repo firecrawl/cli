@@ -1,10 +1,10 @@
 {
   "name": "firecrawl-cli",
-  "version": "1.26.15",
+  "version": "1.26.21",
   "publishConfig": {
     "tag": "latest"
   },
-  "description": "Command-line interface for Firecrawl. Scrape, crawl, and extract data from any website, and search a ~43M-abstract research paper index (PubMed, bioRxiv, medRxiv, arXiv), directly from your terminal.",
+  "description": "Command-line interface for Firecrawl, the context API for AI agents. Search, scrape, parse, crawl, map, interact, run agent jobs, and monitor changes directly from your terminal, including research papers, developer sources, and government sources.",
   "main": "dist/index.js",
   "bin": {
     "firecrawl": "dist/index.js"
@@ -86,6 +86,8 @@
     "@inquirer/prompts": "^8.2.1",
     "commander": "^14.0.2",
     "firecrawl": "4.50.0",
+    "jsonc-parser": "^3.3.1",
+    "smol-toml": "^1.9.1",
     "string-width": "^4.2.3",
     "yaml": "^2.9.0",
     "zod-to-json-schema": "3.24.6"

@@ -22,6 +22,7 @@ describe('CLI compatibility aliases', { timeout: 30000 }, () => {
       scrape.handleAllScrapeCommand = (_url, options) => print(options);
       require('./dist/commands/parse').handleParseCommand = print;
       require('./dist/commands/crawl').handleCrawlCommand = print;
+      require('./dist/commands/batch-scrape').handleBatchScrapeCommand = print;
       require('./dist/commands/agent').handleAgentCommand = print;
       process.argv = [process.execPath, ${JSON.stringify(cliPath)}, ...${JSON.stringify(args)}];
       require(${JSON.stringify(cliPath)});
@@ -103,7 +104,7 @@ describe('CLI compatibility aliases', { timeout: 30000 }, () => {
     expect(alias.stdout).toContain('"formats":["markdown","links"]');
   });
 
-  testWithBuiltCli.each(['crawl', 'agent'])(
+  testWithBuiltCli.each(['crawl', 'batch-scrape', 'agent'])(
     'preserves %s job status',
     (command) => {
       const result = run([

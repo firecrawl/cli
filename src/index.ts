@@ -5,7 +5,7 @@
  * Entry point for the CLI application
  */
 
-import { Command, Option } from 'commander';
+import { Command, InvalidArgumentError, Option } from 'commander';
 import { createSqlCommand } from './commands/sql';
 import { addFormatsAlias } from './utils/format-option';
 import {
@@ -27,6 +27,10 @@ import { initializeConfig, updateConfig } from './utils/config';
 import { configure, viewConfig } from './commands/config';
 import { handleCreditUsageCommand } from './commands/credit-usage';
 import { handleCrawlCommand } from './commands/crawl';
+import {
+  collectBatchScrapeUrls,
+  handleBatchScrapeCommand,
+} from './commands/batch-scrape';
 import { handleMapCommand } from './commands/map';
 import { handleParseCommand } from './commands/parse';
 import { createMonitorCommand } from './commands/monitor';
@@ -102,6 +106,7 @@ initializeConfig();
 const AUTH_REQUIRED_COMMANDS = [
   'download',
   'crawl',
+  'batch-scrape',
   'map',
   'feedback',
   'search-feedback',
@@ -242,6 +247,22 @@ function researchLimit(options: {
   return options.k ?? options.limit;
 }
 
+function parseNonEmpty(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) throw new InvalidArgumentError('Must not be empty.');
+  return trimmed;
+}
+
+function parseJurisdiction(value: string): string {
+  const jurisdiction = value.trim().toLowerCase();
+  if (!/^us(-[a-z]{2})?$/.test(jurisdiction)) {
+    throw new InvalidArgumentError(
+      'Must be "us" for federal, or "us-" plus a two-letter state or territory code, such as "us-ca" or "us-dc".'
+    );
+  }
+  return jurisdiction;
+}
+
 function parseAgentWebhookOption(
   raw: string | undefined,
   label: string
@@ -321,7 +342,9 @@ const program = new Command();
 
 program
   .name('firecrawl')
-  .description('CLI tool for Firecrawl web scraping')
+  .description(
+    'Command-line interface for Firecrawl, the context API for AI agents: search, scrape, and interact with the web'
+  )
   .version(packageJson.version)
   .option(
     '-k, --api-key <key>',
@@ -770,6 +793,157 @@ function createCrawlCommand(): Command {
 }
 
 /**
+ * Create and configure the batch-scrape command
+ */
+function createBatchScrapeCommand(): Command {
+  const batchCmd = new Command('batch-scrape')
+    .description(
+      'Scrape a list of known URLs as one async job (returns a job ID unless --wait)'
+    )
+    .argument('[urls-or-job-id...]', 'URLs to scrape, or a job ID to check')
+    .option(
+      '--urls-file <path>',
+      'File with one URL per line (blank lines and # comments ignored)'
+    )
+    .option(
+      '-f, --format <formats>',
+      'Output format(s), comma-separated (default: markdown). Available: markdown, html, rawHtml, links, images, screenshot, summary, changeTracking, json, attributes, branding'
+    )
+    .option('--only-main-content', 'Include only main content', false)
+    .option(
+      '--wait-for <ms>',
+      'Wait time before scraping in milliseconds',
+      parseInt
+    )
+    .option(
+      '--max-age <milliseconds>',
+      'Maximum age of cached content in milliseconds',
+      parseInt
+    )
+    .option(
+      '--schema <json>',
+      'JSON schema for structured extraction (adds the json format)'
+    )
+    .option('--schema-file <path>', 'Path to JSON schema file')
+    .option(
+      '--prompt <text>',
+      'Extraction prompt for the json format (adds the json format)'
+    )
+    .option(
+      '--scrape-options <json>',
+      'JSON scrape options applied to every URL (explicit flags win)'
+    )
+    .option('--scrape-options-file <path>', 'Path to scrape options JSON file')
+    .option('--status', 'Check status of existing batch scrape job', false)
+    .option('--cancel', 'Cancel active batch scrape job by job ID', false)
+    .option('--wait', 'Wait for the job to complete and return results', false)
+    .option(
+      '--poll-interval <seconds>',
+      'Polling interval in seconds when waiting (default: 2)',
+      parseFloat
+    )
+    .option(
+      '--timeout <seconds>',
+      'Timeout in seconds when waiting (default: no timeout)',
+      parseFloat
+    )
+    .option('--progress', 'Show progress while waiting', false)
+    .option('--webhook <url-or-json>', 'Webhook URL or webhook configuration')
+    .option(
+      '--max-concurrency <number>',
+      'Maximum concurrent scrapes for this job',
+      parseInt
+    )
+    .option(
+      '--ignore-invalid-urls',
+      'Skip invalid URLs instead of failing the job',
+      false
+    )
+    .option(
+      '-k, --api-key <key>',
+      'Firecrawl API key (overrides global --api-key)'
+    )
+    .option('--api-url <url>', 'API URL (overrides global --api-url)')
+    .option('-o, --output <path>', 'Output file path (default: stdout)')
+    .option('--pretty', 'Pretty print JSON output', false)
+    .action(async (positional: string[], options, command: Command) => {
+      const jobId =
+        positional.length === 1 && isJobId(positional[0])
+          ? positional[0]
+          : undefined;
+
+      let urls: string[] = [];
+      let schema: Record<string, unknown> | undefined;
+      let scrapeOptions: Record<string, unknown> | undefined;
+      let webhook: string | Record<string, unknown> | undefined;
+
+      try {
+        if (!jobId) {
+          urls = collectBatchScrapeUrls(positional, options.urlsFile);
+        }
+        schema =
+          parseJsonObject(options.schema, undefined, '--schema') ??
+          parseJsonObject(undefined, options.schemaFile, '--schema-file');
+        scrapeOptions =
+          parseJsonObject(
+            options.scrapeOptions,
+            undefined,
+            '--scrape-options'
+          ) ??
+          parseJsonObject(
+            undefined,
+            options.scrapeOptionsFile,
+            '--scrape-options-file'
+          );
+        webhook = parseWebhookOption(options.webhook, '--webhook');
+      } catch (error) {
+        console.error(
+          'Error:',
+          error instanceof Error ? error.message : String(error)
+        );
+        process.exit(1);
+      }
+
+      await handleBatchScrapeCommand({
+        urls,
+        jobId,
+        status: options.status || command.parent?.opts().status,
+        cancel: options.cancel,
+        wait: options.wait,
+        pollInterval: options.pollInterval,
+        timeout: options.timeout,
+        progress: options.progress,
+        output: options.output,
+        pretty: options.pretty,
+        apiKey: options.apiKey,
+        apiUrl: options.apiUrl,
+        format: options.format,
+        onlyMainContent: options.onlyMainContent,
+        waitFor: options.waitFor,
+        maxAge: options.maxAge,
+        schema,
+        prompt: options.prompt,
+        scrapeOptions,
+        webhook,
+        maxConcurrency: options.maxConcurrency,
+        ignoreInvalidUrls: options.ignoreInvalidUrls,
+      });
+    });
+
+  batchCmd.addHelpText(
+    'after',
+    `
+Examples:
+  firecrawl batch-scrape https://example.com https://example.org
+  firecrawl batch-scrape --urls-file urls.txt --format markdown,links --wait -o .firecrawl/batch.json
+  firecrawl batch-scrape --urls-file urls.txt --wait --schema '{"type":"object","properties":{"title":{"type":"string"}}}'
+  firecrawl batch-scrape <job-id>
+`
+  );
+  return addFormatsAlias(batchCmd);
+}
+
+/**
  * Create and configure the map command
  */
 function createMapCommand(): Command {
@@ -1179,6 +1353,44 @@ function createGovCommand(): Command {
     )
     .addOption(new Option('--k <number>').argParser(parseInt).hideHelp())
     .option(
+      '--jurisdiction <code>',
+      'Keep only pages of one jurisdiction: "us" for federal, or "us-" plus a two-letter state or territory code, such as "us-ca" or "us-dc"',
+      parseJurisdiction
+    )
+    .option(
+      '--court <id>',
+      'Keep only pages labeled for one court, by CourtListener court id, such as "scotus", "ca9" or "nysd"',
+      parseNonEmpty
+    )
+    .addOption(
+      new Option(
+        '--court-type <type>',
+        'Keep only pages from one type of court'
+      ).choices([
+        'federal-supreme',
+        'federal-appellate',
+        'federal-district',
+        'federal-bankruptcy',
+        'federal-special',
+        'military',
+        'state-supreme',
+        'state-appellate',
+        'state-trial',
+        'state-special',
+        'state-attorney-general',
+      ])
+    )
+    .option(
+      '--cites <citation>',
+      'Keep only pages that cite one law or case, as a printed citation such as "42 U.S.C. § 1983" or "5 U.S. 137", or a citation id such as "us:usc:42:1983"',
+      parseNonEmpty
+    )
+    .option(
+      '--domain <domain>',
+      'Keep only pages from one site, such as "irs.gov"',
+      parseNonEmpty
+    )
+    .option(
       '-k, --api-key <key>',
       'Firecrawl API key (overrides global --api-key)'
     )
@@ -1189,15 +1401,25 @@ function createGovCommand(): Command {
     .addHelpText(
       'after',
       `
+Filters keep only pages the index has labeled, so a filtered search can leave
+out relevant pages, and no results does not mean none exist. Court labels are
+most complete for federal courts and case-law collections.
+
 Examples:
   $ firecrawl gov "food labeling requirements for allergens" --limit 10
   $ firecrawl gov "California data breach notification statute" --json
+  $ firecrawl gov "qualified immunity excessive force" --court ca9
 `
     )
     .action(async (query, options) => {
       await handleGovSearchCommand({
         query,
         k: researchLimit(options),
+        jurisdiction: options.jurisdiction,
+        court: options.court,
+        courtType: options.courtType,
+        cites: options.cites,
+        domain: options.domain,
         apiKey: options.apiKey,
         apiUrl: options.apiUrl,
         output: options.output,
@@ -2398,6 +2620,7 @@ Examples:
 
 // Add core commands to main program
 program.addCommand(createCrawlCommand());
+program.addCommand(createBatchScrapeCommand());
 program.addCommand(createMapCommand());
 program.addCommand(createParseCommand());
 program.addCommand(createMonitorCommand());
@@ -2774,7 +2997,7 @@ async function main() {
   if (args.length === 0) {
     const { isAuthenticated } = await import('./utils/auth');
 
-    if (!isAuthenticated()) {
+    if (!isAuthenticated() && process.stdin.isTTY) {
       // Not authenticated - run the onboarding auth step, which offers logging in
       // OR continuing on the keyless free tier (no API key required).
       printBanner();
@@ -2786,7 +3009,7 @@ async function main() {
       return;
     }
 
-    // Authenticated - show banner and help
+    // Authenticated, or no terminal to prompt in - show banner and help
     printBanner();
     program.outputHelp();
     return;
