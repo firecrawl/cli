@@ -1,6 +1,13 @@
 export interface GovSearchOptions {
   query: string;
   k?: number;
+  jurisdiction?: string;
+  court?: string;
+  courtType?: string;
+  cites?: string;
+  domain?: string;
+  yearFrom?: number;
+  yearTo?: number;
   apiKey?: string;
   apiUrl?: string;
   output?: string;

@@ -5,7 +5,7 @@
  * Entry point for the CLI application
  */
 
-import { Command, Option } from 'commander';
+import { Command, InvalidArgumentError, Option } from 'commander';
 import { createSqlCommand } from './commands/sql';
 import { addFormatsAlias } from './utils/format-option';
 import {
@@ -241,6 +241,29 @@ function researchLimit(options: {
   k?: number;
 }): number | undefined {
   return options.k ?? options.limit;
+}
+
+function parseNonEmpty(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) throw new InvalidArgumentError('Must not be empty.');
+  return trimmed;
+}
+
+function parseJurisdiction(value: string): string {
+  const jurisdiction = value.trim().toLowerCase();
+  if (!/^us(-[a-z]{2})?$/.test(jurisdiction)) {
+    throw new InvalidArgumentError(
+      'Must be "us" for federal, or "us-" plus a two-letter state or territory code, such as "us-ca" or "us-dc".'
+    );
+  }
+  return jurisdiction;
+}
+
+function parseYear(value: string): number {
+  if (!/^[1-9]\d{3}$/.test(value)) {
+    throw new InvalidArgumentError('Must be a year from 1000 to 9999.');
+  }
+  return Number(value);
 }
 
 function parseAgentWebhookOption(
@@ -1333,6 +1356,54 @@ function createGovCommand(): Command {
     )
     .addOption(new Option('--k <number>').argParser(parseInt).hideHelp())
     .option(
+      '--jurisdiction <code>',
+      'Keep only pages of one jurisdiction: "us" for federal, or "us-" plus a two-letter state or territory code, such as "us-ca" or "us-dc"',
+      parseJurisdiction
+    )
+    .option(
+      '--court <id>',
+      'Keep only pages labeled for one court, by CourtListener court id, such as "scotus", "ca9" or "nysd"',
+      parseNonEmpty
+    )
+    .addOption(
+      new Option(
+        '--court-type <type>',
+        'Keep only pages from one type of court'
+      ).choices([
+        'federal-supreme',
+        'federal-appellate',
+        'federal-district',
+        'federal-bankruptcy',
+        'federal-special',
+        'military',
+        'state-supreme',
+        'state-appellate',
+        'state-trial',
+        'state-special',
+        'state-attorney-general',
+      ])
+    )
+    .option(
+      '--cites <citation>',
+      'Keep only pages that cite one law or case, as a printed citation such as "42 U.S.C. § 1983" or "5 U.S. 137", or a citation id such as "us:usc:42:1983"',
+      parseNonEmpty
+    )
+    .option(
+      '--domain <domain>',
+      'Keep only pages from one site, such as "irs.gov"',
+      parseNonEmpty
+    )
+    .option(
+      '--year-from <year>',
+      'Keep only documents published or filed in this year or later. Requires --court or --court-type',
+      parseYear
+    )
+    .option(
+      '--year-to <year>',
+      'Keep only documents published or filed in this year or earlier. Requires --court or --court-type',
+      parseYear
+    )
+    .option(
       '-k, --api-key <key>',
       'Firecrawl API key (overrides global --api-key)'
     )
@@ -1343,15 +1414,27 @@ function createGovCommand(): Command {
     .addHelpText(
       'after',
       `
+Filters keep only pages the index has labeled, so a filtered search can leave
+out relevant pages, and no results does not mean none exist. Court labels are
+most complete for federal courts and case-law collections.
+
 Examples:
   $ firecrawl gov "food labeling requirements for allergens" --limit 10
   $ firecrawl gov "California data breach notification statute" --json
+  $ firecrawl gov "qualified immunity excessive force" --court ca9 --year-from 2020
 `
     )
     .action(async (query, options) => {
       await handleGovSearchCommand({
         query,
         k: researchLimit(options),
+        jurisdiction: options.jurisdiction,
+        court: options.court,
+        courtType: options.courtType,
+        cites: options.cites,
+        domain: options.domain,
+        yearFrom: options.yearFrom,
+        yearTo: options.yearTo,
         apiKey: options.apiKey,
         apiUrl: options.apiUrl,
         output: options.output,
