@@ -25,8 +25,13 @@ async function getGov<T>(path: string, options: GovSearchOptions): Promise<T> {
   }
 
   const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
-  const response = await (app as any).http.get(url);
-  return (response?.data ?? {}) as T;
+  try {
+    const response = await (app as any).http.get(url);
+    return (response?.data ?? {}) as T;
+  } catch (error: any) {
+    const message = error?.response?.data?.error;
+    throw typeof message === 'string' ? new Error(message) : error;
+  }
 }
 
 function fmtResult(item: GovResult, index: number): string {
