@@ -400,6 +400,14 @@ export async function executeAgent(
             };
           }
 
+          if (normalizedStatus === 'cancelled') {
+            spinner.succeed('Agent cancelled');
+            return {
+              success: true,
+              data: toStatusData(jobId, agentStatus, normalizedStatus),
+            };
+          }
+
           // Check timeout
           if (timeoutMs && Date.now() - startTime > timeoutMs) {
             process.removeListener('SIGINT', handleInterrupt);
