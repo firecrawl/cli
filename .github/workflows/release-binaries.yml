@@ -9,22 +9,24 @@ on:
       - 'nfpm.yaml'
   workflow_dispatch:
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   check-version:
     runs-on: ubuntu-latest
     name: Check for version bump
+    permissions:
+      contents: read
     outputs:
       version: ${{ steps.check.outputs.version }}
       released: ${{ steps.check.outputs.released }}
       dry_run: ${{ steps.check.outputs.dry_run }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Check if version tag exists
         id: check
@@ -75,16 +77,20 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     name: Build ${{ matrix.binary }}
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Build binary
         run: bun build src/index.ts --compile --target=${{ matrix.target }} --outfile ${{ matrix.binary }}
@@ -98,7 +104,7 @@ jobs:
         run: zip ${{ matrix.binary }}.zip ${{ matrix.binary }}
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ matrix.binary }}
           path: |
@@ -107,19 +113,21 @@ jobs:
             ${{ matrix.binary }}.zip
           if-no-files-found: ignore
 
-  release:
+  package:
     needs: [check-version, build]
     runs-on: ubuntu-latest
-    name: Create release and upload assets
+    name: Package release assets
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: artifacts
 
@@ -136,12 +144,14 @@ jobs:
           ls -la binaries/
 
       - name: Install nfpm
-        run: |
-          NFPM_VERSION=$(gh release view --repo goreleaser/nfpm --json tagName --jq '.tagName' | sed 's/^v//')
-          curl -sfL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz" | tar -xz -C /usr/local/bin nfpm
-          nfpm --version
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NFPM_VERSION: 2.48.0
+          NFPM_SHA256: 6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750
+        run: |
+          curl -sfL -o "$RUNNER_TEMP/nfpm.tar.gz" "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz"
+          echo "${NFPM_SHA256}  $RUNNER_TEMP/nfpm.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/nfpm.tar.gz" -C /usr/local/bin nfpm
+          nfpm --version
 
       - name: Build Linux packages
         run: |
@@ -181,8 +191,44 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**No release created — this is a dry run on branch \`${{ github.ref_name }}\`.**" >> $GITHUB_STEP_SUMMARY
 
-      - name: Generate release notes
+      - name: Upload release assets
         if: needs.check-version.outputs.dry_run != 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets
+          path: release
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: [check-version, package]
+    if: needs.check-version.outputs.dry_run != 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    name: Create release and upload assets
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Download release assets
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: release
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release/*
+
+      - name: Generate release notes
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ -n "$PREV_TAG" ]; then
@@ -192,7 +238,6 @@ jobs:
           fi
 
       - name: Create tag and GitHub release
-        if: needs.check-version.outputs.dry_run != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

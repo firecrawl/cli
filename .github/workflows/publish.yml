@@ -1,8 +1,6 @@
 name: Publish to npm
 
 on:
-  release:
-    types: [created]
   workflow_dispatch:
   push:
     paths:
@@ -11,28 +9,31 @@ on:
     branches:
       - main
 
-permissions:
-  id-token: write
-  contents: read
+permissions: {}
 
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.check-version.outputs.tag }}
+      exists: ${{ steps.check-version.outputs.exists }}
+      tarball: ${{ steps.pack.outputs.tarball }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.12.1
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -45,8 +46,7 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           PACKAGE_NAME=$(node -p "require('./package.json').name")
-          
-          # Check if version contains beta
+
           if [[ "$VERSION" == *"-alexandria"* ]]; then
             echo "tag=alexandria" >> $GITHUB_OUTPUT
             echo "Version $VERSION will publish with the alexandria tag"
@@ -57,7 +57,7 @@ jobs:
             echo "tag=latest" >> $GITHUB_OUTPUT
             echo "Version $VERSION is stable, will publish with latest tag"
           fi
-          
+
           if npm view ${PACKAGE_NAME}@${VERSION} version > /dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
             echo "Version $VERSION already exists on npm, skipping publish"
@@ -66,7 +66,46 @@ jobs:
             echo "Version $VERSION is new, will publish"
           fi
 
-      - name: Publish to npm
+      - name: Pack
+        id: pack
         if: steps.check-version.outputs.exists == 'false'
-        run: npm publish --provenance --access public --tag ${{ steps.check-version.outputs.tag }}
-        continue-on-error: false
+        run: |
+          mkdir -p "$RUNNER_TEMP/dist"
+          tarball=$(npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/dist" | tail -n 1)
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+
+      - name: Upload package
+        if: steps.check-version.outputs.exists == 'false'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-package
+          path: ${{ runner.temp }}/dist
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    if: needs.build.outputs.exists == 'false' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - name: Download package
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-package
+          path: dist
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Publish to npm
+        env:
+          TARBALL: ${{ needs.build.outputs.tarball }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: npm publish "dist/$TARBALL" --provenance --access public --tag "$TAG"
