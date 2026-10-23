@@ -2,7 +2,7 @@ import { stripVTControlCharacters } from 'node:util';
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 const wide =
-  /[\p{Emoji_Presentation}\u{FE0F}\u{1100}-\u{115F}\u{2E80}-\u{303E}\u{3041}-\u{33FF}\u{3400}-\u{4DBF}\u{4E00}-\u{9FFF}\u{A000}-\u{A4CF}\u{AC00}-\u{D7A3}\u{F900}-\u{FAFF}\u{FE30}-\u{FE4F}\u{FF00}-\u{FF60}\u{FFE0}-\u{FFE6}\u{20000}-\u{3FFFD}]/u;
+  /[\p{Emoji_Presentation}\u{FE0F}\u{1100}-\u{115F}\u{2329}-\u{232A}\u{2E80}-\u{303E}\u{3041}-\u{33FF}\u{3400}-\u{4DBF}\u{4E00}-\u{9FFF}\u{A000}-\u{A4CF}\u{A960}-\u{A97C}\u{AC00}-\u{D7A3}\u{F900}-\u{FAFF}\u{FE10}-\u{FE19}\u{FE30}-\u{FE4F}\u{FE50}-\u{FE6B}\u{FF00}-\u{FF60}\u{FFE0}-\u{FFE6}\u{1B000}-\u{1B001}\u{1F200}-\u{1F24F}\u{20000}-\u{3FFFD}]/u;
 const zeroWidth = /^[\p{Cc}\p{Cf}\p{Mn}\p{Me}]+$/u;
 
 /** Terminal columns a string occupies, ignoring ANSI escapes. */
