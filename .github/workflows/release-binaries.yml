@@ -113,21 +113,18 @@ jobs:
             ${{ matrix.binary }}.zip
           if-no-files-found: ignore
 
-  release:
+  package:
     needs: [check-version, build]
     runs-on: ubuntu-latest
-    name: Create release and upload assets
-    environment: ${{ needs.check-version.outputs.dry_run != 'true' && 'release' || '' }}
+    name: Package release assets
     permissions:
-      contents: write
-      id-token: write
-      attestations: write
+      contents: read
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
       - name: Download all artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -194,14 +191,44 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**No release created — this is a dry run on branch \`${{ github.ref_name }}\`.**" >> $GITHUB_STEP_SUMMARY
 
-      - name: Attest build provenance
+      - name: Upload release assets
         if: needs.check-version.outputs.dry_run != 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets
+          path: release
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: [check-version, package]
+    if: needs.check-version.outputs.dry_run != 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    name: Create release and upload assets
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Download release assets
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: release
+
+      - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: release/*
 
       - name: Generate release notes
-        if: needs.check-version.outputs.dry_run != 'true'
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ -n "$PREV_TAG" ]; then
@@ -211,7 +238,6 @@ jobs:
           fi
 
       - name: Create tag and GitHub release
-        if: needs.check-version.outputs.dry_run != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
