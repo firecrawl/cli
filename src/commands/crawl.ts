@@ -48,20 +48,53 @@ export async function executeCrawl(
 
     // A job ID returns the job's status and pages; with --wait, poll it to the end
     if (status || isJobId(urlOrJobId)) {
-      const pollMs = (pollInterval ?? 5) * 1000;
-      const startTime = Date.now();
-      while (true) {
-        const job = await app.getCrawlStatus(urlOrJobId);
-        if (!wait || TERMINAL_STATUSES.has(job.status)) {
-          return { success: true, data: job };
+      if (!wait) {
+        return { success: true, data: await app.getCrawlStatus(urlOrJobId) };
+      }
+
+      for (const [name, value] of [
+        ['--poll-interval', pollInterval],
+        ['--timeout', timeout],
+      ] as const) {
+        if (value !== undefined && !(Number.isFinite(value) && value > 0)) {
+          return {
+            success: false,
+            error: `${name} must be a positive number of seconds`,
+          };
         }
-        if (timeout !== undefined && Date.now() - startTime > timeout * 1000) {
+      }
+
+      const pollMs = (pollInterval ?? 5) * 1000;
+      const deadline =
+        timeout !== undefined ? Date.now() + timeout * 1000 : undefined;
+      while (true) {
+        const job = await app.getCrawlStatus(urlOrJobId, {
+          autoPaginate: false,
+        });
+        if (options.progress) {
+          process.stderr.write(
+            `\rProgress: ${job.completed}/${job.total} pages (${job.status})`
+          );
+        }
+        if (TERMINAL_STATUSES.has(job.status)) {
+          if (options.progress) process.stderr.write('\n');
+          return {
+            success: true,
+            data: job.next ? await app.getCrawlStatus(urlOrJobId) : job,
+          };
+        }
+        const remainingMs =
+          deadline !== undefined ? deadline - Date.now() : undefined;
+        if (remainingMs !== undefined && remainingMs <= 0) {
+          if (options.progress) process.stderr.write('\n');
           return {
             success: false,
             error: `Timeout after ${timeout} seconds. Crawl still in progress. Resume with: firecrawl crawl ${urlOrJobId} --wait`,
           };
         }
-        await new Promise((resolve) => setTimeout(resolve, pollMs));
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.min(pollMs, remainingMs ?? pollMs))
+        );
       }
     }
 
@@ -235,6 +268,7 @@ export async function handleCrawlCommand(options: CrawlOptions): Promise<void> {
   const finalStatus = crawlResult.data.status;
   if (
     options.wait &&
+    !options.cancel &&
     (finalStatus === 'failed' || finalStatus === 'cancelled')
   ) {
     console.error(`Error: Crawl ${finalStatus}.`);
