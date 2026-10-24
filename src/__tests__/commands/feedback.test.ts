@@ -16,6 +16,10 @@ import { getClient } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { setupTest, teardownTest } from '../utils/mock-client';
 
+vi.mock('../../utils/agent-origin', () => ({
+  getCliOrigin: () => 'cli.test@1.0.0',
+}));
+
 vi.mock('../../utils/client', async () => {
   const actual = await vi.importActual('../../utils/client');
   return {
@@ -85,7 +89,7 @@ describe('executeEndpointFeedback', () => {
     expect(JSON.parse(request.body)).toEqual({
       endpoint: 'alexandria',
       rating: 'partial',
-      origin: 'cli',
+      origin: 'cli.test@1.0.0',
       integration: 'cli',
       requestedWebsite,
       rationale: 'Only summaries available',
@@ -149,7 +153,7 @@ describe('executeEndpointFeedback', () => {
       endpoint: 'scrape',
       jobId: '0193f6c5-1234-7890-abcd-1234567890ab',
       rating: 'partial',
-      origin: 'cli',
+      origin: 'cli.test@1.0.0',
       integration: 'cli',
       issues: ['missing_markdown'],
       tags: ['docs'],
@@ -183,7 +187,7 @@ describe('executeEndpointFeedback', () => {
     expect(endpointUrl).toBe('https://api.firecrawl.dev/v2/feedback');
     expect(endpointRequest.headers['X-Integration']).toBe('rtk');
     expect(JSON.parse(endpointRequest.body)).toMatchObject({
-      origin: 'cli',
+      origin: 'cli.test@1.0.0',
       integration: 'cli',
     });
     const [searchUrl, searchRequest] = mockFetch.mock.calls[1];
@@ -193,7 +197,7 @@ describe('executeEndpointFeedback', () => {
     expect(searchRequest.headers['X-Integration']).toBe('rtk');
     expect(JSON.parse(searchRequest.body)).toEqual({
       rating: 'good',
-      origin: 'cli',
+      origin: 'cli.test@1.0.0',
       integration: 'cli',
     });
   });

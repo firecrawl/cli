@@ -7,10 +7,10 @@
  * firecrawl@4.22.2 exposes monitor methods (createMonitor,
  * listMonitors, getMonitor, updateMonitor, deleteMonitor, runMonitor,
  * listMonitorChecks, getMonitorCheck), but its HttpClient injects a top-level
- * `origin: js-sdk@<version>` field into every POST/PATCH body and the
- * /v2/monitor endpoint rejects that with "Unrecognized key in body". Until the
- * SDK strips `origin` for monitor requests (or the API accepts it), we hit
- * /v2/monitor directly via fetch — same pattern parse.ts uses.
+ * `origin: js-sdk@<version>` field into every POST/PATCH body, which older
+ * /v2/monitor deployments rejected with "Unrecognized key in body". The API now
+ * accepts `origin` on create and update, and we keep hitting /v2/monitor
+ * directly via fetch (same pattern parse.ts uses) to stamp the CLI origin.
  *
  * Subcommands:
  *   create | list | get | update | delete | run | checks | check
@@ -19,6 +19,7 @@
 import * as fs from 'fs';
 import { Command } from 'commander';
 import { getConfig, validateConfig } from '../utils/config';
+import { getCliOrigin } from '../utils/agent-origin';
 import { writeOutput } from '../utils/output';
 import { integrationHeaders } from '../utils/integration';
 
@@ -67,11 +68,15 @@ async function monitorRequest(
     ...integrationHeaders(),
   };
   if (init.body !== undefined) headers['Content-Type'] = 'application/json';
+  const body =
+    init.body && typeof init.body === 'object' && !Array.isArray(init.body)
+      ? { ...init.body, origin: getCliOrigin() }
+      : init.body;
 
   const response = await fetch(url, {
     method: init.method ?? 'GET',
     headers,
-    body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
   const payload = (await response.json().catch(() => ({}))) as any;

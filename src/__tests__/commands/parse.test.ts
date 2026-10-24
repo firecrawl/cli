@@ -10,6 +10,10 @@ import { executeParse } from '../../commands/parse';
 import { initializeConfig } from '../../utils/config';
 import { setupTest, teardownTest } from '../utils/mock-client';
 
+vi.mock('../../utils/agent-origin', () => ({
+  getCliOrigin: () => 'cli.test@1.0.0',
+}));
+
 vi.mock('../../utils/credentials', () => ({
   loadCredentials: vi.fn(() => null),
 }));
@@ -68,6 +72,7 @@ describe('executeParse', () => {
     expect(options).toEqual({
       formats: ['markdown'],
       integration: 'cli',
+      origin: 'cli.test@1.0.0',
     });
     expect(init.body.get('file')).toBeInstanceOf(Blob);
   });

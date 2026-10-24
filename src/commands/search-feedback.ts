@@ -1,6 +1,7 @@
 import { getConfig, validateConfig } from '../utils/config';
 import { getClient } from '../utils/client';
 import { integrationHeaders } from '../utils/integration';
+import { getCliOrigin } from '../utils/agent-origin';
 
 export type SearchFeedbackRating = 'good' | 'bad' | 'partial';
 
@@ -125,7 +126,7 @@ export async function executeSearchFeedback(
     const url = `${apiUrl}/v2/search/${encodeURIComponent(options.searchId)}/feedback`;
     const body: Record<string, unknown> = {
       rating: options.rating,
-      origin: 'cli',
+      origin: getCliOrigin(),
       integration: 'cli',
     };
 
