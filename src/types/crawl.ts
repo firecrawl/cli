@@ -58,16 +58,3 @@ export interface CrawlResult {
   data?: any;
   error?: string;
 }
-
-export interface CrawlStatusResult {
-  success: boolean;
-  data?: {
-    id: string;
-    status: 'scraping' | 'completed' | 'failed' | 'cancelled';
-    total: number;
-    completed: number;
-    creditsUsed?: number;
-    expiresAt?: string;
-  };
-  error?: string;
-}

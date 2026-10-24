@@ -656,15 +656,22 @@ function createDownloadCommand(): Command {
 function createCrawlCommand(): Command {
   const crawlCmd = new Command('crawl')
     .description('Crawl a website using Firecrawl')
-    .argument('[url-or-job-id]', 'URL to crawl or job ID to check status')
+    .argument(
+      '[url-or-job-id]',
+      'URL to crawl, or job ID to read its status and pages'
+    )
     .option(
       '-u, --url <url>',
       'URL to crawl (alternative to positional argument)'
     )
-    .option('--status', 'Check status of existing crawl job', false)
+    .option(
+      '--status',
+      'Read the status and pages of an existing crawl job',
+      false
+    )
     .option(
       '--wait',
-      'Wait for crawl to complete before returning results',
+      'Wait for the crawl (new or by job ID) to finish before returning results; exits 1 if it fails or is cancelled',
       false
     )
     .option(
