@@ -2,51 +2,19 @@
  * Crawl command implementation
  */
 
-import type {
-  CrawlOptions,
-  CrawlResult,
-  CrawlStatusResult,
-} from '../types/crawl';
+import type { CrawlOptions, CrawlResult } from '../types/crawl';
 import { getClient } from '../utils/client';
 import { isJobId } from '../utils/job';
 import { writeOutput } from '../utils/output';
 
-/**
- * Execute crawl status check
- */
-async function checkCrawlStatus(
-  jobId: string,
-  options: CrawlOptions
-): Promise<CrawlStatusResult> {
-  try {
-    const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
-    const status = await app.getCrawlStatus(jobId);
-
-    return {
-      success: true,
-      data: {
-        id: status.id,
-        status: status.status,
-        total: status.total,
-        completed: status.completed,
-        creditsUsed: status.creditsUsed,
-        expiresAt: status.expiresAt,
-      },
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
-    };
-  }
-}
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
 /**
  * Execute crawl command
  */
 export async function executeCrawl(
   options: CrawlOptions
-): Promise<CrawlResult | CrawlStatusResult> {
+): Promise<CrawlResult> {
   try {
     const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
     const { urlOrJobId, status, wait, pollInterval, timeout, cancel } = options;
@@ -78,9 +46,23 @@ export async function executeCrawl(
       };
     }
 
-    // If status flag is set or input looks like a job ID, check status
+    // A job ID returns the job's status and pages; with --wait, poll it to the end
     if (status || isJobId(urlOrJobId)) {
-      return await checkCrawlStatus(urlOrJobId, options);
+      const pollMs = (pollInterval ?? 5) * 1000;
+      const startTime = Date.now();
+      while (true) {
+        const job = await app.getCrawlStatus(urlOrJobId);
+        if (!wait || TERMINAL_STATUSES.has(job.status)) {
+          return { success: true, data: job };
+        }
+        if (timeout !== undefined && Date.now() - startTime > timeout * 1000) {
+          return {
+            success: false,
+            error: `Timeout after ${timeout} seconds. Crawl still in progress. Resume with: firecrawl crawl ${urlOrJobId} --wait`,
+          };
+        }
+        await new Promise((resolve) => setTimeout(resolve, pollMs));
+      }
     }
 
     // Build crawl options
@@ -161,11 +143,7 @@ export async function executeCrawl(
             `\rProgress: ${status.completed}/${status.total} pages (${status.status})`
           );
 
-          if (
-            status.status === 'completed' ||
-            status.status === 'failed' ||
-            status.status === 'cancelled'
-          ) {
+          if (TERMINAL_STATUSES.has(status.status)) {
             process.stderr.write('\n');
             return {
               success: true,
@@ -215,37 +193,6 @@ export async function executeCrawl(
 }
 
 /**
- * Format crawl status in human-readable way
- */
-function formatCrawlStatus(data: CrawlStatusResult['data']): string {
-  if (!data) return '';
-
-  const lines: string[] = [];
-  lines.push(`Job ID: ${data.id}`);
-  lines.push(`Status: ${data.status}`);
-  lines.push(`Progress: ${data.completed}/${data.total} pages`);
-
-  if (data.creditsUsed !== undefined) {
-    lines.push(`Credits Used: ${data.creditsUsed}`);
-  }
-
-  if (data.expiresAt) {
-    const expiresDate = new Date(data.expiresAt);
-    lines.push(
-      `Expires: ${expiresDate.toLocaleString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })}`
-    );
-  }
-
-  return lines.join('\n') + '\n';
-}
-
-/**
  * Handle crawl command output
  */
 export async function handleCrawlCommand(options: CrawlOptions): Promise<void> {
@@ -256,29 +203,8 @@ export async function handleCrawlCommand(options: CrawlOptions): Promise<void> {
     process.exit(1);
   }
 
-  // Handle status check result
-  if ('status' in result && result.data && 'status' in result.data) {
-    const statusResult = result as CrawlStatusResult;
-    if (statusResult.data) {
-      let outputContent: string;
-
-      if (options.pretty || !options.output) {
-        // Human-readable format for status
-        outputContent = formatCrawlStatus(statusResult.data);
-      } else {
-        // JSON format
-        outputContent = options.pretty
-          ? JSON.stringify({ success: true, data: statusResult.data }, null, 2)
-          : JSON.stringify({ success: true, data: statusResult.data });
-      }
-
-      writeOutput(outputContent, options.output, !!options.output);
-      return;
-    }
-  }
-
-  // Handle crawl result (job ID or completed crawl)
-  const crawlResult = result as CrawlResult;
+  // Handle crawl result (job ID, job status, or completed crawl)
+  const crawlResult = result;
   if (!crawlResult.data) {
     return;
   }
@@ -305,4 +231,13 @@ export async function handleCrawlCommand(options: CrawlOptions): Promise<void> {
   }
 
   writeOutput(outputContent, options.output, !!options.output);
+
+  const finalStatus = crawlResult.data.status;
+  if (
+    options.wait &&
+    (finalStatus === 'failed' || finalStatus === 'cancelled')
+  ) {
+    console.error(`Error: Crawl ${finalStatus}.`);
+    process.exitCode = 1;
+  }
 }
