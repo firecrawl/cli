@@ -82,7 +82,7 @@ describe('terminal progress output', () => {
       vi.advanceTimersByTime(160);
       spinner.succeed('Done');
 
-      expect(writes.length).toBeGreaterThan(3);
+      expect(writes).toHaveLength(5);
       expect(writes[0]).toBe('\r\x1b[K⠋ Working...');
       expect(writes.at(-2)).toBe('\r\x1b[K');
       expect(writes.at(-1)).toBe('✓ Done\n');

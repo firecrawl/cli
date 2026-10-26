@@ -1,6 +1,6 @@
 /**
  * Transient progress output on stderr. On a terminal it redraws one line in
- * place; anywhere else it prints each distinct message once, as a plain line.
+ * place; anywhere else it prints a plain line each time the message changes.
  */
 
 import { isInteractive } from './terminal';
@@ -29,7 +29,7 @@ export function createSpinner(initialMessage: string = ''): Spinner {
     frameIndex = (frameIndex + 1) % SPINNER_FRAMES.length;
   };
 
-  const printOnce = () => {
+  const printIfChanged = () => {
     if (!currentMessage || currentMessage === printedMessage) return;
     process.stderr.write(`${currentMessage}\n`);
     printedMessage = currentMessage;
@@ -38,7 +38,7 @@ export function createSpinner(initialMessage: string = ''): Spinner {
   return {
     start(message?: string) {
       if (message) currentMessage = message;
-      if (!interactive) return printOnce();
+      if (!interactive) return printIfChanged();
       if (interval) return;
       render();
       interval = setInterval(render, 80);
@@ -46,7 +46,7 @@ export function createSpinner(initialMessage: string = ''): Spinner {
 
     update(message: string) {
       currentMessage = message;
-      if (!interactive) printOnce();
+      if (!interactive) printIfChanged();
     },
 
     stop(finalMessage?: string) {
