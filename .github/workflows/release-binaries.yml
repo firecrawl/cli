@@ -200,8 +200,31 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  release-summary:
+    name: Release summary
+    needs: check-version
+    if: needs.check-version.outputs.released == 'false' && needs.check-version.outputs.dry_run != 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        continue-on-error: true
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - uses: ./.github/actions/release-summary
+        continue-on-error: true
+        timeout-minutes: 3
+        with:
+          gated-job: Create release and upload assets
+          version: v${{ needs.check-version.outputs.version }}
+
   release:
-    needs: [check-version, package]
+    needs: [check-version, package, release-summary]
     if: needs.check-version.outputs.dry_run != 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     name: Create release and upload assets
