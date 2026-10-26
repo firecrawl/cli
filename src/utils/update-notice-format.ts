@@ -1,4 +1,5 @@
 import { stripVTControlCharacters } from 'node:util';
+import { supportsColor } from './terminal';
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 const wide =
@@ -31,12 +32,7 @@ export function colorizeUpdateNotice(
   stderr: Pick<NodeJS.WriteStream, 'isTTY'>,
   highlights: { title: string; commands: readonly string[]; url: string }
 ): string {
-  if (process.env.NO_COLOR !== undefined) return message;
-  const supportsColor =
-    process.env.FORCE_COLOR !== undefined
-      ? process.env.FORCE_COLOR !== '0'
-      : Boolean(stderr.isTTY);
-  if (!supportsColor) return message;
+  if (!supportsColor(stderr)) return message;
   let result = message.replace(
     highlights.title,
     `\x1b[1;36m${highlights.title}\x1b[0m`

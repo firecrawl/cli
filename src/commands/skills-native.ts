@@ -9,11 +9,7 @@ import path from 'path';
 import os from 'os';
 import type { SkillFamily } from '../utils/skill-catalog';
 import { rememberCatalogNames } from '../utils/skill-update-notice';
-
-const green = '\x1b[32m';
-const dim = '\x1b[2m';
-const bold = '\x1b[1m';
-const reset = '\x1b[0m';
+import { bold, dim, green, reset } from '../utils/terminal';
 
 const DEFAULT_REPO = 'firecrawl/cli';
 const SKILLS_SUBDIR = 'skills';

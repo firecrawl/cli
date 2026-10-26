@@ -1,8 +1,12 @@
 /**
- * Simple spinner utility for CLI feedback
+ * Transient progress output on stderr. On a terminal it redraws one line in
+ * place; anywhere else it prints each distinct message once, as a plain line.
  */
 
+import { isInteractive } from './terminal';
+
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const CLEAR_LINE = '\r\x1b[K';
 
 export interface Spinner {
   start: (message?: string) => void;
@@ -13,24 +17,28 @@ export interface Spinner {
 }
 
 export function createSpinner(initialMessage: string = ''): Spinner {
+  const interactive = isInteractive(process.stderr);
   let frameIndex = 0;
   let interval: ReturnType<typeof setInterval> | null = null;
   let currentMessage = initialMessage;
-
-  const clearLine = () => {
-    process.stderr.write('\r\x1b[K');
-  };
+  let printedMessage: string | undefined;
 
   const render = () => {
     const frame = SPINNER_FRAMES[frameIndex];
-    clearLine();
-    process.stderr.write(`${frame} ${currentMessage}`);
+    process.stderr.write(`${CLEAR_LINE}${frame} ${currentMessage}`);
     frameIndex = (frameIndex + 1) % SPINNER_FRAMES.length;
+  };
+
+  const printOnce = () => {
+    if (!currentMessage || currentMessage === printedMessage) return;
+    process.stderr.write(`${currentMessage}\n`);
+    printedMessage = currentMessage;
   };
 
   return {
     start(message?: string) {
       if (message) currentMessage = message;
+      if (!interactive) return printOnce();
       if (interval) return;
       render();
       interval = setInterval(render, 80);
@@ -38,6 +46,7 @@ export function createSpinner(initialMessage: string = ''): Spinner {
 
     update(message: string) {
       currentMessage = message;
+      if (!interactive) printOnce();
     },
 
     stop(finalMessage?: string) {
@@ -45,7 +54,7 @@ export function createSpinner(initialMessage: string = ''): Spinner {
         clearInterval(interval);
         interval = null;
       }
-      clearLine();
+      if (interactive) process.stderr.write(CLEAR_LINE);
       if (finalMessage) {
         process.stderr.write(`${finalMessage}\n`);
       }
@@ -57,6 +66,28 @@ export function createSpinner(initialMessage: string = ''): Spinner {
 
     fail(message?: string) {
       this.stop(`✗ ${message || currentMessage}`);
+    },
+  };
+}
+
+export interface ProgressLine {
+  update: (text: string) => void;
+  end: () => void;
+}
+
+export function createProgressLine(): ProgressLine {
+  const interactive = isInteractive(process.stderr);
+  let lastText: string | undefined;
+
+  return {
+    update(text: string) {
+      if (text === lastText) return;
+      process.stderr.write(interactive ? `${CLEAR_LINE}${text}` : `${text}\n`);
+      lastText = text;
+    },
+
+    end() {
+      if (interactive && lastText !== undefined) process.stderr.write('\n');
     },
   };
 }

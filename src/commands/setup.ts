@@ -46,6 +46,7 @@ import {
   type SkillSelection,
 } from './skills-install';
 import { hasNpx, installSkillsNative } from './skills-native';
+import { dim, green, reset } from '../utils/terminal';
 import {
   configureWebDefaults,
   WEB_AGENTS,
@@ -89,9 +90,6 @@ export interface SetupOptions {
   skipAuthOffer?: boolean;
 }
 
-const green = '\x1b[32m';
-const dim = '\x1b[2m';
-const reset = '\x1b[0m';
 const ADD_MCP_PACKAGE = 'add-mcp@1.14.0';
 const ENV_API_KEY = 'FIRECRAWL_API_KEY';
 const ADD_MCP_LAUNCH_AGENTS: Record<string, string> = {
