@@ -10,6 +10,7 @@ import type {
 import { getClient } from '../utils/client';
 import { isJobId } from '../utils/job';
 import { writeOutput } from '../utils/output';
+import { createProgressLine } from '../utils/spinner';
 
 /**
  * Execute crawl status check
@@ -150,15 +151,15 @@ export async function executeCrawl(
         const pollMs = waiterOptions.pollInterval * 1000;
         const startTime = Date.now();
         const timeoutMs = timeout !== undefined ? timeout * 1000 : undefined;
+        const progress = createProgressLine();
 
         while (true) {
           await new Promise((resolve) => setTimeout(resolve, pollMs));
 
           const status = await app.getCrawlStatus(jobId);
 
-          // Show progress
-          process.stderr.write(
-            `\rProgress: ${status.completed}/${status.total} pages (${status.status})`
+          progress.update(
+            `Progress: ${status.completed}/${status.total} pages (${status.status})`
           );
 
           if (
@@ -166,7 +167,7 @@ export async function executeCrawl(
             status.status === 'failed' ||
             status.status === 'cancelled'
           ) {
-            process.stderr.write('\n');
+            progress.end();
             return {
               success: true,
               data: status,
@@ -175,7 +176,7 @@ export async function executeCrawl(
 
           // Check timeout
           if (timeoutMs && Date.now() - startTime > timeoutMs) {
-            process.stderr.write('\n');
+            progress.end();
             return {
               success: false,
               error: `Timeout after ${timeout} seconds. Crawl still in progress.`,

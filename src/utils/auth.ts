@@ -11,6 +11,7 @@ import {
 } from './credentials';
 import { updateConfig, getApiKey } from './config';
 import { promptInput } from './prompt';
+import { bold, dim, orange, reset } from './terminal';
 
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
 // The apex redirects to www, and egress allowlists often permit only www.
@@ -700,11 +701,6 @@ function envVarLogin(): { apiKey: string; apiUrl: string } | null {
  * Print the Firecrawl CLI banner
  */
 function printBanner(): void {
-  const orange = '\x1b[38;5;208m';
-  const reset = '\x1b[0m';
-  const dim = '\x1b[2m';
-  const bold = '\x1b[1m';
-
   // Get version from package.json
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const packageJson = require('../../package.json');
@@ -748,9 +744,9 @@ async function interactiveLogin(
     'Welcome! To get started, authenticate with your Firecrawl account.\n'
   );
   console.log(
-    '  \x1b[1m1.\x1b[0m Login with browser \x1b[2m(recommended)\x1b[0m'
+    `  ${bold}1.${reset} Login with browser ${dim}(recommended)${reset}`
   );
-  console.log('  \x1b[1m2.\x1b[0m Enter API key manually');
+  console.log(`  ${bold}2.${reset} Enter API key manually`);
   console.log('');
   printEnvHint();
   printTelemetryNotice();
@@ -771,8 +767,6 @@ async function interactiveLogin(
  * Print hint about environment variable
  */
 function printEnvHint(): void {
-  const dim = '\x1b[2m';
-  const reset = '\x1b[0m';
   console.log(
     `${dim}Tip: You can also set FIRECRAWL_API_KEY environment variable${reset}\n`
   );
@@ -782,9 +776,6 @@ function printEnvHint(): void {
  * Print telemetry notice
  */
 function printTelemetryNotice(): void {
-  const dim = '\x1b[2m';
-  const reset = '\x1b[0m';
-
   if (isTelemetryDisabled()) {
     console.log(`${dim}Telemetry disabled${reset}\n`);
   } else {
