@@ -108,4 +108,4 @@ jobs:
         env:
           TARBALL: ${{ needs.build.outputs.tarball }}
           TAG: ${{ needs.build.outputs.tag }}
-        run: npm publish "dist/$TARBALL" --provenance --access public --tag "$TAG"
+        run: npm publish "./dist/$TARBALL" --provenance --access public --tag "$TAG"
