@@ -17,6 +17,7 @@ jobs:
     permissions:
       contents: read
     outputs:
+      version: ${{ steps.check-version.outputs.version }}
       tag: ${{ steps.check-version.outputs.tag }}
       exists: ${{ steps.check-version.outputs.exists }}
       tarball: ${{ steps.pack.outputs.tarball }}
@@ -46,6 +47,7 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           PACKAGE_NAME=$(node -p "require('./package.json').name")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
           if [[ "$VERSION" == *"-alexandria"* ]]; then
             echo "tag=alexandria" >> $GITHUB_OUTPUT
@@ -83,11 +85,55 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  publish:
+  supersede:
+    name: Supersede unapproved runs
     needs: build
     if: needs.build.outputs.exists == 'false' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        continue-on-error: true
+        with:
+          sparse-checkout: .github/actions
+          persist-credentials: false
+      - uses: ./.github/actions/supersede-waiting-runs
+        continue-on-error: true
+        timeout-minutes: 2
+
+  release-summary:
+    name: Release summary
+    needs: build
+    if: needs.build.outputs.exists == 'false' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        continue-on-error: true
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - uses: ./.github/actions/release-summary
+        continue-on-error: true
+        timeout-minutes: 3
+        with:
+          gated-job: publish
+          version: firecrawl-cli@${{ needs.build.outputs.version }} (npm tag ${{ needs.build.outputs.tag }})
+
+  publish:
+    needs: [build, release-summary]
+    if: needs.build.outputs.exists == 'false' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
     environment: release
+    concurrency:
+      group: ${{ github.workflow }}-release-${{ github.ref }}
+      cancel-in-progress: false
     permissions:
       id-token: write
     steps:
