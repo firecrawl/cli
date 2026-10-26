@@ -119,4 +119,38 @@ describe('configureWebDefaults', () => {
       'model = "gpt-5"\n\n[profiles.research]\nweb_search = "disabled"\n'
     );
   });
+
+  it('preserves valid JSON strings containing "//" in Claude settings', async () => {
+    await write(
+      '.claude/settings.json',
+      JSON.stringify({
+        permissions: {
+          allow: ['Read(//c/Users/dev/repo)'],
+        },
+      })
+    );
+
+    const results = await configureWebDefaults();
+    const claudeResult = results.find((r) => r.agent === 'Claude Code');
+    expect(claudeResult?.skipped).toBeFalsy();
+    expect(claudeResult?.changed).toBe(true);
+
+    const saved = JSON.parse(await read('.claude/settings.json'));
+    expect(saved.permissions.allow).toEqual(['Read(//c/Users/dev/repo)']);
+    expect(saved.permissions.deny).toEqual(['WebSearch', 'WebFetch']);
+  });
+
+  it('parses Claude settings containing JSON comments without corrupting strings with "//"', async () => {
+    const jsonWithComments = `// Claude settings\n{\n  /* custom permissions */\n  "permissions": {\n    "allow": ["Read(//c/Users/dev/repo)"]\n  }\n}`;
+    await write('.claude/settings.json', jsonWithComments);
+
+    const results = await configureWebDefaults();
+    const claudeResult = results.find((r) => r.agent === 'Claude Code');
+    expect(claudeResult?.skipped).toBeFalsy();
+    expect(claudeResult?.changed).toBe(true);
+
+    const saved = JSON.parse(await read('.claude/settings.json'));
+    expect(saved.permissions.allow).toEqual(['Read(//c/Users/dev/repo)']);
+    expect(saved.permissions.deny).toEqual(['WebSearch', 'WebFetch']);
+  });
 });
