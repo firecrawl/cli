@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
 import { getConfig, isCustomApiUrl, validateConfig } from '../utils/config';
 import { getClient } from '../utils/client';
+import { getCliOrigin } from '../utils/agent-origin';
 import {
   parseMissingContentArg,
   parseValuableResultsArg,
@@ -264,7 +265,7 @@ export async function executeEndpointFeedback(
       endpoint: options.endpoint,
       ...(options.endpoint === 'alexandria' ? {} : { jobId: options.jobId }),
       rating: options.rating,
-      origin: 'cli',
+      origin: getCliOrigin(),
       integration: 'cli',
     };
 

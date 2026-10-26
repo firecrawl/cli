@@ -6,6 +6,7 @@ import type { CrawlOptions, CrawlResult } from '../types/crawl';
 import { getClient } from '../utils/client';
 import { isJobId } from '../utils/job';
 import { writeOutput } from '../utils/output';
+import { createProgressLine } from '../utils/spinner';
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
@@ -65,19 +66,18 @@ export async function executeCrawl(
       }
 
       const pollMs = (pollInterval ?? 5) * 1000;
+      const progress = options.progress ? createProgressLine() : undefined;
       const deadline =
         timeout !== undefined ? Date.now() + timeout * 1000 : undefined;
       while (true) {
         const job = await app.getCrawlStatus(urlOrJobId, {
           autoPaginate: false,
         });
-        if (options.progress) {
-          process.stderr.write(
-            `\rProgress: ${job.completed}/${job.total} pages (${job.status})`
-          );
-        }
+        progress?.update(
+          `Progress: ${job.completed}/${job.total} pages (${job.status})`
+        );
         if (TERMINAL_STATUSES.has(job.status)) {
-          if (options.progress) process.stderr.write('\n');
+          progress?.end();
           return {
             success: true,
             data: job.next ? await app.getCrawlStatus(urlOrJobId) : job,
@@ -86,7 +86,7 @@ export async function executeCrawl(
         const remainingMs =
           deadline !== undefined ? deadline - Date.now() : undefined;
         if (remainingMs !== undefined && remainingMs <= 0) {
-          if (options.progress) process.stderr.write('\n');
+          progress?.end();
           return {
             success: false,
             error: `Timeout after ${timeout} seconds. Crawl still in progress. Resume with: firecrawl crawl ${urlOrJobId} --wait`,
@@ -165,19 +165,19 @@ export async function executeCrawl(
         const pollMs = waiterOptions.pollInterval * 1000;
         const startTime = Date.now();
         const timeoutMs = timeout !== undefined ? timeout * 1000 : undefined;
+        const progress = createProgressLine();
 
         while (true) {
           await new Promise((resolve) => setTimeout(resolve, pollMs));
 
           const status = await app.getCrawlStatus(jobId);
 
-          // Show progress
-          process.stderr.write(
-            `\rProgress: ${status.completed}/${status.total} pages (${status.status})`
+          progress.update(
+            `Progress: ${status.completed}/${status.total} pages (${status.status})`
           );
 
           if (TERMINAL_STATUSES.has(status.status)) {
-            process.stderr.write('\n');
+            progress.end();
             return {
               success: true,
               data: status,
@@ -186,7 +186,7 @@ export async function executeCrawl(
 
           // Check timeout
           if (timeoutMs && Date.now() - startTime > timeoutMs) {
-            process.stderr.write('\n');
+            progress.end();
             return {
               success: false,
               error: `Timeout after ${timeout} seconds. Crawl still in progress.`,

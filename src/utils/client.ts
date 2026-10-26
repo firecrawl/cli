@@ -13,7 +13,12 @@ import {
   updateConfig,
   type GlobalConfig,
 } from './config';
+import { getCliOrigin } from './agent-origin';
 import { integrationHeaders, withIntegrationHeader } from './integration';
+
+// SDK versions without an origin option ignore it, so the request origin
+// reaches the API only once the SDK supports it.
+type ClientOptionsWithOrigin = FirecrawlClientOptions & { origin?: string };
 
 let clientInstance: Firecrawl | null = null;
 
@@ -54,7 +59,7 @@ export async function keylessRequest(
       ...KEYLESS_CLI_HEADERS,
       ...integrationHeaders(),
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ origin: getCliOrigin(), ...body }),
   });
   const json: any = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -130,12 +135,13 @@ export function getClient(
     const normalizedApiKey = apiKey === null ? undefined : apiKey;
     validateConfig(normalizedApiKey);
 
-    const clientOptions: FirecrawlClientOptions = {
+    const clientOptions: ClientOptionsWithOrigin = {
       apiKey: normalizedApiKey || undefined,
       apiUrl: apiUrl === null ? undefined : apiUrl,
       timeoutMs: options.timeoutMs ?? config.timeoutMs,
       maxRetries: options.maxRetries ?? config.maxRetries,
       backoffFactor: options.backoffFactor ?? config.backoffFactor,
+      origin: getCliOrigin(),
     };
 
     return withIntegrationHeader(new Firecrawl(clientOptions));
@@ -146,12 +152,13 @@ export function getClient(
     const config = getConfig();
     validateConfig(config.apiKey);
 
-    const clientOptions: FirecrawlClientOptions = {
+    const clientOptions: ClientOptionsWithOrigin = {
       apiKey: config.apiKey || undefined,
       apiUrl: config.apiUrl || undefined,
       timeoutMs: config.timeoutMs,
       maxRetries: config.maxRetries,
       backoffFactor: config.backoffFactor,
+      origin: getCliOrigin(),
     };
 
     clientInstance = withIntegrationHeader(new Firecrawl(clientOptions));

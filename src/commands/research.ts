@@ -1,4 +1,5 @@
 import { getClient, isKeylessMode, keylessGet } from '../utils/client';
+import { getCliOrigin } from '../utils/agent-origin';
 import { writeOutput } from '../utils/output';
 import type {
   GitHubItem,
@@ -44,7 +45,7 @@ async function getResearch<T>(
   path: string,
   options: ResearchBaseOptions
 ): Promise<T> {
-  const url = `${path}${path.includes('?') ? '&' : '?'}integration=cli`;
+  const url = `${path}${path.includes('?') ? '&' : '?'}integration=cli&origin=${encodeURIComponent(getCliOrigin())}`;
 
   if (isKeylessMode(options.apiKey, options.apiUrl)) {
     return (await keylessGet(url)) as T;

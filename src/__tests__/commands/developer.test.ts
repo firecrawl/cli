@@ -9,6 +9,10 @@ import { initializeConfig } from '../../utils/config';
 import { writeOutput } from '../../utils/output';
 import { setupTest, teardownTest } from '../utils/mock-client';
 
+vi.mock('../../utils/agent-origin', () => ({
+  getCliOrigin: () => 'cli.test@1.0.0',
+}));
+
 vi.mock('../../utils/output', () => ({ writeOutput: vi.fn() }));
 
 vi.mock('../../utils/client', async () => {
@@ -67,7 +71,7 @@ describe('handleDeveloperSearchCommand', () => {
 
       expect(mockHttpGet).toHaveBeenCalledTimes(1);
       expect(mockHttpGet).toHaveBeenCalledWith(
-        '/v2/search/developer?query=tokio+spawn_blocking&integration=cli'
+        '/v2/search/developer?query=tokio+spawn_blocking&integration=cli&origin=cli.test%401.0.0'
       );
     });
 
@@ -80,7 +84,7 @@ describe('handleDeveloperSearchCommand', () => {
       });
 
       expect(mockHttpGet).toHaveBeenCalledWith(
-        '/v2/search/developer?query=tokio+spawn_blocking&k=5&integration=cli'
+        '/v2/search/developer?query=tokio+spawn_blocking&k=5&integration=cli&origin=cli.test%401.0.0'
       );
     });
 

@@ -36,6 +36,14 @@ import {
   type WebAgent,
 } from '../utils/web-defaults';
 import { installMcp } from './setup';
+import {
+  bold,
+  dim,
+  green,
+  isInteractive,
+  orange,
+  reset,
+} from '../utils/terminal';
 
 export interface InitOptions {
   global?: boolean;
@@ -49,12 +57,6 @@ export interface InitOptions {
   browser?: boolean;
   template?: string;
 }
-
-const orange = '\x1b[38;5;208m';
-const reset = '\x1b[0m';
-const dim = '\x1b[2m';
-const bold = '\x1b[1m';
-const green = '\x1b[32m';
 
 interface TemplateEntry {
   name: string;
@@ -156,7 +158,7 @@ async function installSkillRepoQuiet(
       skills,
     });
 
-    const isTty = process.stdout.isTTY;
+    const isTty = isInteractive(process.stdout);
     if (isTty) {
       process.stdout.write(`  ${dim}↓ Installing ${label}...${reset}`);
     }

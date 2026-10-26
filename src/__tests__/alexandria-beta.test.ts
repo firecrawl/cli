@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
+import packageJson from '../../package.json';
 
 const exec = promisify(execFile);
 const requests: { url?: string; headers: Record<string, any>; body: any }[] =
@@ -2040,28 +2041,32 @@ it('forwards URL scrape discovery detail and rejects invalid combinations locall
 
 it('submits Alexandria session feedback without a job ID', async () => {
   response = { success: true, feedbackId: 'feedback-1', creditsRefunded: 0 };
-  const result = await cli([
-    'alexandria',
-    'feedback',
-    '--rating',
-    'partial',
-    '--url',
-    'https://example.com',
-    '--requested-functionality',
-    'Download attachments',
-    '--objective',
-    ' Compare contract requirements across agencies ',
-    '--rationale',
-    'Only summaries available',
-    '--json',
-  ]);
+  const result = await cli(
+    [
+      'alexandria',
+      'feedback',
+      '--rating',
+      'partial',
+      '--url',
+      'https://example.com',
+      '--requested-functionality',
+      'Download attachments',
+      '--objective',
+      ' Compare contract requirements across agencies ',
+      '--rationale',
+      'Only summaries available',
+      '--json',
+    ],
+    'fc-test',
+    { FIRECRAWL_CLI_DISABLE_AGENT_ORIGIN: '1' }
+  );
   expect(result.code).toBe(0);
   expect(JSON.parse(result.stdout).feedbackId).toBe('feedback-1');
   expect(requests[0].url).toBe('/v2/feedback');
   expect(requests[0].body).toEqual({
     endpoint: 'alexandria',
     rating: 'partial',
-    origin: 'cli',
+    origin: `cli@${packageJson.version}`,
     integration: 'cli',
     requestedWebsite: {
       url: 'https://example.com',

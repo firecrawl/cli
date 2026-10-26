@@ -1,4 +1,5 @@
 import { getClient, isKeylessMode, keylessGet } from '../utils/client';
+import { getCliOrigin } from '../utils/agent-origin';
 import { writeOutput } from '../utils/output';
 import type {
   GovResult,
@@ -16,7 +17,7 @@ const FILTERS = [
 ] as const;
 
 async function getGov<T>(path: string, options: GovSearchOptions): Promise<T> {
-  const url = `${path}${path.includes('?') ? '&' : '?'}integration=cli`;
+  const url = `${path}${path.includes('?') ? '&' : '?'}integration=cli&origin=${encodeURIComponent(getCliOrigin())}`;
 
   if (isKeylessMode(options.apiKey, options.apiUrl)) {
     return (await keylessGet(url)) as T;

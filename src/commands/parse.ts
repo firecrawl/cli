@@ -13,6 +13,7 @@ import type { ParseOptions, ParseResult } from '../types/parse';
 import type { ScrapeFormat } from '../types/scrape';
 import { getClient, isKeylessMode, KEYLESS_CLI_HEADERS } from '../utils/client';
 import { getConfig, validateConfig } from '../utils/config';
+import { getCliOrigin } from '../utils/agent-origin';
 import { handleScrapeOutput } from '../utils/output';
 import { integrationHeaders } from '../utils/integration';
 
@@ -97,6 +98,7 @@ function buildOptionsPayload(options: ParseOptions): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     formats: buildFormats(options),
     integration: 'cli',
+    origin: getCliOrigin(),
   };
 
   if (options.onlyMainContent !== undefined) {

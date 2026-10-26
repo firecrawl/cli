@@ -10,6 +10,7 @@ import type {
 import { getClient } from '../utils/client';
 import { parseFormats } from '../utils/options';
 import { writeOutput } from '../utils/output';
+import { createProgressLine } from '../utils/spinner';
 import { normalizeUrl } from '../utils/url';
 
 const TERMINAL_STATUSES = ['completed', 'failed', 'cancelled'];
@@ -187,18 +188,19 @@ export async function executeBatchScrape(
     process.stderr.write(`Job ID: ${response.id}\n`);
 
     const startTime = Date.now();
+    const progress = createProgressLine();
     while (true) {
       await new Promise((resolve) => setTimeout(resolve, pollInterval * 1000));
 
       const status = await app.getBatchScrapeStatus(response.id, {
         autoPaginate: false,
       });
-      process.stderr.write(
-        `\rProgress: ${status.completed}/${status.total} pages (${status.status})`
+      progress.update(
+        `Progress: ${status.completed}/${status.total} pages (${status.status})`
       );
 
       if (TERMINAL_STATUSES.includes(status.status)) {
-        process.stderr.write('\n');
+        progress.end();
         return {
           success: true,
           data: await app.getBatchScrapeStatus(response.id),
@@ -206,7 +208,7 @@ export async function executeBatchScrape(
       }
 
       if (timeout !== undefined && Date.now() - startTime > timeout * 1000) {
-        process.stderr.write('\n');
+        progress.end();
         return {
           success: false,
           error: `Timeout after ${timeout} seconds. Batch scrape still in progress; check it with: firecrawl batch-scrape ${response.id}`,
