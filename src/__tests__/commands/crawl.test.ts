@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { executeCrawl } from '../../commands/crawl';
+import { executeCrawl, handleCrawlCommand } from '../../commands/crawl';
 import { getClient } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { setupTest, teardownTest } from '../utils/mock-client';
@@ -271,17 +271,30 @@ describe('executeCrawl', () => {
       expect(mockClient.getCrawlStatus).toHaveBeenCalledWith(
         '550e8400-e29b-41d4-a716-446655440000'
       );
-      expect(result).toEqual({
-        success: true,
-        data: {
-          id: mockStatus.id,
-          status: mockStatus.status,
-          total: mockStatus.total,
-          completed: mockStatus.completed,
-          creditsUsed: mockStatus.creditsUsed,
-          expiresAt: mockStatus.expiresAt,
-        },
+      expect(result).toEqual({ success: true, data: mockStatus });
+    });
+
+    it('should return the pages collected so far with the status', async () => {
+      const mockStatus = {
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        status: 'completed',
+        total: 1,
+        completed: 1,
+        data: [
+          {
+            markdown: '# Page',
+            metadata: { sourceURL: 'https://example.com' },
+          },
+        ],
+      };
+      mockClient.getCrawlStatus.mockResolvedValue(mockStatus);
+
+      const result = await executeCrawl({
+        urlOrJobId: '550e8400-e29b-41d4-a716-446655440000',
       });
+
+      expect(result.success).toBe(true);
+      expect(result.data.data).toEqual(mockStatus.data);
     });
 
     it('should auto-detect job ID from UUID format', async () => {
@@ -428,6 +441,189 @@ describe('executeCrawl', () => {
           maxDiscoveryDepth: 2,
         })
       );
+    });
+  });
+
+  describe('Resume an existing job', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('should poll a job ID to a terminal status with --wait', async () => {
+      const jobId = '550e8400-e29b-41d4-a716-446655440000';
+      mockClient.getCrawlStatus
+        .mockResolvedValueOnce({
+          id: jobId,
+          status: 'scraping',
+          total: 2,
+          completed: 1,
+          data: [],
+        })
+        .mockResolvedValueOnce({
+          id: jobId,
+          status: 'completed',
+          total: 2,
+          completed: 2,
+          data: [{}, {}],
+        });
+
+      const crawlPromise = executeCrawl({
+        urlOrJobId: jobId,
+        wait: true,
+        pollInterval: 0.001,
+      });
+      await vi.advanceTimersByTimeAsync(1);
+      const result = await crawlPromise;
+
+      expect(mockClient.startCrawl).not.toHaveBeenCalled();
+      expect(mockClient.crawl).not.toHaveBeenCalled();
+      expect(mockClient.getCrawlStatus).toHaveBeenCalledTimes(2);
+      expect(result).toEqual({
+        success: true,
+        data: {
+          id: jobId,
+          status: 'completed',
+          total: 2,
+          completed: 2,
+          data: [{}, {}],
+        },
+      });
+    });
+
+    it('should name the resume command when waiting on a job ID times out', async () => {
+      const jobId = '550e8400-e29b-41d4-a716-446655440000';
+      mockClient.getCrawlStatus.mockResolvedValue({
+        id: jobId,
+        status: 'scraping',
+        total: 2,
+        completed: 1,
+        data: [],
+      });
+
+      const crawlPromise = executeCrawl({
+        urlOrJobId: jobId,
+        wait: true,
+        pollInterval: 1,
+        timeout: 1,
+      });
+      await vi.advanceTimersByTimeAsync(2500);
+      const result = await crawlPromise;
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain(`firecrawl crawl ${jobId} --wait`);
+    });
+
+    it('should poll one status page at a time and fetch every page once the job ends', async () => {
+      const jobId = '550e8400-e29b-41d4-a716-446655440000';
+      const allPages = {
+        id: jobId,
+        status: 'completed',
+        total: 2,
+        completed: 2,
+        data: [{}, {}],
+      };
+      mockClient.getCrawlStatus
+        .mockResolvedValueOnce({
+          ...allPages,
+          data: [{}],
+          next: 'https://api.firecrawl.dev/v2/crawl/x?skip=1',
+        })
+        .mockResolvedValueOnce(allPages);
+
+      const result = await executeCrawl({ urlOrJobId: jobId, wait: true });
+
+      expect(mockClient.getCrawlStatus).toHaveBeenNthCalledWith(1, jobId, {
+        autoPaginate: false,
+      });
+      expect(mockClient.getCrawlStatus).toHaveBeenNthCalledWith(2, jobId);
+      expect(result).toEqual({ success: true, data: allPages });
+    });
+
+    for (const [flag, options] of [
+      ['--poll-interval', { pollInterval: 0 }],
+      ['--timeout', { timeout: Number.NaN }],
+    ] as const) {
+      it(`should reject an invalid ${flag} before polling`, async () => {
+        const result = await executeCrawl({
+          urlOrJobId: '550e8400-e29b-41d4-a716-446655440000',
+          wait: true,
+          ...options,
+        });
+
+        expect(result).toEqual({
+          success: false,
+          error: `${flag} must be a positive number of seconds`,
+        });
+        expect(mockClient.getCrawlStatus).not.toHaveBeenCalled();
+      });
+    }
+  });
+
+  describe('Exit status', () => {
+    afterEach(() => {
+      process.exitCode = undefined;
+      vi.restoreAllMocks();
+    });
+
+    for (const status of ['failed', 'cancelled']) {
+      it(`should print the job and exit 1 when a waited crawl ends ${status}`, async () => {
+        const stdout = vi
+          .spyOn(process.stdout, 'write')
+          .mockImplementation(() => true);
+        const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+        mockClient.crawl.mockResolvedValue({
+          id: 'job-1',
+          status,
+          total: 1,
+          completed: 0,
+          data: [],
+        });
+
+        await handleCrawlCommand({
+          urlOrJobId: 'https://example.com',
+          wait: true,
+        });
+
+        expect(
+          stdout.mock.calls.map(([chunk]) => String(chunk)).join('')
+        ).toContain(`"status":"${status}"`);
+        expect(stderr).toHaveBeenCalledWith(`Error: Crawl ${status}.`);
+        expect(process.exitCode).toBe(1);
+      });
+    }
+
+    it('should leave the exit status alone when reading a failed job without --wait', async () => {
+      vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      mockClient.getCrawlStatus.mockResolvedValue({
+        id: 'job-1',
+        status: 'failed',
+        total: 1,
+        completed: 0,
+        data: [],
+      });
+
+      await handleCrawlCommand({
+        urlOrJobId: '550e8400-e29b-41d4-a716-446655440000',
+      });
+
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    it('should leave the exit status alone after a successful cancel with --wait', async () => {
+      vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      mockClient.cancelCrawl = vi.fn().mockResolvedValue(true);
+
+      await handleCrawlCommand({
+        urlOrJobId: '550e8400-e29b-41d4-a716-446655440000',
+        cancel: true,
+        wait: true,
+      });
+
+      expect(process.exitCode).toBeUndefined();
     });
   });
 
