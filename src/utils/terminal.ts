@@ -7,14 +7,16 @@ export function isInteractive(stream: Stream): boolean {
 
 /** NO_COLOR wins over FORCE_COLOR; otherwise only interactive streams get color. */
 export function supportsColor(stream: Stream): boolean {
-  if (process.env.NO_COLOR !== undefined) return false;
+  if (process.env.NO_COLOR) return false;
   if (process.env.FORCE_COLOR !== undefined) {
     return process.env.FORCE_COLOR !== '0';
   }
   return isInteractive(stream);
 }
 
-const colorEnabled = supportsColor(process.stdout);
+// Shared by stdout and stderr writes, so color needs both to support it.
+const colorEnabled =
+  supportsColor(process.stdout) && supportsColor(process.stderr);
 const sgr = (code: string): string => (colorEnabled ? `\x1b[${code}m` : '');
 
 export const reset = sgr('0');
