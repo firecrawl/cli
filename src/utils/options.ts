@@ -83,6 +83,20 @@ export function parseMaxPages(value: string): number {
 /**
  * Convert commander options to ScrapeOptions
  */
+/**
+ * onlyMainContent for a scrape: true with --only-main-content, false with
+ * --full-page, and unset otherwise so the API default (main content) applies.
+ */
+export function onlyMainContentFlag(options: {
+  onlyMainContent?: boolean;
+  fullPage?: boolean;
+}): boolean | undefined {
+  if (options.onlyMainContent && options.fullPage) {
+    throw new Error('Use either --only-main-content or --full-page, not both');
+  }
+  return options.fullPage ? false : options.onlyMainContent;
+}
+
 export function parseScrapeOptions(options: any): ScrapeOptions {
   // Parse formats from comma-separated string
   let formats: ScrapeFormat[] | undefined;
@@ -117,7 +131,7 @@ export function parseScrapeOptions(options: any): ScrapeOptions {
     domainTools: options.domainTools,
     toolDetail: options.toolDetail,
     formats,
-    onlyMainContent: options.onlyMainContent,
+    onlyMainContent: onlyMainContentFlag(options),
     waitFor: options.waitFor,
     screenshot: options.screenshot,
     fullPageScreenshot: options.fullPageScreenshot,
