@@ -479,6 +479,7 @@ function createScrapeCommand(): Command {
     .option('--proxy <proxy>', 'Proxy mode for scraping (e.g., auto, basic)')
 
     .action(async (positionalArgs, options) => {
+      onlyMainContentFlag(options);
       const target = resolveScrapeTarget(positionalArgs ?? [], options);
       if (target.kind === 'alexandria') {
         await handleAlexandria(target.calls, options);
