@@ -831,6 +831,20 @@ describe('executeSearch', () => {
       });
     });
 
+    it("shows the API's own error for a refused request, not the HTTP status", async () => {
+      const apiError =
+        'Insufficient credits to perform this request. For more credits, you can upgrade your plan at https://firecrawl.dev/pricing or try changing the request limit to a lower value.';
+      mockHttpPost.mockRejectedValue(
+        Object.assign(new Error('Request failed with status code 402'), {
+          response: { status: 402, data: { success: false, error: apiError } },
+        })
+      );
+
+      const result = await executeSearch({ query: 'test query' });
+
+      expect(result).toEqual({ success: false, error: apiError });
+    });
+
     it('should handle non-Error exceptions', async () => {
       mockHttpPost.mockRejectedValue('String error');
 

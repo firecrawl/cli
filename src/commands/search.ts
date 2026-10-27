@@ -177,11 +177,17 @@ export async function executeSearch(
       error:
         options.domainTools || options.sources?.includes('alexandria')
           ? JSON.stringify(apiFailure(error))
-          : error instanceof Error
-            ? error.message
-            : 'Unknown error occurred',
+          : apiErrorMessage(error),
     };
   }
+}
+
+/** The API's own error text, which a raw HTTP error keeps only in its response body. */
+function apiErrorMessage(error: unknown): string {
+  const body = (error as { response?: { data?: { error?: unknown } } })
+    ?.response?.data;
+  if (typeof body?.error === 'string' && body.error) return body.error;
+  return error instanceof Error ? error.message : 'Unknown error occurred';
 }
 
 /**
