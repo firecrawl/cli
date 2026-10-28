@@ -7,6 +7,7 @@
 
 import { Command, InvalidArgumentError, Option } from 'commander';
 import { createSqlCommand } from './commands/sql';
+import { createWorldIdCommand } from './commands/world-id';
 import { addFormatsAlias } from './utils/format-option';
 import {
   addAlexandriaScrapeOptions,
@@ -2667,6 +2668,7 @@ Shorthand: "firecrawl x" is an alias for "firecrawl experimental".
   );
 experimental.addCommand(createDownloadCommand());
 program.addCommand(createSqlCommand(), { hidden: true });
+program.addCommand(createWorldIdCommand(), { hidden: true });
 experimental.addCommand(createSqlCommand(), { hidden: true });
 program.addCommand(experimental);
 

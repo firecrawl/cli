@@ -77,6 +77,25 @@ describe('executeParse', () => {
     expect(init.body.get('file')).toBeInstanceOf(Blob);
   });
 
+  it('sends a World ID credential on keyless parse requests', async () => {
+    initializeConfig({ apiUrl: 'https://api.firecrawl.dev' });
+    process.env.FIRECRAWL_WORLD_ID = 'fcwid_payload.signature';
+    try {
+      await executeParse({ file: filePath });
+    } finally {
+      delete process.env.FIRECRAWL_WORLD_ID;
+    }
+
+    const [, init] = mockFetch.mock.calls[0] as [
+      string,
+      { headers?: Record<string, string> },
+    ];
+    expect(init.headers).toEqual({
+      'X-Origin': 'cli',
+      'x-firecrawl-world-id': 'fcwid_payload.signature',
+    });
+  });
+
   it('includes the bearer token when an API key is configured', async () => {
     initializeConfig({
       apiKey: 'fc-test-key',

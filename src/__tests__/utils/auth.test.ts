@@ -9,6 +9,7 @@ import {
   interactiveLogin,
   isAuthenticated,
   manualLogin,
+  openBrowser,
 } from '../../utils/auth';
 import { initializeConfig, resetConfig } from '../../utils/config';
 import * as credentials from '../../utils/credentials';
@@ -223,5 +224,13 @@ describe('Authentication Utilities', () => {
         apiUrl: 'https://api.firecrawl.dev',
       });
     });
+  });
+});
+
+describe('openBrowser', () => {
+  it('refuses anything but a web URL before launching a process', async () => {
+    await expect(openBrowser('file:///etc/passwd')).rejects.toThrow(
+      'Refusing to open a non-web URL'
+    );
   });
 });
