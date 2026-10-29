@@ -49,10 +49,7 @@ export function buildBatchScrapeOptions(
 ): Record<string, unknown> {
   const { schema, prompt } = options;
   const wantsJson = schema !== undefined || prompt !== undefined;
-  const scrapeOptions: Record<string, unknown> = {
-    onlyMainContent: false,
-    ...options.scrapeOptions,
-  };
+  const scrapeOptions: Record<string, unknown> = { ...options.scrapeOptions };
 
   const baseFormats: unknown[] | undefined = options.format
     ? parseFormats(options.format)
@@ -90,8 +87,8 @@ export function buildBatchScrapeOptions(
     }
   }
 
-  if (options.onlyMainContent) {
-    scrapeOptions.onlyMainContent = true;
+  if (options.onlyMainContent !== undefined) {
+    scrapeOptions.onlyMainContent = options.onlyMainContent;
   }
   if (options.waitFor !== undefined) {
     scrapeOptions.waitFor = options.waitFor;

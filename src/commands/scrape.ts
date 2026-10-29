@@ -439,11 +439,9 @@ async function runWizard(
   // 2. Main content only
   const mainContent = await confirm({
     message: 'Only main content?',
-    default: false,
+    default: true,
   });
-  if (mainContent) {
-    options = { ...options, onlyMainContent: true };
-  }
+  options = { ...options, onlyMainContent: mainContent };
 
   // 3. Filter by paths (spacebar multi-select from discovered paths)
   const topPaths = getTopPaths(urls);
@@ -520,7 +518,7 @@ export async function handleAllScrapeCommand(
       options.formats[0] !== 'markdown') ||
     options.screenshot ||
     options.fullPageScreenshot ||
-    options.onlyMainContent;
+    options.onlyMainContent !== undefined;
 
   if (!hasExplicitFlags && process.stdin.isTTY) {
     const result = await runWizard(urls, options, allOptions);

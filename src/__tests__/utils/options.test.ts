@@ -209,6 +209,31 @@ describe('Option Parsing Utilities', () => {
       expect(result.onlyMainContent).toBe(true);
     });
 
+    it('should leave onlyMainContent unset so the API default applies', () => {
+      const result = parseScrapeOptions({ url: 'https://example.com' });
+
+      expect(result.onlyMainContent).toBeUndefined();
+    });
+
+    it('should send onlyMainContent: false for --full-page', () => {
+      const result = parseScrapeOptions({
+        url: 'https://example.com',
+        fullPage: true,
+      });
+
+      expect(result.onlyMainContent).toBe(false);
+    });
+
+    it('should reject --only-main-content together with --full-page', () => {
+      expect(() =>
+        parseScrapeOptions({
+          url: 'https://example.com',
+          onlyMainContent: true,
+          fullPage: true,
+        })
+      ).toThrow('Use either --only-main-content or --full-page, not both');
+    });
+
     it('should parse waitFor option', () => {
       const options = {
         url: 'https://example.com',

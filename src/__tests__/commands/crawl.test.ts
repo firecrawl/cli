@@ -243,9 +243,20 @@ describe('executeCrawl', () => {
           crawlEntireDomain: false,
           allowExternalLinks: false,
           allowSubdomains: true,
-          delay: 1000,
+          delay: 1,
           maxConcurrency: 5,
         }
+      );
+    });
+
+    it('should send --delay to the API in seconds', async () => {
+      mockClient.startCrawl.mockResolvedValue({ id: 'job-1', url: '' });
+
+      await executeCrawl({ urlOrJobId: 'https://example.com', delay: 250 });
+
+      expect(mockClient.startCrawl).toHaveBeenCalledWith(
+        'https://example.com',
+        expect.objectContaining({ delay: 0.25 })
       );
     });
   });
