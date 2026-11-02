@@ -88,8 +88,10 @@ import { ensureAuthenticated, printBanner } from './utils/auth';
 import { maybeShowUpdateNotice } from './utils/update-notice';
 import {
   isAutoUpdateWorker,
+  registerInvocation,
   runAutoUpdateWorker,
   startAutoUpdate,
+  updatesAutomatically,
 } from './utils/auto-update';
 import { detectInstallChannel } from './utils/install-channel';
 import { handleUpdateCommand } from './commands/update';
@@ -2989,6 +2991,8 @@ async function main() {
     await runAutoUpdateWorker();
     return;
   }
+  const channel = detectInstallChannel();
+  registerInvocation(channel);
 
   // Parse user arguments explicitly instead of letting Commander infer whether
   // argv came from node, eval, electron, or another wrapper.
@@ -3012,14 +3016,10 @@ async function main() {
     return;
   }
 
-  if (args[0] !== 'update') {
-    const channel = detectInstallChannel();
-    if (!(await startAutoUpdate({ channel }))) {
-      await maybeShowUpdateNotice({
-        command:
-          channel.kind === 'unsupported' ? undefined : 'firecrawl update',
-      });
-    }
+  if (args[0] !== 'update' && !(await startAutoUpdate({ channel }))) {
+    await maybeShowUpdateNotice({
+      command: updatesAutomatically(channel) ? 'firecrawl update' : undefined,
+    });
   }
   const isSetup =
     args[0] === 'init' ||

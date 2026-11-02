@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { updatesAutomatically } from '../../utils/auto-update';
 import { classifyInstall } from '../../utils/install-channel';
 
 const linux = {
@@ -79,19 +80,25 @@ describe('classifyInstall', () => {
   it('skips package runners and local installs', () => {
     expect(
       fromModule('/home/u/.npm/_npx/6a9f/node_modules/firecrawl-cli/dist/utils')
-    ).toEqual({ kind: 'unsupported', reason: 'running through npx' });
+    ).toEqual({
+      kind: 'unsupported',
+      code: 'npx',
+      reason: 'running through npx',
+    });
     expect(
       fromModule(
         '/home/u/.cache/pnpm/dlx/abc/def/node_modules/.pnpm/firecrawl-cli@1.0.0/node_modules/firecrawl-cli/dist/utils'
       )
     ).toEqual({
       kind: 'unsupported',
+      code: 'package-runner',
       reason: 'running through a package runner',
     });
     expect(
       fromModule('/home/u/project/node_modules/firecrawl-cli/dist/utils')
     ).toEqual({
       kind: 'unsupported',
+      code: 'not-global',
       reason: 'not installed as a global package',
     });
     expect(fromModule('/home/u/src/cli/dist/utils')).toMatchObject({
@@ -100,6 +107,14 @@ describe('classifyInstall', () => {
   });
 
   it('detects Homebrew installs from the module or executable path', () => {
+    const brew = fromModule(
+      '/home/linuxbrew/.linuxbrew/Cellar/firecrawl-cli/1.26.9/libexec/lib/node_modules/firecrawl-cli/dist/utils'
+    );
+    expect(brew).toEqual({
+      kind: 'brew',
+      cellar: '/home/linuxbrew/.linuxbrew/Cellar/firecrawl-cli',
+    });
+    expect(updatesAutomatically(brew)).toBe(false);
     expect(
       fromModule(
         '/opt/homebrew/Cellar/firecrawl-cli/1.26.9/libexec/lib/node_modules/firecrawl-cli/dist/utils',
@@ -136,6 +151,7 @@ describe('classifyInstall', () => {
       fromModule('/$bunfs/root', { execPath: '/usr/bin/firecrawl' })
     ).toEqual({
       kind: 'unsupported',
+      code: 'system-package',
       reason: 'installed by a system package manager',
     });
     expect(
@@ -143,6 +159,6 @@ describe('classifyInstall', () => {
         platform: 'win32',
         execPath: 'C:\\Users\\u\\AppData\\Local\\firecrawl\\bin\\firecrawl.exe',
       })
-    ).toMatchObject({ kind: 'unsupported' });
+    ).toMatchObject({ kind: 'unsupported', code: 'windows-binary' });
   });
 });

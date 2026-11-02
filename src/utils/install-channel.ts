@@ -7,7 +7,16 @@ export type InstallChannel =
   | { kind: PackageManagerChannel; packageRoot: string; prefix?: string }
   | { kind: 'brew'; cellar: string }
   | { kind: 'binary'; executable: string; asset: string }
-  | { kind: 'unsupported'; reason: string };
+  | { kind: 'unsupported'; code: UnsupportedCode; reason: string };
+
+export type UnsupportedCode =
+  | 'npx'
+  | 'package-runner'
+  | 'not-global'
+  | 'system-package'
+  | 'not-writable'
+  | 'windows-binary'
+  | 'unsupported-platform';
 
 export interface InstallPaths {
   /** dist/utils for package installs, the virtual entry path for compiled binaries. */
@@ -28,8 +37,12 @@ export function isCompiledBinary(): boolean {
   );
 }
 
-function unsupported(reason: string): InstallChannel {
-  return { kind: 'unsupported', reason };
+export function isHomebrewPath(p: string): boolean {
+  return CELLAR.test(p);
+}
+
+function unsupported(code: UnsupportedCode, reason: string): InstallChannel {
+  return { kind: 'unsupported', code, reason };
 }
 
 /** Classify how the running CLI was installed, from its paths alone. */
@@ -47,16 +60,23 @@ export function classifyInstall({
   if (COMPILED_ENTRY.test(moduleDir)) {
     if (platform === 'win32') {
       return unsupported(
+        'windows-binary',
         'Windows standalone binaries are updated by rerunning the installer'
       );
     }
     if (SYSTEM_BIN.test(execPath)) {
-      return unsupported('installed by a system package manager');
+      return unsupported(
+        'system-package',
+        'installed by a system package manager'
+      );
     }
     const os = platform === 'darwin' || platform === 'linux' ? platform : null;
     const cpu = arch === 'x64' || arch === 'arm64' ? arch : null;
     if (!os || !cpu) {
-      return unsupported(`no release binary for ${platform}-${arch}`);
+      return unsupported(
+        'unsupported-platform',
+        `no release binary for ${platform}-${arch}`
+      );
     }
     return {
       kind: 'binary',
@@ -69,12 +89,14 @@ export function classifyInstall({
   const root = p.resolve(moduleDir, '..', '..');
   const slashed = root.replaceAll('\\', '/');
 
-  if (slashed.includes('/_npx/')) return unsupported('running through npx');
+  if (slashed.includes('/_npx/')) {
+    return unsupported('npx', 'running through npx');
+  }
   if (/\/(?:dlx|bunx-[^/]*|xfs-[^/]*)\//.test(slashed)) {
-    return unsupported('running through a package runner');
+    return unsupported('package-runner', 'running through a package runner');
   }
   if (!slashed.endsWith('/node_modules/firecrawl-cli')) {
-    return unsupported('not installed as a global package');
+    return unsupported('not-global', 'not installed as a global package');
   }
 
   if (/\/pnpm\/global\//i.test(slashed)) {
@@ -103,7 +125,7 @@ export function classifyInstall({
       prefix: p.dirname(p.dirname(nodeModules)),
     };
   }
-  return unsupported('not installed as a global package');
+  return unsupported('not-global', 'not installed as a global package');
 }
 
 function writable(...paths: string[]): boolean {
@@ -134,6 +156,7 @@ export function detectInstallChannel(
   }
   const channel = classifyInstall({ ...paths, moduleDir });
   const notWritable = unsupported(
+    'not-writable',
     'the install location is not writable by this user'
   );
 
@@ -152,7 +175,7 @@ export function detectInstallChannel(
           ? path.join(channel.prefix!, 'firecrawl.cmd')
           : path.join(channel.prefix!, 'bin', 'firecrawl');
       if (!fs.existsSync(shim)) {
-        return unsupported('not installed as a global package');
+        return unsupported('not-global', 'not installed as a global package');
       }
       return writable(path.dirname(channel.packageRoot), path.dirname(shim))
         ? channel

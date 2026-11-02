@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import { updateCheckDisabled } from './update-notice';
 import { colorizeUpdateNotice, formatUpdateBox } from './update-notice-format';
 import {
   fetchCatalogTree,
@@ -264,11 +265,7 @@ export async function maybeShowSkillUpdateNotice(
   options: SkillUpdateNoticeOptions = {}
 ): Promise<void> {
   const stderr = options.stderr ?? process.stderr;
-  if (
-    !stderr.isTTY ||
-    ['1', 'true'].includes(process.env.FIRECRAWL_NO_UPDATE_CHECK ?? '')
-  )
-    return;
+  if (!stderr.isTTY || updateCheckDisabled()) return;
 
   let releaseLock: (() => Promise<void>) | undefined;
   try {

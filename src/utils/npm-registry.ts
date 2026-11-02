@@ -8,6 +8,8 @@ const REGISTRY_URL = 'https://registry.npmjs.org';
 
 export interface LatestVersionResult {
   version?: string;
+  /** engines.node declared by that version, if any. */
+  nodeRange?: string;
   /** True when the registry could not be reached or returned a non-200. */
   unreachable: boolean;
   error?: string;
@@ -42,14 +44,22 @@ export async function getLatestVersion(
       };
     }
 
-    const data = (await response.json()) as { version?: string };
+    const data = (await response.json()) as {
+      version?: string;
+      engines?: { node?: unknown };
+    };
     if (
       typeof data.version !== 'string' ||
       !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(data.version)
     ) {
       return { unreachable: true, error: 'Invalid registry response' };
     }
-    return { version: data.version, unreachable: false };
+    const nodeRange = data.engines?.node;
+    return {
+      version: data.version,
+      nodeRange: typeof nodeRange === 'string' ? nodeRange : undefined,
+      unreachable: false,
+    };
   } catch (error) {
     return {
       unreachable: true,
@@ -89,4 +99,52 @@ export function compareVersions(a: string, b: string): number {
     if (ai !== bi) return ai - bi;
   }
   return 0;
+}
+
+export function isPrerelease(version: string): boolean {
+  return /^v?\d+\.\d+\.\d+-/.test(version);
+}
+
+/**
+ * Whether a version satisfies an npm engines range such as ">=22.0.0" or
+ * "^20.10 || >=22". Syntax this does not recognize counts as unsatisfied.
+ */
+export function satisfiesRange(version: string, range: string): boolean {
+  const current = version.replace(/^v/, '').split('.').map(Number);
+  return range.split('||').some((alternative) => {
+    const comparators = alternative.trim().split(/\s+/).filter(Boolean);
+    return (
+      comparators.length > 0 &&
+      comparators.every((comparator) => {
+        if (/^[*xX]$/.test(comparator)) return true;
+        const match =
+          /^(>=|<=|>|<|=|\^|~)?v?(\d+)(?:\.(\d+|[xX*]))?(?:\.(\d+|[xX*]))?$/.exec(
+            comparator
+          );
+        if (!match) return false;
+        const [, op = '', ...rest] = match;
+        const given = rest.filter((p) => p !== undefined && /^\d+$/.test(p));
+        const bound = [0, 1, 2].map((i) => Number(given[i] ?? 0));
+        const cmp = compareVersions(current.join('.'), bound.join('.'));
+        const sameUpTo = (n: number) =>
+          current.slice(0, n).join('.') === bound.slice(0, n).join('.');
+        switch (op) {
+          case '>=':
+            return cmp >= 0;
+          case '>':
+            return cmp > 0;
+          case '<=':
+            return cmp <= 0;
+          case '<':
+            return cmp < 0;
+          case '^':
+            return cmp >= 0 && sameUpTo(1);
+          case '~':
+            return cmp >= 0 && sameUpTo(Math.min(2, given.length));
+          default:
+            return sameUpTo(given.length);
+        }
+      })
+    );
+  });
 }

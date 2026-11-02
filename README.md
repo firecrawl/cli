@@ -102,7 +102,9 @@ release, and when one exists in the same major version it installs it in a
 detached background process, through the channel you installed with:
 
 - npm, pnpm, bun, and yarn global installs update with that package manager.
-- Homebrew installs run `brew upgrade firecrawl-cli`.
+  The install rewrites files that a running command may still load, so it
+  waits until no other firecrawl command is running (up to 30 minutes, then it
+  tries again on a later run).
 - Standalone binaries from the install script download the release archive for
   your platform, verify it against the release's `checksums.txt`, and replace
   the executable in place.
@@ -117,8 +119,11 @@ usual update notice appears when a newer version is available.
 The CLI shows the update notice instead of updating when a new major version is
 out, when it runs through npx or another package runner or from a project's
 local `node_modules`, when a system package (deb, rpm, apk, pacman) owns it,
-when its install location is not writable without sudo, and for standalone
-Windows binaries.
+when its install location is not writable without sudo, for Homebrew installs
+(run `brew upgrade firecrawl-cli`), and for standalone Windows binaries. A
+release that needs a newer Node.js than the one running is skipped until Node
+is upgraded. Prerelease builds stay on the version you installed and show no
+notice.
 
 Turn automatic updates off with either of:
 

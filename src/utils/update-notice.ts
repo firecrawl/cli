@@ -2,7 +2,12 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import packageJson from '../../package.json';
-import { compareVersions, getLatestVersion } from './npm-registry';
+import { isHomebrewPath } from './install-channel';
+import {
+  compareVersions,
+  getLatestVersion,
+  isPrerelease,
+} from './npm-registry';
 import { colorizeUpdateNotice, formatUpdateBox } from './update-notice-format';
 
 const CACHE_FILENAME = 'update-check.json';
@@ -41,14 +46,18 @@ export function getCachePath(cacheDir?: string): string {
 export function updateCommand(
   installPaths: string[] = [__dirname, process.execPath]
 ): string {
-  return installPaths.some((p) => /[\\/]Cellar[\\/]firecrawl-cli[\\/]/.test(p))
+  return installPaths.some(isHomebrewPath)
     ? BREW_UPDATE_COMMAND
     : NPM_UPDATE_COMMAND;
 }
 
-function updateCheckDisabled(): boolean {
-  const value = process.env.FIRECRAWL_NO_UPDATE_CHECK;
+export function envFlag(name: string): boolean {
+  const value = process.env[name];
   return value === '1' || value === 'true';
+}
+
+export function updateCheckDisabled(): boolean {
+  return envFlag('FIRECRAWL_NO_UPDATE_CHECK');
 }
 
 export async function readCachedLatest(
@@ -144,7 +153,13 @@ export async function maybeShowUpdateNotice(
   options: UpdateNoticeOptions = {}
 ): Promise<void> {
   const stderr = options.stderr ?? process.stderr;
-  if (!stderr.isTTY || updateCheckDisabled()) return;
+  if (
+    !stderr.isTTY ||
+    updateCheckDisabled() ||
+    isPrerelease(packageJson.version)
+  ) {
+    return;
+  }
 
   const now = options.now ?? new Date();
   const cachePath = getCachePath(options.cacheDir);
