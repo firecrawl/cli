@@ -9,7 +9,9 @@ import {
   findToolsRetryDelayMs,
   isExecutionOnlySkill,
   listedProviderSkills,
-  sharedSkillLine,
+  pluginIdOf,
+  providerSlugOf,
+  skillSlugOf,
 } from '../../commands/alexandria';
 
 describe('merged Alexandria prices', () => {
@@ -90,56 +92,62 @@ describe('find-tools embed retry', () => {
 });
 
 describe('provider skills', () => {
-  it('hides execution-only skills and keeps the provider id', () => {
-    expect(isExecutionOnlySkill({ executionOnly: true })).toBe(true);
-    expect(isExecutionOnlySkill({ kind: 'execution-only' })).toBe(true);
-    expect(isExecutionOnlySkill({ visibility: 'Execution_Only' })).toBe(true);
-    const page = listedProviderSkills(
+  const carbonArcPage = {
+    provider: { slug: 'carbon-arc', name: 'Carbon Arc' },
+    plugins: [
       {
-        skills: [
-          {
-            provider: 'acme',
-            plugin: 'research',
-            skill: 'brief',
-            name: 'Brief',
-            description: 'Write a brief',
-          },
-          {
-            provider: 'acme',
-            plugin: 'research',
-            skill: 'run',
-            execution_only: true,
-            name: 'Run',
-          },
-          {
-            provider: 'other',
-            plugin: 'research',
-            skill: 'brief',
-            name: 'Other',
-          },
-          {
-            provider: 'acme',
-            plugin: 'research',
-            skill: 'hidden',
-            visibility: 'execute',
-            name: 'Hidden',
-          },
-        ],
+        id: 'carbon-arc-company-intelligence',
+        displayName: 'Carbon Arc Company Intelligence',
+        visibility: 'execution-only',
       },
-      { provider: 'acme', query: 'brief' }
+    ],
+    skills: [
+      {
+        id: 'provider:carbon-arc/carbon-arc-company-intelligence/ca-audience',
+        name: 'ca-audience',
+        description: 'Audience report',
+        visibility: 'execution-only',
+        provider: { slug: 'carbon-arc', name: 'Carbon Arc' },
+        plugin: {
+          id: 'carbon-arc-company-intelligence',
+          displayName: 'Carbon Arc Company Intelligence',
+        },
+      },
+      {
+        id: 'provider:other/research/brief',
+        name: 'brief',
+        description: 'Someone else',
+        provider: { slug: 'other', name: 'Other' },
+        plugin: { id: 'research', displayName: 'Research' },
+      },
+    ],
+    page: 1,
+    limit: 20,
+    total: 2,
+  };
+
+  it('reads the live provider-skills shape, including execution-only skills', () => {
+    expect(isExecutionOnlySkill({ visibility: 'Execution_Only' })).toBe(true);
+    expect(providerSlugOf(carbonArcPage.skills[0].provider)).toBe('carbon-arc');
+    expect(pluginIdOf(carbonArcPage.skills[0].plugin)).toBe(
+      'carbon-arc-company-intelligence'
     );
-    expect(page.provider).toBe('acme');
-    expect(page.skills.map((skill) => skill.skill)).toEqual(['brief']);
-    expect(page.total).toBe(1);
+    expect(skillSlugOf(carbonArcPage.skills[0])).toBe('ca-audience');
+    const page = listedProviderSkills(carbonArcPage, {
+      provider: 'carbon-arc',
+      query: 'audience',
+    });
+    expect(page.skills.map(skillSlugOf)).toEqual(['ca-audience']);
     const nested = listedProviderSkills(
       {
         providers: [
           {
-            provider: 'acme',
+            provider: { slug: 'acme', name: 'Acme' },
             plugins: [
               {
-                plugin: 'research',
-                skills: [{ skill: 'nested', name: 'Nested brief' }],
+                id: 'research',
+                displayName: 'Research',
+                skills: [{ name: 'Nested brief', description: 'nested note' }],
               },
             ],
           },
@@ -147,41 +155,13 @@ describe('provider skills', () => {
       },
       { provider: 'acme', query: 'nested' }
     );
-    expect(nested.provider).toBe('acme');
     expect(nested.skills).toEqual([
       {
-        skill: 'nested',
         name: 'Nested brief',
-        provider: 'acme',
-        plugin: 'research',
+        description: 'nested note',
+        provider: { slug: 'acme' },
+        plugin: { id: 'research' },
       },
     ]);
-  });
-
-  it('prints a shared skill id or link from a skill write', () => {
-    expect(
-      sharedSkillLine({
-        data: {
-          alexandria: [
-            {
-              capability: 'update-skill',
-              data: {
-                publicId: 'pub_123',
-                url: 'https://www.firecrawl.dev/skills/pub_123',
-              },
-            },
-          ],
-        },
-      })
-    ).toBe('Shared skill: https://www.firecrawl.dev/skills/pub_123 (pub_123)');
-    expect(
-      sharedSkillLine({
-        data: {
-          alexandria: [
-            { capability: 'read-skill', data: { url: 'https://example.com' } },
-          ],
-        },
-      })
-    ).toBeUndefined();
   });
 });

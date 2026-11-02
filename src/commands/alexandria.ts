@@ -370,8 +370,6 @@ function emitAlexandria(
     envelope.guidance = `An organization admin must accept this provider's terms in the Firecrawl dashboard: ${url}. Give the user this link; they can review the terms first with firecrawl alexandria terms show <provider>. Do not retry until the terms are accepted.`;
     console.error(envelope.guidance);
   }
-  const shared = sharedSkillLine(envelope);
-  if (shared) console.error(shared);
   writeOutput(
     JSON.stringify(envelope, null, options.pretty ? 2 : undefined),
     options.output,
@@ -407,6 +405,40 @@ export function isExecutionOnlySkill(skill: any): boolean {
   });
 }
 
+/** Provider slug from a string or `{ slug, name }`. */
+export function providerSlugOf(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return undefined;
+  const slug = (value as { slug?: unknown }).slug;
+  return typeof slug === 'string' && slug.trim() ? slug.trim() : undefined;
+}
+
+/** Plugin id from a string or `{ id, displayName }`. */
+export function pluginIdOf(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return undefined;
+  const record = value as { id?: unknown; slug?: unknown };
+  const id = record.id ?? record.slug;
+  return typeof id === 'string' && id.trim() ? id.trim() : undefined;
+}
+
+/** Skill slug from `skill`, or the last segment of `provider:.../plugin/skill`. */
+export function skillSlugOf(skill: any): string | undefined {
+  if (
+    typeof skill?.skill === 'string' &&
+    skill.skill.trim() &&
+    !/[/\\]/.test(skill.skill)
+  )
+    return skill.skill.trim();
+  if (typeof skill?.id !== 'string') return undefined;
+  const last = skill.id.split('/').pop()?.trim();
+  if (!last || last === '.' || last === '..' || last.includes(':'))
+    return undefined;
+  return last;
+}
+
 function collectSkillRecords(
   body: any,
   into: any[] = [],
@@ -417,9 +449,13 @@ function collectSkillRecords(
     return into;
   }
   if (!body || typeof body !== 'object') return into;
-  const provider =
-    typeof body.provider === 'string' ? body.provider : parent.provider;
-  const plugin = typeof body.plugin === 'string' ? body.plugin : parent.plugin;
+  const provider = providerSlugOf(body.provider) ?? parent.provider;
+  const plugin =
+    pluginIdOf(body.plugin) ??
+    (Array.isArray(body.skills) || Array.isArray(body.items)
+      ? pluginIdOf(body)
+      : undefined) ??
+    parent.plugin;
   const inherited = { provider, plugin };
   for (const key of ['skills', 'items'] as const) {
     if (!Array.isArray(body[key])) continue;
@@ -427,8 +463,12 @@ function collectSkillRecords(
       if (!skill || typeof skill !== 'object' || Array.isArray(skill)) continue;
       into.push({
         ...skill,
-        ...(typeof skill.provider !== 'string' && provider ? { provider } : {}),
-        ...(typeof skill.plugin !== 'string' && plugin ? { plugin } : {}),
+        ...(providerSlugOf(skill.provider) === undefined && provider
+          ? { provider: { slug: provider } }
+          : {}),
+        ...(pluginIdOf(skill.plugin) === undefined && plugin
+          ? { plugin: { id: plugin } }
+          : {}),
       });
     }
   }
@@ -440,80 +480,40 @@ function collectSkillRecords(
 }
 
 /**
- * Skills published by one provider. Execution-only skills are omitted.
- * `total` counts every match; `skills` is capped at `limit` (default 20).
+ * Skills from one provider-skills page. Matches `provider.slug` and
+ * `plugin.id`, including skills nested under a provider or plugin group.
+ * A `?provider=` response includes execution-only skills; those stay.
  */
 export function listedProviderSkills(
   body: unknown,
-  options: { provider: string; query?: string; limit?: number }
-): { provider: string; skills: any[]; total: number } {
+  options: { provider: string; query?: string }
+): { skills: any[] } {
   const words = options.query?.toLowerCase().split(/\s+/).filter(Boolean) ?? [];
-  const matched = collectSkillRecords(body).filter((skill) => {
-    if (isExecutionOnlySkill(skill)) return false;
-    if (skill?.provider !== options.provider) return false;
+  const seen = new Set<string>();
+  const skills = collectSkillRecords(body).filter((skill) => {
+    if (providerSlugOf(skill?.provider) !== options.provider) return false;
+    const plugin = pluginIdOf(skill?.plugin);
+    const slug = skillSlugOf(skill);
+    const key = `${options.provider}/${plugin ?? ''}/${slug ?? skill?.id ?? ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
     if (!words.length) return true;
+    const pluginRecord =
+      skill?.plugin && typeof skill.plugin === 'object' ? skill.plugin : {};
     const haystack = [
       skill.id,
       skill.name,
       skill.description,
-      skill.skill,
-      skill.plugin,
+      slug,
+      plugin,
+      pluginRecord.displayName,
     ]
       .filter((value) => typeof value === 'string')
       .join(' ')
       .toLowerCase();
     return words.every((word) => haystack.includes(word));
   });
-  const limit = options.limit ?? 20;
-  return {
-    provider: options.provider,
-    skills: matched.slice(0, limit),
-    total: matched.length,
-  };
-}
-
-function stringField(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-export function sharedSkillLine(
-  envelope: Record<string, any>
-): string | undefined {
-  const entry = envelope?.data?.alexandria?.[0];
-  if (
-    entry?.capability !== 'create-skill' &&
-    entry?.capability !== 'update-skill'
-  )
-    return undefined;
-  const pools = [
-    entry.data,
-    entry.data?.skill,
-    entry.data?.share,
-    entry.data?.sharing,
-  ];
-  let publicId: string | undefined;
-  let link: string | undefined;
-  for (const pool of pools) {
-    if (!pool || typeof pool !== 'object') continue;
-    publicId ??=
-      stringField(pool.publicId) ??
-      stringField(pool.public_id) ??
-      stringField(pool.publicID);
-    for (const key of [
-      'url',
-      'link',
-      'shareUrl',
-      'sharedUrl',
-      'publicUrl',
-      'href',
-    ]) {
-      const value = stringField(pool[key]);
-      if (value && /^https?:\/\//.test(value)) link ??= value;
-    }
-  }
-  if (!publicId && !link) return undefined;
-  if (link && publicId) return `Shared skill: ${link} (${publicId})`;
-  return `Shared skill: ${link ?? publicId}`;
+  return { skills };
 }
 
 function apiBase(options: AlexandriaOptions): string {
@@ -571,28 +571,65 @@ async function handleProviderSkillList(
   const provider = skillPathSegment(selection.provider, '--provider');
   const requestId = options.requestId ?? randomUUID();
   if (options.showReceipt !== false) console.error(`Request ID: ${requestId}`);
+  const want = selection.limit ?? 20;
   try {
-    const listed = await exchangeJson('/exchange/provider-skills', options);
-    if (listed.status < 200 || listed.status >= 300) {
-      emitAlexandria(
-        {
-          ...apiFailure({
-            response: { status: listed.status, data: listed.body },
-          }),
-          requestId,
-        },
+    const skills: any[] = [];
+    const seen = new Set<string>();
+    let total = 0;
+    let page = 1;
+    while (skills.length < want && page <= 20) {
+      const params = new URLSearchParams({
+        provider,
+        page: String(page),
+        limit: '20',
+      });
+      if (selection.query) params.set('q', selection.query);
+      const listed = await exchangeJson(
+        `/exchange/provider-skills?${params}`,
         options
       );
-      return;
+      if (listed.status < 200 || listed.status >= 300) {
+        emitAlexandria(
+          {
+            ...apiFailure({
+              response: { status: listed.status, data: listed.body },
+            }),
+            requestId,
+          },
+          options
+        );
+        return;
+      }
+      const batch = listedProviderSkills(listed.body, {
+        provider,
+        query: selection.query,
+      }).skills;
+      const before = skills.length;
+      for (const skill of batch) {
+        const key = `${pluginIdOf(skill.plugin) ?? ''}/${skillSlugOf(skill) ?? skill.id ?? ''}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        skills.push(skill);
+      }
+      const reported =
+        listed.body && typeof listed.body.total === 'number'
+          ? listed.body.total
+          : skills.length;
+      total = reported;
+      const pageSize =
+        listed.body &&
+        typeof listed.body.limit === 'number' &&
+        listed.body.limit > 0
+          ? listed.body.limit
+          : batch.length;
+      if (!batch.length || skills.length === before) break;
+      if (skills.length >= total || page * pageSize >= total) break;
+      page += 1;
     }
     emitAlexandria(
       {
         success: true,
-        data: listedProviderSkills(listed.body, {
-          provider,
-          query: selection.query,
-          limit: selection.limit,
-        }),
+        data: { provider, skills: skills.slice(0, want), total },
         requestId,
       },
       options
@@ -739,7 +776,7 @@ function integerOption(
 }
 
 const FIND_SKILLS_DESCRIPTION =
-  "List skills: instructions for a task that name the Alexandria tools to call. Lists Firecrawl's skills and your team's own (team:<slug>, first) without their contents. --provider lists that provider's published skills instead; execution-only skills are omitted. Read one with read-skill";
+  "List skills: instructions for a task that name the Alexandria tools to call. Lists Firecrawl's skills and your team's own (team:<slug>, first) without their contents. --provider asks Exchange for that provider's published skills, including skills the unfiltered catalogue leaves out. Read one with read-skill";
 
 function buildFindSkillsCommand(name: string): Command {
   return addSkillOutputOptions(
@@ -752,7 +789,7 @@ function buildFindSkillsCommand(name: string): Command {
       .option('--limit <n>', 'Most skills to return, 1-50 (default 20)')
       .option(
         '--provider <provider>',
-        "List this provider's published skills instead of Firecrawl and team skills. Execution-only skills are omitted"
+        "List this provider's published skills instead of Firecrawl and team skills. Passed to Exchange as provider, with the query as q"
       )
   ).action(async (query: string[], options) => {
     const limit =
@@ -889,7 +926,7 @@ export function createCreateSkillCommand(): Command {
   return addSkillOutputOptions(
     new Command('create-skill')
       .description(
-        'Save a new skill for your team, written out or copied from a skill find-skills listed (--from). Given fields override the copy; it is listed as team:<slug>. --shared true publishes a public id and link'
+        'Save a new skill for your team, written out or copied from a skill find-skills listed (--from). Given fields override the copy; it is listed as team:<slug>. Options are from, name, description, body, and slug'
       )
       .option('--from <id>', 'Skill ID from find-skills to copy')
       .option('--name <name>', 'Skill name (required without --from)')
@@ -900,10 +937,6 @@ export function createCreateSkillCommand(): Command {
       .option('--body <markdown>', 'Instructions (required without --from)')
       .option('--body-file <path>', 'Read the instructions from a file')
       .option('--slug <slug>', 'Lowercase words joined by hyphens')
-      .option(
-        '--shared <true|false>',
-        'Share the new skill (true) or keep it in the team (false). true prints the public id or link'
-      )
       .option(
         '--request-id <id>',
         'Reuse after a timeout to recover the same save; a completed save replays instead of running again'
@@ -918,8 +951,6 @@ export function createCreateSkillCommand(): Command {
       if (options[key] !== undefined) call.options[key] = options[key];
     const body = textOption(options.body, options.bodyFile, '--body');
     if (body !== undefined) call.options.body = body;
-    const shared = booleanOption(options.shared, '--shared');
-    if (shared !== undefined) call.options.shared = shared;
     await handleAlexandria([call], options);
   });
 }
@@ -935,7 +966,7 @@ export function createUpdateSkillCommand(): Command {
   return addSkillOutputOptions(
     new Command('update-skill')
       .description(
-        "Change one of your team's skills from the version you last read; a skill changed since is refused with conflict. Library skills cannot be changed (copy one with create-skill); there is no delete"
+        "Change one of your team's skills from the version you last read; a skill changed since is refused with conflict. Library skills cannot be changed (copy one with create-skill). There is no delete: --enabled and --discoverable turn a skill off or hide it. A team admin deletes one in the dashboard"
       )
       .argument('<id>', 'team:<slug> from find-skills')
       .requiredOption('--base-version <n>', 'The version read-skill returned')
@@ -945,10 +976,6 @@ export function createUpdateSkillCommand(): Command {
       .option('--body-file <path>', 'Read the new instructions from a file')
       .option('--enabled <true|false>', 'Turn the skill on or off')
       .option('--discoverable <true|false>', 'Whether find-skills lists it')
-      .option(
-        '--shared <true|false>',
-        'Share the skill with a public id and link, or turn sharing off. true prints the public id or link'
-      )
       .option(
         '--request-id <id>',
         'Reuse after a timeout to recover the same save; a completed save replays instead of running again'
@@ -966,7 +993,7 @@ export function createUpdateSkillCommand(): Command {
       if (options[key] !== undefined) call.options[key] = options[key];
     const body = textOption(options.body, options.bodyFile, '--body');
     if (body !== undefined) call.options.body = body;
-    for (const key of ['enabled', 'discoverable', 'shared'] as const) {
+    for (const key of ['enabled', 'discoverable'] as const) {
       const value = booleanOption(options[key], `--${key}`);
       if (value !== undefined) call.options[key] = value;
     }

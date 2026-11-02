@@ -1311,15 +1311,15 @@ credits apply.
 
 Alexandria skills are four operations: list, read, create, and update. `skills list`, `skills read`, `skills create`, and `skills update` are the same commands as `find-skills`, `read-skill`, `create-skill`, and `update-skill`.
 
-`skills list` lists Firecrawl's skills and your team's skills (`team:<slug>`, first) without their contents. `--provider <provider>` lists that provider's published skills instead, and leaves out execution-only skills. `skills read` returns one skill. Pass an id for a Firecrawl or team skill. Pass `--provider`, `--plugin`, and `--skill` for a provider skill, and `--file` to read its file. Reading a skill does not run it.
+`skills list` lists Firecrawl's skills and your team's skills (`team:<slug>`, first) without their contents. `--provider <provider>` asks Exchange for that provider's published skills (`provider` and `q` are sent to the server, and later pages are followed). The unfiltered catalogue leaves out execution-only skills; naming a provider returns the skills Exchange includes for it. `skills read` returns one skill. Pass an id for a Firecrawl or team skill. Pass `--provider`, `--plugin`, and `--skill` for a provider skill, and `--file` to read its file. Reading a skill does not run it.
 
-`skills create` and `skills update` are unchanged. `--shared true` publishes a team skill and prints the public id or link; `--shared false` turns sharing off.
+`skills create` takes `from`, `name`, `description`, `body`, and `slug`. `skills update` takes `id`, `baseVersion`, `name`, `description`, `body`, `--enabled`, and `--discoverable`. There is no delete: turn a skill off with `--enabled false` or hide it with `--discoverable false`. A team admin deletes one in the dashboard.
 
 ```bash
 firecrawl skills list weekly digest --limit 5
 firecrawl skills list --provider acme
 firecrawl skills read --provider acme --plugin research --skill brief --file
-firecrawl skills update team:digest --base-version 2 --shared true
+firecrawl skills update team:digest --base-version 2 --enabled false --discoverable false
 ```
 
 ### Alexandria execution prices

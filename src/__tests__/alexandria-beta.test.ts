@@ -863,6 +863,9 @@ it('refuses invalid skill writes before calling the API', async () => {
   ).toBe(1);
   expect(requests).toHaveLength(0);
   expect(
+    (await cli(['create-skill', '--name', 'Digest', '--shared', 'true'])).code
+  ).toBe(1);
+  expect(
     (
       await cli([
         'update-skill',
@@ -870,85 +873,33 @@ it('refuses invalid skill writes before calling the API', async () => {
         '--base-version',
         '1',
         '--shared',
-        'yes',
+        'true',
       ])
     ).code
   ).toBe(1);
   expect(requests).toHaveLength(0);
 });
 
-it('shares a team skill and prints the public id and link', async () => {
-  response = {
-    success: true,
-    scrape_id: 'skill-share',
-    data: {
-      creditsCost: 0,
-      alexandria: [
-        {
-          provider: 'firecrawl',
-          capability: 'update-skill',
-          creditsCost: 0,
-          data: {
-            id: 'team:digest',
-            publicId: 'pub_123',
-            url: 'https://www.firecrawl.dev/skills/pub_123',
-          },
-        },
-      ],
-    },
-  };
+it('turns a team skill off with enabled and discoverable', async () => {
   const updated = await cli([
     'update-skill',
     'team:digest',
     '--base-version',
     '2',
-    '--shared',
-    'true',
+    '--enabled',
+    'false',
+    '--discoverable',
+    'false',
   ]);
   expect(updated.code).toBe(0);
   expect(requests[0].body.alexandria[0].options).toEqual({
     id: 'team:digest',
     baseVersion: 2,
-    shared: true,
+    enabled: false,
+    discoverable: false,
   });
-  expect(updated.stderr).toContain(
-    'Shared skill: https://www.firecrawl.dev/skills/pub_123 (pub_123)'
-  );
+  expect(requests[0].body.alexandria[0].options).not.toHaveProperty('shared');
   const created = await cli([
-    'create-skill',
-    '--from',
-    'deep-research',
-    '--shared',
-    'false',
-  ]);
-  expect(created.code).toBe(0);
-  expect(requests.at(-1)?.body.alexandria[0].options).toEqual({
-    from: 'deep-research',
-    shared: false,
-  });
-  responseFor = (body) =>
-    body?.alexandria?.[0]?.capability === 'create-skill'
-      ? {
-          success: true,
-          scrape_id: 'skill-create',
-          data: {
-            creditsCost: 0,
-            alexandria: [
-              {
-                provider: 'firecrawl',
-                capability: 'create-skill',
-                creditsCost: 0,
-                data: {
-                  id: 'team:research',
-                  publicId: 'pub_create',
-                  url: 'https://www.firecrawl.dev/skills/pub_create',
-                },
-              },
-            ],
-          },
-        }
-      : response;
-  const published = await cli([
     'create-skill',
     '--name',
     'Research',
@@ -956,104 +907,121 @@ it('shares a team skill and prints the public id and link', async () => {
     'Notes.',
     '--body',
     'Do the research.',
-    '--shared',
-    'true',
+    '--slug',
+    'research',
   ]);
-  expect(published.code).toBe(0);
-  expect(requests.at(-1)?.body.alexandria[0].options).toMatchObject({
+  expect(created.code).toBe(0);
+  expect(requests.at(-1)?.body.alexandria[0].options).toEqual({
     name: 'Research',
     description: 'Notes.',
     body: 'Do the research.',
-    shared: true,
+    slug: 'research',
   });
-  expect(published.stderr).toContain(
-    'Shared skill: https://www.firecrawl.dev/skills/pub_create (pub_create)'
-  );
   const help = await cli(['update-skill', '--help']);
-  expect(help.stdout).toContain('--shared');
-  expect(help.stdout).toContain('public id');
+  expect(help.stdout).toContain('--enabled');
+  expect(help.stdout).toContain('--discoverable');
+  expect(help.stdout).not.toContain('--shared');
+  expect((await cli(['create-skill', '--help'])).stdout).not.toContain(
+    '--shared'
+  );
 });
 
 it('lists one provider skills and reads one with provider, plugin, and skill', async () => {
+  const catalogue = {
+    provider: { slug: 'carbon-arc', name: 'Carbon Arc' },
+    plugins: [
+      {
+        id: 'carbon-arc-company-intelligence',
+        displayName: 'Carbon Arc Company Intelligence',
+        visibility: 'execution-only',
+      },
+    ],
+    skills: [
+      {
+        id: 'provider:carbon-arc/carbon-arc-company-intelligence/ca-audience',
+        name: 'ca-audience',
+        description: 'Audience report',
+        visibility: 'execution-only',
+        provider: { slug: 'carbon-arc', name: 'Carbon Arc' },
+        plugin: {
+          id: 'carbon-arc-company-intelligence',
+          displayName: 'Carbon Arc Company Intelligence',
+        },
+      },
+      {
+        id: 'provider:other/research/brief',
+        name: 'brief',
+        description: 'Audience report for someone else',
+        provider: { slug: 'other', name: 'Other' },
+        plugin: { id: 'research', displayName: 'Research' },
+      },
+    ],
+    page: 1,
+    limit: 20,
+    total: 1,
+  };
   responseFor = () => {
     const url = requests.at(-1)?.url ?? '';
     if (url.endsWith('/file')) {
       return {
         path: 'SKILL.md',
-        content: '# Research brief\nUse the provider.',
+        content: '# Audience\nRead the provider record.',
       };
     }
-    if (url === '/exchange/provider-skills') {
-      return {
-        skills: [
-          {
-            provider: 'acme',
-            plugin: 'research',
-            skill: 'brief',
-            name: 'Brief',
-            description: 'Write a research brief',
-          },
-          {
-            provider: 'acme',
-            plugin: 'research',
-            skill: 'run',
-            name: 'Run',
-            description: 'Execute a provider call',
-            executionOnly: true,
-          },
-          {
-            provider: 'other',
-            plugin: 'research',
-            skill: 'brief',
-            name: 'Other brief',
-            description: 'Write a research brief',
-          },
-        ],
-      };
-    }
+    if (url.startsWith('/exchange/provider-skills')) return catalogue;
     return {
       success: true,
       scrape_id: 'skills-1',
       data: { alexandria: [], creditsCost: 0 },
     };
   };
-  const listed = await cli(['skills', 'list', '--provider', 'acme', '--json']);
+  const listed = await cli([
+    'skills',
+    'list',
+    'audience',
+    '--provider',
+    'carbon-arc',
+    '--json',
+  ]);
   expect(listed.code).toBe(0);
-  expect(requests.map((request) => request.url)).toEqual([
-    '/exchange/provider-skills',
-  ]);
+  const listUrl = new URL(requests[0].url ?? '', 'http://127.0.0.1');
+  expect(listUrl.pathname).toBe('/exchange/provider-skills');
+  expect(listUrl.searchParams.get('provider')).toBe('carbon-arc');
+  expect(listUrl.searchParams.get('q')).toBe('audience');
+  expect(listUrl.searchParams.get('page')).toBe('1');
   const page = JSON.parse(listed.stdout).data;
-  expect(page.provider).toBe('acme');
-  expect(page.skills.map((skill: { skill: string }) => skill.skill)).toEqual([
-    'brief',
-  ]);
-  expect(listed.stdout).not.toContain('"skill":"run"');
+  expect(page.provider).toBe('carbon-arc');
+  expect(page.skills).toHaveLength(1);
+  expect(page.skills[0].provider.slug).toBe('carbon-arc');
+  expect(page.skills[0].plugin.id).toBe('carbon-arc-company-intelligence');
+  expect(page.skills[0].id).toBe(
+    'provider:carbon-arc/carbon-arc-company-intelligence/ca-audience'
+  );
   const read = await cli([
     'skills',
     'read',
     '--provider',
-    'acme',
+    'carbon-arc',
     '--plugin',
-    'research',
+    'carbon-arc-company-intelligence',
     '--skill',
-    'brief',
+    'ca-audience',
     '--file',
     '--json',
   ]);
   expect(read.code).toBe(0);
   expect(requests.at(-1)?.url).toBe(
-    '/exchange/provider-skills/acme/research/brief/file'
+    '/exchange/provider-skills/carbon-arc/carbon-arc-company-intelligence/ca-audience/file'
   );
   expect(JSON.parse(read.stdout).data).toMatchObject({
-    provider: 'acme',
-    plugin: 'research',
-    skill: 'brief',
+    provider: 'carbon-arc',
+    plugin: 'carbon-arc-company-intelligence',
+    skill: 'ca-audience',
     file: true,
-    content: '# Research brief\nUse the provider.',
+    content: '# Audience\nRead the provider record.',
   });
   const help = await cli(['skills', 'list', '--help']);
   expect(help.stdout).toContain('--provider');
-  expect(help.stdout).toContain('Execution-only');
   const surface = await cli(['skills', '--help']);
   expect(surface.stdout).toContain('create');
   expect(surface.stdout).toContain('update');
@@ -1099,23 +1067,45 @@ it('fails a provider skill read when the skill file is unavailable', async () =>
   expect(requests).toHaveLength(1);
 });
 
-it('caps provider skills at the default of 20', async () => {
-  responseFor = () => ({
-    skills: Array.from({ length: 25 }, (_, index) => ({
-      provider: 'acme',
-      plugin: 'research',
-      skill: `note-${index}`,
-      name: `Note ${index}`,
-      description: 'A provider skill',
-    })),
-  });
-  const listed = await cli(['find-skills', '--provider', 'acme', '--json']);
+it('pages through a provider skill catalogue', async () => {
+  const skills = Array.from({ length: 25 }, (_, index) => ({
+    id: `provider:acme/research/note-${index}`,
+    name: `note-${index}`,
+    description: 'A provider skill',
+    visibility: 'execution-only',
+    provider: { slug: 'acme', name: 'Acme' },
+    plugin: { id: 'research', displayName: 'Research' },
+  }));
+  responseFor = () => {
+    const url = new URL(requests.at(-1)?.url ?? '', 'http://127.0.0.1');
+    const page = Number(url.searchParams.get('page') ?? '1');
+    return {
+      provider: { slug: 'acme', name: 'Acme' },
+      plugins: [{ id: 'research', displayName: 'Research' }],
+      skills: skills.slice((page - 1) * 20, page * 20),
+      page,
+      limit: 20,
+      total: skills.length,
+    };
+  };
+  const listed = await cli([
+    'find-skills',
+    '--provider',
+    'acme',
+    '--limit',
+    '25',
+    '--json',
+  ]);
   expect(listed.code).toBe(0);
   const page = JSON.parse(listed.stdout).data;
-  expect(page.skills).toHaveLength(20);
+  expect(page.skills).toHaveLength(25);
   expect(page.total).toBe(25);
-  expect(requests).toHaveLength(1);
-  expect(requests[0].url).toBe('/exchange/provider-skills');
+  expect(page.skills[0].provider.slug).toBe('acme');
+  expect(page.skills[0].plugin.id).toBe('research');
+  expect(requests.map((request) => request.url)).toEqual([
+    '/exchange/provider-skills?provider=acme&page=1&limit=20',
+    '/exchange/provider-skills?provider=acme&page=2&limit=20',
+  ]);
 });
 
 it('fills a missing discovery price from the merged catalog when costs are requested', async () => {
