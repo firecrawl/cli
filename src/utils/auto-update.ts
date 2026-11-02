@@ -467,6 +467,7 @@ export async function runAutoUpdateWorker(): Promise<void> {
       log('Invoking command is still running; retrying on a later run');
       return;
     }
+    if (autoUpdateBlocker()) return;
     const now = new Date();
     fs.utimesSync(path.join(dir, LOCK_FILE), now, now);
 
