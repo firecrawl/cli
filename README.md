@@ -112,12 +112,15 @@ detached background process, through the channel you installed with:
   your platform, verify it against the release's `checksums.txt`, and replace
   the executable in place.
 
-The command you ran never waits for the update, and the updater never writes to
-stdout, so scripted and agent output stays the same. The next invocation runs
-the new version, and interactive terminals see a one-line note once. Updater
-output goes to `~/.firecrawl/auto-update.log`. A failed install waits 24 hours
-before trying again and a failed version check waits one hour; meanwhile the
-usual update notice appears when a newer version is available.
+The check and the install run in a detached process, so the command that starts
+them does not wait for either, and the updater never writes to stdout, so
+scripted and agent output stays the same. The exception is a command that starts
+while a package install is already running: it waits for that install (about
+three and a half minutes at most) and then runs on the new version. The next
+invocation runs the new version, and interactive terminals see a one-line note
+once. Updater output goes to `~/.firecrawl/auto-update.log`. A failed install
+waits 24 hours before trying again and a failed version check waits one hour;
+meanwhile the usual update notice appears when a newer version is available.
 
 The CLI shows the update notice instead of updating when a new major version is
 out, when it runs through npx or another package runner or from a project's
@@ -135,9 +138,11 @@ firecrawl update --disable-auto    # persistent, undo with --enable-auto
 export FIRECRAWL_NO_AUTO_UPDATE=1  # per environment
 ```
 
-They are also off when `CI` is set to anything other than `0` or `false`.
-`FIRECRAWL_NO_UPDATE_CHECK=1` turns off
-both automatic updates and update notices.
+They are also off when `CI` is set, unless it is set to `0` or `false`.
+`FIRECRAWL_NO_UPDATE_CHECK=1` turns off both automatic updates and update
+notices. These settings stop only the background check and install:
+`firecrawl update` still works, and a command that starts while a package
+install is running still waits for it.
 
 To update right away, including to a new major version:
 
