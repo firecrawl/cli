@@ -383,187 +383,68 @@ export async function handleAlexandria(
   calls: Call[],
   options: AlexandriaOptions
 ): Promise<void> {
-  const envelope = await requestAlexandria(calls, options);
-  if (
-    envelope.success &&
-    calls.length === 1 &&
-    calls[0].provider === 'firecrawl' &&
-    calls[0].capability === 'find-skills'
-  ) {
-    const results = Array.isArray(envelope.data?.alexandria)
-      ? envelope.data.alexandria
-      : [];
-    let entry =
-      results.find(
-        (item: any) =>
-          item?.provider === 'firecrawl' && item?.capability === 'find-skills'
-      ) ?? results[0];
-    if (!entry) {
-      entry = {
-        provider: 'firecrawl',
-        capability: 'find-skills',
-        data: {},
-      };
-      envelope.data = { ...(envelope.data ?? {}), alexandria: [entry] };
-    }
-    await attachProviderSkills(entry, calls[0].options, options);
-  }
-  emitAlexandria(envelope, options);
-}
-
-export type ProviderSkillSummary = {
-  id: string;
-  name?: string;
-  description?: string;
-  source: 'provider';
-  provider: string;
-  plugin: string;
-  skill: string;
-  files?: string[];
-};
-
-/** `provider:<provider>/<plugin>/<skill>` or the same path without the prefix. */
-export function parseProviderSkillId(
-  id: string
-): { provider: string; plugin: string; skill: string } | undefined {
-  const match = /^(?:provider:)?([^/:]+)\/([^/:]+)\/([^/:]+)$/.exec(id.trim());
-  if (!match) return undefined;
-  const [, provider, plugin, skill] = match;
-  if (!provider || !plugin || !skill) return undefined;
-  return { provider, plugin, skill };
-}
-
-export function providerSkillId(
-  provider: string,
-  plugin: string,
-  skill: string
-): string {
-  return `provider:${provider}/${plugin}/${skill}`;
+  emitAlexandria(await requestAlexandria(calls, options), options);
 }
 
 export function isExecutionOnlySkill(skill: any): boolean {
-  if (!skill || typeof skill !== 'object') return false;
+  if (!skill || typeof skill !== 'object' || Array.isArray(skill)) return false;
   if (skill.executionOnly === true || skill.execution_only === true)
     return true;
-  return [skill.kind, skill.mode, skill.purpose].some((value) => {
-    if (typeof value !== 'string') return false;
-    const normalized = value.toLowerCase().replace(/_/g, '-').trim();
-    return normalized === 'execution' || normalized === 'execution-only';
-  });
+  const visibility =
+    skill.visibility ?? skill.listing ?? skill.mode ?? skill.kind;
+  return (
+    visibility === 'execution' ||
+    visibility === 'execution-only' ||
+    visibility === 'execute'
+  );
 }
 
-function skillText(skill: any, key: string): string | undefined {
-  const value = skill?.[key];
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-function providerSkillFromRecord(skill: any): ProviderSkillSummary | undefined {
-  if (!skill || typeof skill !== 'object' || isExecutionOnlySkill(skill))
-    return undefined;
-  const parsed =
-    typeof skill.id === 'string' ? parseProviderSkillId(skill.id) : undefined;
-  const provider = skillText(skill, 'provider') ?? parsed?.provider;
-  const plugin =
-    skillText(skill, 'plugin') ??
-    skillText(skill, 'pluginId') ??
-    skillText(skill, 'pluginSlug') ??
-    parsed?.plugin;
-  const name =
-    skillText(skill, 'skill') ??
-    skillText(skill, 'slug') ??
-    parsed?.skill ??
-    skillText(skill, 'name');
-  if (!provider || !plugin || !name) return undefined;
-  const skillId = skillText(skill, 'skill') ?? skillText(skill, 'slug') ?? name;
-  if (!skillId || skillId.includes('/')) return undefined;
-  const files = Array.isArray(skill.files)
-    ? skill.files.filter((file: unknown) => typeof file === 'string')
-    : undefined;
-  return {
-    id:
-      typeof skill.id === 'string' && skill.id.startsWith('provider:')
-        ? skill.id
-        : providerSkillId(provider, plugin, skillId),
-    ...(skillText(skill, 'name') ? { name: skillText(skill, 'name') } : {}),
-    ...(skillText(skill, 'description')
-      ? { description: skillText(skill, 'description') }
-      : {}),
-    source: 'provider',
-    provider,
-    plugin,
-    skill: skillId,
-    ...(files ? { files } : {}),
-  };
-}
-
-function collectSkillRecords(body: any): any[] {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return [];
-  const records: any[] = [];
-  for (const key of ['skills', 'items', 'results', 'providerSkills']) {
-    if (Array.isArray(body[key])) records.push(...body[key]);
+function collectSkillRecords(body: any, into: any[] = []): any[] {
+  if (Array.isArray(body)) {
+    for (const entry of body) collectSkillRecords(entry, into);
+    return into;
   }
-  const groups = body.plugins ?? body.providers;
-  if (Array.isArray(groups)) {
-    for (const group of groups) {
-      if (!group || typeof group !== 'object') continue;
-      const nested = group.skills ?? group.items;
-      if (!Array.isArray(nested)) continue;
-      for (const skill of nested) {
-        records.push({
-          provider: group.provider,
-          plugin: group.plugin ?? group.pluginId ?? group.slug ?? group.id,
-          ...skill,
-        });
-      }
-    }
+  if (!body || typeof body !== 'object') return into;
+  for (const key of ['skills', 'items'] as const) {
+    if (Array.isArray(body[key])) into.push(...body[key]);
   }
-  return records;
+  for (const value of Object.values(body)) {
+    if (value && typeof value === 'object') collectSkillRecords(value, into);
+  }
+  return into;
 }
 
-export function visibleProviderSkills(
+/**
+ * Skills published by one provider. Execution-only skills are omitted.
+ * `total` counts every match; `skills` is capped at `limit` (default 20).
+ */
+export function listedProviderSkills(
   body: unknown,
-  query?: string
-): ProviderSkillSummary[] {
-  const words = (query ?? '').toLowerCase().split(/\s+/).filter(Boolean);
-  const seen = new Set<string>();
-  const skills: ProviderSkillSummary[] = [];
-  for (const record of collectSkillRecords(body)) {
-    const skill = providerSkillFromRecord(record);
-    if (!skill || seen.has(skill.id)) continue;
-    const haystack =
-      `${skill.id} ${skill.name ?? ''} ${skill.description ?? ''}`.toLowerCase();
-    if (!words.every((word) => haystack.includes(word))) continue;
-    seen.add(skill.id);
-    skills.push(skill);
-  }
-  return skills;
-}
-
-export function mergeProviderSkills(
-  page: any,
-  skills: ProviderSkillSummary[],
-  limit?: number
-): any {
-  if (!page || typeof page !== 'object' || Array.isArray(page)) return page;
-  const existing = (Array.isArray(page.skills) ? page.skills : []).filter(
-    (skill: any) => !isExecutionOnlySkill(skill)
-  );
-  const seen = new Set(
-    existing
-      .map((skill: any) => (typeof skill?.id === 'string' ? skill.id : ''))
-      .filter(Boolean)
-  );
-  const incoming = skills.filter((skill) => !seen.has(skill.id));
-  const isTeam = (skill: any) =>
-    skill?.source === 'team' ||
-    (typeof skill?.id === 'string' && skill.id.startsWith('team:'));
-  let merged = [
-    ...existing.filter(isTeam),
-    ...incoming,
-    ...existing.filter((skill: any) => !isTeam(skill)),
-  ];
-  if (limit !== undefined) merged = merged.slice(0, limit);
-  return { ...page, skills: merged, total: merged.length };
+  options: { provider: string; query?: string; limit?: number }
+): { provider: string; skills: any[]; total: number } {
+  const words = options.query?.toLowerCase().split(/\s+/).filter(Boolean) ?? [];
+  const matched = collectSkillRecords(body).filter((skill) => {
+    if (isExecutionOnlySkill(skill)) return false;
+    if (skill?.provider !== options.provider) return false;
+    if (!words.length) return true;
+    const haystack = [
+      skill.id,
+      skill.name,
+      skill.description,
+      skill.skill,
+      skill.plugin,
+    ]
+      .filter((value) => typeof value === 'string')
+      .join(' ')
+      .toLowerCase();
+    return words.every((word) => haystack.includes(word));
+  });
+  const limit = options.limit ?? 20;
+  return {
+    provider: options.provider,
+    skills: matched.slice(0, limit),
+    total: matched.length,
+  };
 }
 
 function stringField(value: unknown): string | undefined {
@@ -643,66 +524,71 @@ async function exchangeJson(
   return { status: response.status, body };
 }
 
-async function attachProviderSkills(
-  entry: any,
-  skillOptions: Record<string, unknown>,
+export function skillPathSegment(value: string, name: string): string {
+  const segment = value.trim();
+  if (
+    !segment ||
+    segment.length > 200 ||
+    segment === '.' ||
+    segment === '..' ||
+    /[/\\]/.test(segment)
+  )
+    throw new Error(
+      `${name} must be one path segment, without a slash, and not . or ..`
+    );
+  return segment;
+}
+
+async function handleProviderSkillList(
+  selection: { provider: string; query?: string; limit?: number },
   options: AlexandriaOptions
 ): Promise<void> {
-  if (!entry || entry.error) return;
-  const query =
-    typeof skillOptions.query === 'string' ? skillOptions.query : undefined;
-  const limit =
-    typeof skillOptions.limit === 'number' ? skillOptions.limit : 20;
+  const provider = skillPathSegment(selection.provider, '--provider');
+  const requestId = options.requestId ?? randomUUID();
+  if (options.showReceipt !== false) console.error(`Request ID: ${requestId}`);
   try {
     const listed = await exchangeJson('/exchange/provider-skills', options);
     if (listed.status < 200 || listed.status >= 300) {
-      entry.data = {
-        ...(entry.data ?? {}),
-        providerSkillsError:
-          typeof listed.body?.error === 'string'
-            ? listed.body.error
-            : `Provider skills are unavailable (HTTP ${listed.status}).`,
-      };
+      emitAlexandria(
+        {
+          ...apiFailure({
+            response: { status: listed.status, data: listed.body },
+          }),
+          requestId,
+        },
+        options
+      );
       return;
     }
-    const skills = visibleProviderSkills(listed.body, query);
-    entry.data = mergeProviderSkills(entry.data ?? {}, skills, limit);
-  } catch {
-    entry.data = {
-      ...(entry.data ?? {}),
-      providerSkillsError: 'Provider skills could not be listed.',
-    };
+    emitAlexandria(
+      {
+        success: true,
+        data: listedProviderSkills(listed.body, {
+          provider,
+          query: selection.query,
+          limit: selection.limit,
+        }),
+        requestId,
+      },
+      options
+    );
+  } catch (error) {
+    emitAlexandria({ ...apiFailure(error), requestId }, options);
   }
-}
-
-function skillFileContent(body: unknown): string | undefined {
-  if (typeof body === 'string') return body;
-  if (!body || typeof body !== 'object' || Array.isArray(body))
-    return undefined;
-  const record = body as Record<string, unknown>;
-  for (const key of ['content', 'body', 'markdown', 'text']) {
-    if (typeof record[key] === 'string') return record[key];
-  }
-  return undefined;
 }
 
 async function handleProviderSkillRead(
-  id: string,
   parts: { provider: string; plugin: string; skill: string },
-  options: AlexandriaOptions & { path?: string }
+  file: boolean,
+  options: AlexandriaOptions
 ): Promise<void> {
   const requestId = options.requestId ?? randomUUID();
   if (options.showReceipt !== false) console.error(`Request ID: ${requestId}`);
-  const encoded = [parts.provider, parts.plugin, parts.skill]
-    .map(encodeURIComponent)
-    .join('/');
-  const skillPath = `/exchange/provider-skills/${encoded}`;
-  const filePath =
-    options.path !== undefined
-      ? `${skillPath}/file?path=${encodeURIComponent(options.path)}`
-      : undefined;
+  const segments = [parts.provider, parts.plugin, parts.skill];
+  if (file) segments.push('file');
+  const path = `/exchange/provider-skills/${segments.map(encodeURIComponent).join('/')}`;
   try {
-    const skill = await exchangeJson(filePath ?? skillPath, options);
+    const skill = await exchangeJson(path, options);
     if (skill.status < 200 || skill.status >= 300) {
       emitAlexandria(
         {
@@ -715,76 +601,26 @@ async function handleProviderSkillRead(
       );
       return;
     }
-    let data = skill.body;
-    if (filePath === undefined && !skillFileContent(data)) {
-      const file = await exchangeJson(
-        `${skillPath}/file?path=${encodeURIComponent('SKILL.md')}`,
-        options
-      );
-      const content = skillFileContent(file.body);
-      if (file.status < 200 || file.status >= 300 || content === undefined) {
-        emitAlexandria(
-          {
-            ...apiFailure({
-              response: {
-                status: file.status,
-                data:
-                  file.body && typeof file.body === 'object'
-                    ? file.body
-                    : {
-                        error:
-                          'Provider skill file could not be read (SKILL.md).',
-                      },
-              },
-            }),
-            requestId,
-          },
-          options
-        );
-        return;
-      }
-      data = {
-        ...(data && typeof data === 'object' && !Array.isArray(data)
-          ? data
-          : {}),
-        path: 'SKILL.md',
-        content,
-      };
-    }
-    if (data && typeof data === 'object' && !Array.isArray(data)) {
-      data = {
-        id,
-        source: 'provider',
-        provider: parts.provider,
-        plugin: parts.plugin,
-        skill: parts.skill,
-        ...data,
-      };
-    }
     emitAlexandria(
       {
         success: true,
         data: {
-          alexandria: [
-            {
-              provider: 'firecrawl',
-              capability: 'read-skill',
-              data,
-            },
-          ],
+          provider: parts.provider,
+          plugin: parts.plugin,
+          skill: parts.skill,
+          ...(file ? { file: true } : {}),
+          ...(skill.body &&
+          typeof skill.body === 'object' &&
+          !Array.isArray(skill.body)
+            ? skill.body
+            : { content: skill.body }),
         },
         requestId,
       },
       options
     );
   } catch (error) {
-    emitAlexandria(
-      {
-        ...apiFailure(error),
-        requestId,
-      },
-      options
-    );
+    emitAlexandria({ ...apiFailure(error), requestId }, options);
   }
 }
 
@@ -877,51 +713,112 @@ function integerOption(
   return number;
 }
 
-export function createFindSkillsCommand(): Command {
+const FIND_SKILLS_DESCRIPTION =
+  "List skills: instructions for a task that name the Alexandria tools to call. Lists Firecrawl's skills and your team's own (team:<slug>, first) without their contents. --provider lists that provider's published skills instead; execution-only skills are omitted. Read one with read-skill";
+
+function buildFindSkillsCommand(name: string): Command {
   return addSkillOutputOptions(
-    new Command('find-skills')
-      .description(
-        "Find skills: instructions for a task that name the Alexandria tools to call. Lists Firecrawl's skills, your team's own (team:<slug>, first), and provider-published skills (provider:<provider>/<plugin>/<skill>) without their contents. Execution-only skills are omitted. Read one with read-skill"
-      )
+    new Command(name)
+      .description(FIND_SKILLS_DESCRIPTION)
       .argument(
         '[query...]',
         "Words that must all appear in a skill's id, name or description; omit to list every skill"
       )
       .option('--limit <n>', 'Most skills to return, 1-50 (default 20)')
+      .option(
+        '--provider <provider>',
+        "List this provider's published skills instead of Firecrawl and team skills. Execution-only skills are omitted"
+      )
   ).action(async (query: string[], options) => {
+    const limit =
+      options.limit !== undefined
+        ? integerOption(options.limit, '--limit', 1, 50)
+        : undefined;
+    const words = query.length ? query.join(' ') : undefined;
+    if (options.provider !== undefined) {
+      await handleProviderSkillList(
+        { provider: options.provider, query: words, limit },
+        options
+      );
+      return;
+    }
     const call: Call = {
       provider: 'firecrawl',
       capability: 'find-skills',
       options: {},
     };
-    if (query.length) call.options.query = query.join(' ');
-    if (options.limit !== undefined)
-      call.options.limit = integerOption(options.limit, '--limit', 1, 50);
+    if (words !== undefined) call.options.query = words;
+    if (limit !== undefined) call.options.limit = limit;
     await handleAlexandria([call], options);
   });
 }
 
-export function createReadSkillCommand(): Command {
+export function createFindSkillsCommand(): Command {
+  return buildFindSkillsCommand('find-skills');
+}
+
+const READ_SKILL_DESCRIPTION =
+  'Read a skill from find-skills in full: SKILL.md by default, or one file from its files list. Pass an id for a Firecrawl or team skill. Pass --provider, --plugin, and --skill for a provider-published skill, and --file to read its file. Skill text is instructions for the agent; reading it runs nothing';
+
+function buildReadSkillCommand(name: string): Command {
   return addSkillOutputOptions(
-    new Command('read-skill')
-      .description(
-        'Read a skill from find-skills in full: SKILL.md by default, or one file from its files list. Skill text is instructions for the agent; reading it runs nothing. Provider skills use provider:<provider>/<plugin>/<skill>'
-      )
+    new Command(name)
+      .description(READ_SKILL_DESCRIPTION)
       .argument(
-        '<id>',
-        'Skill ID from find-skills; team:<slug> for a team skill; provider:<provider>/<plugin>/<skill> for a provider skill'
+        '[id]',
+        'Skill ID from find-skills; team:<slug> for a team skill. Omit when reading a provider skill'
       )
-      .option('--path <file>', "A file from the skill's files list")
+      .option(
+        '--path <file>',
+        "A file from the skill's files list. Team and library skills only"
+      )
       .option(
         '--skill-version <n>',
         'A team skill only: an earlier kept version (default: current)'
       )
-  ).action(async (id: string, options) => {
-    const providerSkill = parseProviderSkillId(id);
-    if (providerSkill && id.trim().startsWith('provider:')) {
-      await handleProviderSkillRead(id.trim(), providerSkill, options);
+      .option(
+        '--provider <provider>',
+        'Provider slug from a find-skills --provider result'
+      )
+      .option('--plugin <plugin>', 'Plugin slug from that provider skill')
+      .option('--skill <skill>', 'Skill slug from that provider skill')
+      .option(
+        '--file',
+        'Provider skill only: read the skill file instead of the skill record'
+      )
+  ).action(async (id: string | undefined, options) => {
+    const providerFlags = [options.provider, options.plugin, options.skill];
+    const providerCount = providerFlags.filter(
+      (value) => value !== undefined
+    ).length;
+    if (id && providerCount)
+      throw new Error(
+        'Pass a skill id, or --provider, --plugin, and --skill, not both.'
+      );
+    if (!id && providerCount !== 3)
+      throw new Error(
+        providerCount
+          ? 'A provider skill needs --provider, --plugin, and --skill.'
+          : 'Pass a skill id, or --provider, --plugin, and --skill.'
+      );
+    if (providerCount === 3) {
+      if (options.path !== undefined || options.skillVersion !== undefined)
+        throw new Error(
+          '--path and --skill-version apply to a team or library skill id, not a provider skill.'
+        );
+      await handleProviderSkillRead(
+        {
+          provider: skillPathSegment(options.provider, '--provider'),
+          plugin: skillPathSegment(options.plugin, '--plugin'),
+          skill: skillPathSegment(options.skill, '--skill'),
+        },
+        options.file === true,
+        options
+      );
       return;
     }
+    if (options.file)
+      throw new Error('--file applies to a provider skill, not a skill id.');
     const call: Call = {
       provider: 'firecrawl',
       capability: 'read-skill',
@@ -936,6 +833,21 @@ export function createReadSkillCommand(): Command {
       );
     await handleAlexandria([call], options);
   });
+}
+
+export function createReadSkillCommand(): Command {
+  return buildReadSkillCommand('read-skill');
+}
+
+export function createSkillsCommand(): Command {
+  return new Command('skills')
+    .description(
+      'Alexandria skills. The surface is these four operations: list, read, create, and update'
+    )
+    .addCommand(buildFindSkillsCommand('list'))
+    .addCommand(buildReadSkillCommand('read'))
+    .addCommand(createCreateSkillCommand().name('create'))
+    .addCommand(createUpdateSkillCommand().name('update'));
 }
 
 function textOption(

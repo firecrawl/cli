@@ -8,9 +8,8 @@ import {
 import {
   findToolsRetryDelayMs,
   isExecutionOnlySkill,
-  mergeProviderSkills,
+  listedProviderSkills,
   sharedSkillLine,
-  visibleProviderSkills,
 } from '../../commands/alexandria';
 
 describe('merged Alexandria prices', () => {
@@ -94,37 +93,42 @@ describe('provider skills', () => {
   it('hides execution-only skills and keeps the provider id', () => {
     expect(isExecutionOnlySkill({ executionOnly: true })).toBe(true);
     expect(isExecutionOnlySkill({ kind: 'execution-only' })).toBe(true);
-    const skills = visibleProviderSkills({
-      plugins: [
-        {
-          provider: 'acme',
-          plugin: 'research',
-          skills: [
-            { skill: 'brief', name: 'Brief', description: 'Write a brief' },
-            { skill: 'run', execution_only: true, name: 'Run' },
-          ],
-        },
-      ],
-    });
-    expect(skills.map((skill) => skill.id)).toEqual([
-      'provider:acme/research/brief',
-    ]);
-    const page = mergeProviderSkills(
+    const page = listedProviderSkills(
       {
         skills: [
-          { id: 'team:digest', source: 'team' },
-          { id: 'library', source: 'library' },
-          { id: 'hidden', executionOnly: true },
+          {
+            provider: 'acme',
+            plugin: 'research',
+            skill: 'brief',
+            name: 'Brief',
+            description: 'Write a brief',
+          },
+          {
+            provider: 'acme',
+            plugin: 'research',
+            skill: 'run',
+            execution_only: true,
+            name: 'Run',
+          },
+          {
+            provider: 'other',
+            plugin: 'research',
+            skill: 'brief',
+            name: 'Other',
+          },
+          {
+            provider: 'acme',
+            plugin: 'research',
+            skill: 'hidden',
+            visibility: 'execute',
+            name: 'Hidden',
+          },
         ],
       },
-      skills,
-      10
+      { provider: 'acme', query: 'brief' }
     );
-    expect(page.skills.map((skill: { id: string }) => skill.id)).toEqual([
-      'team:digest',
-      'provider:acme/research/brief',
-      'library',
-    ]);
+    expect(page.skills.map((skill) => skill.skill)).toEqual(['brief']);
+    expect(page.total).toBe(1);
   });
 
   it('prints a shared skill id or link from a skill write', () => {

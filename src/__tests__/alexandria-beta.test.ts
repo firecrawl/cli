@@ -708,7 +708,7 @@ it('finds and reads skills through the same API and refuses keyless access', asy
   expect(scrapes[1].body.alexandria[0].options).toEqual({});
   expect(
     requests.filter((request) => request.url === '/exchange/provider-skills')
-  ).toHaveLength(2);
+  ).toHaveLength(0);
   const read = await cli([
     'read-skill',
     'team:weekly-digest',
@@ -974,16 +974,16 @@ it('shares a team skill and prints the public id and link', async () => {
   expect(help.stdout).toContain('public id');
 });
 
-it('lists provider skills and hides execution-only skills', async () => {
+it('lists one provider skills and reads one with provider, plugin, and skill', async () => {
   responseFor = () => {
-    const request = requests.at(-1)!;
-    if (request.url?.includes('/file')) {
+    const url = requests.at(-1)?.url ?? '';
+    if (url.endsWith('/file')) {
       return {
         path: 'SKILL.md',
         content: '# Research brief\nUse the provider.',
       };
     }
-    if (request.url === '/exchange/provider-skills') {
+    if (url === '/exchange/provider-skills') {
       return {
         skills: [
           {
@@ -1001,86 +1001,76 @@ it('lists provider skills and hides execution-only skills', async () => {
             description: 'Execute a provider call',
             executionOnly: true,
           },
+          {
+            provider: 'other',
+            plugin: 'research',
+            skill: 'brief',
+            name: 'Other brief',
+            description: 'Write a research brief',
+          },
         ],
       };
     }
     return {
       success: true,
       scrape_id: 'skills-1',
-      data: {
-        creditsCost: 0,
-        alexandria: [
-          {
-            provider: 'firecrawl',
-            capability: 'find-skills',
-            creditsCost: 0,
-            data: {
-              skills: [
-                {
-                  id: 'team:weekly-digest',
-                  name: 'Weekly digest',
-                  description: 'Summarise the week.',
-                  source: 'team',
-                },
-                {
-                  id: 'run-only',
-                  name: 'Run only',
-                  description: 'Execution only library skill',
-                  executionOnly: true,
-                },
-              ],
-              total: 2,
-            },
-          },
-        ],
-      },
+      data: { alexandria: [], creditsCost: 0 },
     };
   };
-  const listed = await cli(['find-skills', '--json']);
+  const listed = await cli(['skills', 'list', '--provider', 'acme', '--json']);
   expect(listed.code).toBe(0);
-  const skills = JSON.parse(listed.stdout).data.alexandria[0].data.skills;
-  expect(skills.map((skill: { id: string }) => skill.id)).toEqual([
-    'team:weekly-digest',
-    'provider:acme/research/brief',
+  expect(requests.map((request) => request.url)).toEqual([
+    '/exchange/provider-skills',
   ]);
-  expect(listed.stdout).not.toContain('provider:acme/research/run');
-  expect(listed.stdout).not.toContain('run-only');
+  const page = JSON.parse(listed.stdout).data;
+  expect(page.provider).toBe('acme');
+  expect(page.skills.map((skill: { skill: string }) => skill.skill)).toEqual([
+    'brief',
+  ]);
+  expect(listed.stdout).not.toContain('"skill":"run"');
   const read = await cli([
-    'read-skill',
-    'provider:acme/research/brief',
-    '--path',
-    'SKILL.md',
+    'skills',
+    'read',
+    '--provider',
+    'acme',
+    '--plugin',
+    'research',
+    '--skill',
+    'brief',
+    '--file',
     '--json',
   ]);
   expect(read.code).toBe(0);
   expect(requests.at(-1)?.url).toBe(
-    '/exchange/provider-skills/acme/research/brief/file?path=SKILL.md'
+    '/exchange/provider-skills/acme/research/brief/file'
   );
-  expect(JSON.parse(read.stdout).data.alexandria[0].data).toMatchObject({
-    id: 'provider:acme/research/brief',
-    source: 'provider',
+  expect(JSON.parse(read.stdout).data).toMatchObject({
     provider: 'acme',
     plugin: 'research',
     skill: 'brief',
-    path: 'SKILL.md',
+    file: true,
     content: '# Research brief\nUse the provider.',
   });
-  const help = await cli(['find-skills', '--help']);
-  expect(help.stdout).toContain('provider:<provider>/<plugin>/<skill>');
+  const help = await cli(['skills', 'list', '--help']);
+  expect(help.stdout).toContain('--provider');
   expect(help.stdout).toContain('Execution-only');
+  const surface = await cli(['skills', '--help']);
+  expect(surface.stdout).toContain('create');
+  expect(surface.stdout).toContain('update');
 });
 
 it('fails a provider skill read when the skill file is unavailable', async () => {
-  statusFor = (request) => (request.url?.includes('/file?') ? 404 : 200);
-  responseFor = () => {
-    const url = requests.at(-1)?.url ?? '';
-    if (url.includes('/file?'))
-      return { success: false, error: 'Missing skill file.' };
-    return { name: 'Brief', description: 'Metadata without a file' };
-  };
+  statusFor = (request) => (request.url?.endsWith('/file') ? 404 : 200);
+  responseFor = () => ({ success: false, error: 'Missing skill file.' });
   const read = await cli([
     'read-skill',
-    'provider:acme/research/brief',
+    '--provider',
+    'acme',
+    '--plugin',
+    'research',
+    '--skill',
+    'brief',
+    '--file',
     '--json',
   ]);
   expect(read.code).toBe(1);
@@ -1090,45 +1080,42 @@ it('fails a provider skill read when the skill file is unavailable', async () =>
     status: 404,
   });
   expect(requests.at(-1)?.url).toBe(
-    '/exchange/provider-skills/acme/research/brief/file?path=SKILL.md'
+    '/exchange/provider-skills/acme/research/brief/file'
   );
+  expect(
+    (
+      await cli([
+        'read-skill',
+        'team:digest',
+        '--provider',
+        'acme',
+        '--plugin',
+        'research',
+        '--skill',
+        'brief',
+      ])
+    ).code
+  ).toBe(1);
+  expect(requests).toHaveLength(1);
 });
 
 it('caps provider skills at the default of 20', async () => {
-  responseFor = () => {
-    const url = requests.at(-1)?.url ?? '';
-    if (url === '/exchange/provider-skills') {
-      return {
-        skills: Array.from({ length: 25 }, (_, index) => ({
-          provider: 'acme',
-          plugin: 'research',
-          skill: `note-${index}`,
-          name: `Note ${index}`,
-          description: 'A provider skill',
-        })),
-      };
-    }
-    return {
-      success: true,
-      scrape_id: 'skills-1',
-      data: {
-        creditsCost: 0,
-        alexandria: [
-          {
-            provider: 'firecrawl',
-            capability: 'find-skills',
-            creditsCost: 0,
-            data: { skills: [], total: 0 },
-          },
-        ],
-      },
-    };
-  };
-  const listed = await cli(['find-skills', '--json']);
+  responseFor = () => ({
+    skills: Array.from({ length: 25 }, (_, index) => ({
+      provider: 'acme',
+      plugin: 'research',
+      skill: `note-${index}`,
+      name: `Note ${index}`,
+      description: 'A provider skill',
+    })),
+  });
+  const listed = await cli(['find-skills', '--provider', 'acme', '--json']);
   expect(listed.code).toBe(0);
-  expect(JSON.parse(listed.stdout).data.alexandria[0].data.skills).toHaveLength(
-    20
-  );
+  const page = JSON.parse(listed.stdout).data;
+  expect(page.skills).toHaveLength(20);
+  expect(page.total).toBe(25);
+  expect(requests).toHaveLength(1);
+  expect(requests[0].url).toBe('/exchange/provider-skills');
 });
 
 it('fills a missing discovery price from the merged catalog when costs are requested', async () => {

@@ -15,6 +15,7 @@ import {
   createReadSkillCommand,
   createCreateSkillCommand,
   createUpdateSkillCommand,
+  createSkillsCommand,
   handleAlexandria,
 } from './commands/alexandria';
 import { readFileSync } from 'fs';
@@ -2671,6 +2672,7 @@ program.addCommand(createParseCommand());
 program.addCommand(createMonitorCommand());
 program.addCommand(createSearchCommand());
 program.addCommand(createFindToolsCommand());
+program.addCommand(createSkillsCommand());
 program.addCommand(createFindSkillsCommand());
 program.addCommand(createReadSkillCommand());
 program.addCommand(createCreateSkillCommand());

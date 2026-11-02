@@ -1309,14 +1309,17 @@ credits apply.
 
 ### Alexandria skills
 
-`find-skills` lists Firecrawl skills, your team's skills (`team:<slug>`, first), and provider-published skills (`provider:<provider>/<plugin>/<skill>`). Execution-only skills are left out of the list. `read-skill` returns one skill file; a provider id is read from the provider-skills catalog. Reading a skill does not run it.
+Alexandria skills are four operations: list, read, create, and update. `skills list`, `skills read`, `skills create`, and `skills update` are the same commands as `find-skills`, `read-skill`, `create-skill`, and `update-skill`.
 
-`create-skill` and `update-skill` save a team skill. `--shared true` publishes it and prints the public id or link; `--shared false` turns sharing off.
+`skills list` lists Firecrawl's skills and your team's skills (`team:<slug>`, first) without their contents. `--provider <provider>` lists that provider's published skills instead, and leaves out execution-only skills. `skills read` returns one skill. Pass an id for a Firecrawl or team skill. Pass `--provider`, `--plugin`, and `--skill` for a provider skill, and `--file` to read its file. Reading a skill does not run it.
+
+`skills create` and `skills update` are unchanged. `--shared true` publishes a team skill and prints the public id or link; `--shared false` turns sharing off.
 
 ```bash
-firecrawl find-skills weekly digest --limit 5
-firecrawl read-skill provider:acme/research/brief
-firecrawl update-skill team:digest --base-version 2 --shared true
+firecrawl skills list weekly digest --limit 5
+firecrawl skills list --provider acme
+firecrawl skills read --provider acme --plugin research --skill brief --file
+firecrawl skills update team:digest --base-version 2 --shared true
 ```
 
 ### Alexandria execution prices
