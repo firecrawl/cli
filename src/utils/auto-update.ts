@@ -28,6 +28,7 @@ import {
 const SETTINGS_FILE = 'auto-update.json';
 const STATE_FILE = 'auto-update-state.json';
 const LOCK_FILE = 'auto-update.lock';
+const INSTALL_LOCK_FILE = 'auto-update-install.lock';
 const LOG_FILE = 'auto-update.log';
 const RUNNING_DIR = 'running';
 const WORKER_ENV = 'FIRECRAWL_AUTO_UPDATE_WORKER';
@@ -148,13 +149,87 @@ function isAlive(pid: number): boolean {
   }
 }
 
+function runningDir(dir: string): string {
+  return path.join(dir, RUNNING_DIR);
+}
+
+/** Counts other live invocations and prunes entries whose process is gone. */
+function otherInvocations(dir: string): number {
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(runningDir(dir));
+  } catch {
+    return 0;
+  }
+  let count = 0;
+  for (const entry of entries) {
+    const pid = Number(entry);
+    if (pid === process.pid) continue;
+    if (Number.isInteger(pid) && pid > 0 && isAlive(pid)) count++;
+    else fs.rmSync(path.join(runningDir(dir), entry), { force: true });
+  }
+  return count;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function workerLockPath(dir: string): string {
+  return path.join(dir, LOCK_FILE);
+}
+
+function installLockPath(dir: string): string {
+  return path.join(dir, INSTALL_LOCK_FILE);
+}
+
+/** A lock is held while it is recent and the process that took it is alive. */
+function lockHeld(file: string): boolean {
+  try {
+    if (Date.now() - fs.statSync(file).mtimeMs >= LOCK_STALE_MS) return false;
+  } catch {
+    return false;
+  }
+  const pid = readJson(file).pid;
+  return typeof pid !== 'number' || isAlive(pid);
+}
+
+function acquireLock(file: string): boolean {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      fs.writeFileSync(file, JSON.stringify({ pid: process.pid }), {
+        flag: 'wx',
+      });
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') return false;
+      if (lockHeld(file)) return false;
+      fs.rmSync(file, { force: true });
+    }
+  }
+  return false;
+}
+
+function releaseLock(file: string): void {
+  try {
+    if (readJson(file).pid === process.pid) fs.rmSync(file, { force: true });
+  } catch {
+    // A stale lock expires on its own.
+  }
+}
+
 /**
- * Records this invocation so a background install waits for it to finish.
- * Package installs are rewritten in place, and commands load modules lazily.
+ * Package installs are rewritten in place and commands load modules lazily.
+ * Each invocation registers itself so an install waits for it, and waits
+ * for an install that is already running before it continues.
  */
-export function registerInvocation(channel: InstallChannel): void {
+export async function registerInvocation(
+  channel: InstallChannel
+): Promise<void> {
   if (!IN_PLACE.has(channel.kind)) return;
-  const file = path.join(firecrawlDir(), RUNNING_DIR, String(process.pid));
+  const dir = firecrawlDir();
+  const file = path.join(runningDir(dir), String(process.pid));
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, '');
@@ -166,80 +241,49 @@ export function registerInvocation(channel: InstallChannel): void {
       }
     });
   } catch {
-    // Without a writable home there is no background update to wait for us.
+    return;
+  }
+  const deadline = Date.now() + INSTALL_TIMEOUT_MS;
+  while (lockHeld(installLockPath(dir)) && Date.now() < deadline) {
+    await sleep(200);
   }
 }
 
-async function waitUntilIdle(dir: string): Promise<boolean> {
-  const running = path.join(dir, RUNNING_DIR);
+/**
+ * Takes the install lock. For in-place installs it first waits until no other
+ * invocation is registered, and checks again after taking the lock so a
+ * command that registered meanwhile is not rewritten under. Without onWait,
+ * a lock held by another installer ends the attempt instead of waiting.
+ */
+async function claimInstall(
+  dir: string,
+  channel: UpdatableChannel,
+  onWait?: () => void
+): Promise<'claimed' | 'busy' | 'installing'> {
+  const lock = installLockPath(dir);
+  const idle = () => !IN_PLACE.has(channel.kind) || otherInvocations(dir) === 0;
   const deadline = Date.now() + IDLE_WAIT_MS;
-  for (;;) {
-    let busy = false;
-    let entries: string[] = [];
-    try {
-      entries = fs.readdirSync(running);
-    } catch {
-      entries = [];
+  for (let first = true; ; first = false) {
+    if (idle()) {
+      if (acquireLock(lock)) {
+        if (idle()) return 'claimed';
+        releaseLock(lock);
+      } else if (!onWait) {
+        return 'installing';
+      }
     }
-    for (const entry of entries) {
-      const pid = Number(entry);
-      if (pid === process.pid) continue;
-      if (Number.isInteger(pid) && pid > 0 && isAlive(pid)) busy = true;
-      else fs.rmSync(path.join(running, entry), { force: true });
-    }
-    if (!busy) return true;
-    if (Date.now() > deadline) return false;
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    if (first) onWait?.();
+    if (Date.now() > deadline) return 'busy';
+    await sleep(500);
   }
 }
 
-function lockPath(dir: string): string {
-  return path.join(dir, LOCK_FILE);
-}
-
-function readLock(dir: string): { pid?: unknown; installing?: unknown } {
-  return readJson(lockPath(dir));
-}
-
-function lockFresh(dir: string): boolean {
-  try {
-    return Date.now() - fs.statSync(lockPath(dir)).mtimeMs < LOCK_STALE_MS;
-  } catch {
-    return false;
+function alreadyInstalled(channel: UpdatableChannel, version: string): boolean {
+  if (channel.kind === 'pnpm') {
+    return verifyPnpm(channel.packageRoot, version).status === 'installed';
   }
-}
-
-/** With takeOver, a lock whose owner is still waiting to install is claimed. */
-function acquireLock(dir: string, takeOver = false): boolean {
-  fs.mkdirSync(dir, { recursive: true });
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      fs.writeFileSync(
-        lockPath(dir),
-        JSON.stringify({ pid: process.pid, installing: false }),
-        { flag: 'wx' }
-      );
-      return true;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') return false;
-      const waiting = readLock(dir).installing === false;
-      if (lockFresh(dir) && !(takeOver && waiting)) return false;
-      fs.rmSync(lockPath(dir), { force: true });
-    }
-  }
-  return false;
-}
-
-function ownsLock(dir: string): boolean {
-  return readLock(dir).pid === process.pid;
-}
-
-function releaseLock(dir: string): void {
-  try {
-    if (ownsLock(dir)) fs.rmSync(lockPath(dir), { force: true });
-  } catch {
-    // A stale lock expires on its own.
-  }
+  if (!IN_PLACE.has(channel.kind) || !('packageRoot' in channel)) return false;
+  return verifyPackage(channel.packageRoot, version).status === 'installed';
 }
 
 function openLog(dir: string): { fd: number; log: Log } {
@@ -518,7 +562,7 @@ export async function startAutoUpdate(
       if (compareVersions(current, cached.latestVersion) >= 0) return true;
       if (!sameMajor(current, cached.latestVersion)) return false;
     }
-    if (lockFresh(dir)) return true;
+    if (lockHeld(workerLockPath(dir))) return true;
 
     fs.mkdirSync(dir, { recursive: true });
     fs.accessSync(dir, fs.constants.W_OK);
@@ -550,7 +594,7 @@ export async function runAutoUpdateWorker(): Promise<void> {
   const dir = firecrawlDir();
   let logFd: number | undefined;
   try {
-    if (!acquireLock(dir)) return;
+    if (!acquireLock(workerLockPath(dir))) return;
     const { fd, log } = openLog(dir);
     logFd = fd;
     const channel = detectInstallChannel();
@@ -588,18 +632,20 @@ export async function runAutoUpdateWorker(): Promise<void> {
       });
       return;
     }
-    if (IN_PLACE.has(channel.kind) && !(await waitUntilIdle(dir))) {
+    const claim = await claimInstall(dir, channel);
+    if (claim !== 'claimed') {
       log(
-        'Other firecrawl commands are still running; retrying on a later run'
+        claim === 'busy'
+          ? 'Other firecrawl commands are still running; retrying on a later run'
+          : 'Another update is installing'
       );
       return;
     }
     if (autoUpdateBlocker()) return;
-    if (!ownsLock(dir)) {
-      log('A manual update took over');
+    if (alreadyInstalled(channel, latest.version)) {
+      log(`${latest.version} is already installed`);
       return;
     }
-    writeJson(lockPath(dir), { pid: process.pid, installing: true });
 
     log(
       `Updating ${current} -> ${latest.version} with ${CHANNEL_LABELS[channel.kind]}`
@@ -640,7 +686,8 @@ export async function runAutoUpdateWorker(): Promise<void> {
       fs.writeSync(logFd, `[${new Date().toISOString()}] ${String(error)}\n`);
     }
   } finally {
-    releaseLock(dir);
+    releaseLock(installLockPath(dir));
+    releaseLock(workerLockPath(dir));
     if (logFd !== undefined) fs.closeSync(logFd);
   }
 }
@@ -698,13 +745,24 @@ export async function updateNow(): Promise<boolean> {
   }
 
   const dir = firecrawlDir();
-  if (!acquireLock(dir, true)) {
+  const claim = await claimInstall(dir, channel, () =>
     console.error(
-      'Another firecrawl update is installing right now. Try again in a few minutes.'
+      'Waiting for other firecrawl commands and updates to finish...'
+    )
+  );
+  if (claim !== 'claimed') {
+    console.error(
+      claim === 'busy'
+        ? 'Other firecrawl commands are still running. Try again when they finish.'
+        : 'Another firecrawl update is installing right now. Try again in a few minutes.'
     );
     return false;
   }
   try {
+    if (alreadyInstalled(channel, latest.version)) {
+      console.log(`firecrawl ${latest.version} is already installed.`);
+      return true;
+    }
     console.log(
       `Updating firecrawl ${current} -> ${latest.version} with ${CHANNEL_LABELS[channel.kind]}...`
     );
@@ -735,6 +793,6 @@ export async function updateNow(): Promise<boolean> {
     console.log(`Updated firecrawl to ${latest.version}.`);
     return true;
   } finally {
-    releaseLock(dir);
+    releaseLock(installLockPath(dir));
   }
 }

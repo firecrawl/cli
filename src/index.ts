@@ -2991,12 +2991,12 @@ async function main() {
     await runAutoUpdateWorker();
     return;
   }
-  const channel = detectInstallChannel();
-  registerInvocation(channel);
-
   // Parse user arguments explicitly instead of letting Commander infer whether
   // argv came from node, eval, electron, or another wrapper.
   const args = process.argv.slice(2);
+  const isUpdate = getFirstPositionalArg(args) === 'update';
+  const channel = detectInstallChannel();
+  if (!isUpdate) await registerInvocation(channel);
 
   // Handle --version with --auth-status before Commander processes it
   // Commander's built-in --version handler doesn't support additional flags
@@ -3016,7 +3016,7 @@ async function main() {
     return;
   }
 
-  if (args[0] !== 'update' && !(await startAutoUpdate({ channel }))) {
+  if (!isUpdate && !(await startAutoUpdate({ channel }))) {
     await maybeShowUpdateNotice({
       command: updatesAutomatically(channel) ? 'firecrawl update' : undefined,
     });

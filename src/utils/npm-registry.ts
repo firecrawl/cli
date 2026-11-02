@@ -112,7 +112,11 @@ export function isPrerelease(version: string): boolean {
 export function satisfiesRange(version: string, range: string): boolean {
   const current = version.replace(/^v/, '').split('.').map(Number);
   return range.split('||').some((alternative) => {
-    const comparators = alternative.trim().split(/\s+/).filter(Boolean);
+    const comparators = alternative
+      .trim()
+      .replace(/(>=|<=|>|<|=|\^|~)\s+/g, '$1')
+      .split(/\s+/)
+      .filter(Boolean);
     return (
       comparators.length > 0 &&
       comparators.every((comparator) => {
@@ -128,13 +132,21 @@ export function satisfiesRange(version: string, range: string): boolean {
         const cmp = compareVersions(current.join('.'), bound.join('.'));
         const sameUpTo = (n: number) =>
           current.slice(0, n).join('.') === bound.slice(0, n).join('.');
+        const next = bound.map((part, i) =>
+          i < given.length - 1 ? part : i === given.length - 1 ? part + 1 : 0
+        );
+        const partial = given.length < 3;
         switch (op) {
           case '>=':
             return cmp >= 0;
           case '>':
-            return cmp > 0;
+            return partial
+              ? compareVersions(current.join('.'), next.join('.')) >= 0
+              : cmp > 0;
           case '<=':
-            return cmp <= 0;
+            return partial
+              ? compareVersions(current.join('.'), next.join('.')) < 0
+              : cmp <= 0;
           case '<':
             return cmp < 0;
           case '^':
