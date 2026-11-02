@@ -170,10 +170,13 @@ function runningDir(dir: string): string {
 }
 
 /**
- * Whether pid runs a firecrawl command. A stopped or suspended command misses
- * heartbeats but still runs firecrawl, while a reused pid runs something else.
+ * Whether pid may run a firecrawl command. A stopped or suspended command
+ * misses heartbeats but still runs firecrawl, while a reused pid runs
+ * something else. Only a command line that was read and names something else
+ * rules firecrawl out: a failed, timed out or empty lookup cannot tell, since
+ * Windows hides the command line of processes it will not show.
  */
-function runsFirecrawl(pid: number): boolean {
+function mayRunFirecrawl(pid: number): boolean {
   try {
     const [command, args] =
       process.platform === 'win32'
@@ -187,25 +190,29 @@ function runsFirecrawl(pid: number): boolean {
             ],
           ]
         : ['ps', ['-p', String(pid), '-o', 'args=']];
-    const found =
-      process.platform === 'linux'
-        ? fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8')
-        : spawnSync(command, args, {
-            encoding: 'utf8',
-            timeout: 5000,
-            windowsHide: true,
-          }).stdout;
-    return Boolean(found?.includes('firecrawl'));
+    let found: string;
+    if (process.platform === 'linux') {
+      found = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8');
+    } else {
+      const result = spawnSync(command, args, {
+        encoding: 'utf8',
+        timeout: 5000,
+        windowsHide: true,
+      });
+      if (result.error || result.status !== 0) return true;
+      found = result.stdout;
+    }
+    return !found.trim() || found.toLowerCase().includes('firecrawl');
   } catch {
-    return false;
+    return true;
   }
 }
 
 /**
  * Counts other live invocations and prunes the rest. A killed process leaves
  * its entry behind and its pid can later belong to an unrelated process, so
- * an entry without a recent heartbeat counts only while its pid still runs
- * firecrawl.
+ * an entry without a recent heartbeat counts only while its pid may still run
+ * firecrawl, and never once it predates the last boot.
  */
 export function otherInvocations(dir: string): number {
   let entries: string[];
@@ -219,17 +226,18 @@ export function otherInvocations(dir: string): number {
     const pid = Number(entry);
     if (pid === process.pid) continue;
     const file = path.join(runningDir(dir), entry);
-    let fresh = false;
+    let mtime: number;
     try {
-      fresh = Date.now() - fs.statSync(file).mtimeMs < HEARTBEAT_STALE_MS;
+      mtime = fs.statSync(file).mtimeMs;
     } catch {
       continue;
     }
     const live =
       Number.isInteger(pid) &&
       pid > 0 &&
+      mtime > bootTime() - BOOT_TOLERANCE_MS &&
       isAlive(pid) &&
-      (fresh || runsFirecrawl(pid));
+      (Date.now() - mtime < HEARTBEAT_STALE_MS || mayRunFirecrawl(pid));
     if (live) count++;
     else fs.rmSync(file, { force: true });
   }
