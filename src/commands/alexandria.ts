@@ -357,6 +357,53 @@ export async function requestAlexandria(
   };
 }
 
+/** App page for a team skill. The slug has no `team:` prefix. */
+export const SKILL_APP_ORIGIN =
+  'https://www.firecrawl.dev/app/alexandria/skills';
+
+/** Skill slug from a slug or `team:<slug>` id. A path or other prefix is refused. */
+export function teamSkillSlug(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  let slug = value.trim();
+  if (slug.startsWith('team:')) slug = slug.slice('team:'.length).trim();
+  if (
+    !slug ||
+    slug.length > 200 ||
+    slug === '.' ||
+    slug === '..' ||
+    /[/\\:]/.test(slug)
+  )
+    return undefined;
+  return slug;
+}
+
+/**
+ * Page for a successful create-skill or update-skill.
+ * Uses the skill slug, or the id with `team:` removed. Ignores sharePath.
+ */
+export function skillAppUrl(envelope: Record<string, any>): string | undefined {
+  if (!envelope?.success || !Array.isArray(envelope.data?.alexandria))
+    return undefined;
+  for (const entry of envelope.data.alexandria) {
+    if (
+      !entry ||
+      entry.error ||
+      (entry.capability !== 'create-skill' &&
+        entry.capability !== 'update-skill')
+    )
+      continue;
+    const data = entry.data;
+    const slug =
+      teamSkillSlug(data?.skill?.slug) ??
+      teamSkillSlug(data?.slug) ??
+      teamSkillSlug(data?.skill?.skillId) ??
+      teamSkillSlug(data?.id);
+    if (!slug) continue;
+    return `${SKILL_APP_ORIGIN}/${encodeURIComponent(slug)}`;
+  }
+  return undefined;
+}
+
 function emitAlexandria(
   envelope: Record<string, any>,
   options: AlexandriaOptions
@@ -369,6 +416,11 @@ function emitAlexandria(
     const url = envelope.requiresAction?.url || TERMS_DASHBOARD_URL;
     envelope.guidance = `An organization admin must accept this provider's terms in the Firecrawl dashboard: ${url}. Give the user this link; they can review the terms first with firecrawl alexandria terms show <provider>. Do not retry until the terms are accepted.`;
     console.error(envelope.guidance);
+  }
+  const skillUrl = failed ? undefined : skillAppUrl(envelope);
+  if (skillUrl) {
+    envelope.url = skillUrl;
+    console.error(skillUrl);
   }
   writeOutput(
     JSON.stringify(envelope, null, options.pretty ? 2 : undefined),
@@ -926,7 +978,7 @@ export function createCreateSkillCommand(): Command {
   return addSkillOutputOptions(
     new Command('create-skill')
       .description(
-        'Save a new skill for your team, written out or copied from a skill find-skills listed (--from). Given fields override the copy; it is listed as team:<slug>. Options are from, name, description, body, and slug'
+        'Save a new skill for your team, written out or copied from a skill find-skills listed (--from). Given fields override the copy; it is listed as team:<slug>. Options are from, name, description, body, and slug. A successful save prints https://www.firecrawl.dev/app/alexandria/skills/<slug>'
       )
       .option('--from <id>', 'Skill ID from find-skills to copy')
       .option('--name <name>', 'Skill name (required without --from)')
@@ -966,7 +1018,7 @@ export function createUpdateSkillCommand(): Command {
   return addSkillOutputOptions(
     new Command('update-skill')
       .description(
-        "Change one of your team's skills from the version you last read; a skill changed since is refused with conflict. Library skills cannot be changed (copy one with create-skill). There is no delete: --enabled and --discoverable turn a skill off or hide it. A team admin deletes one in the dashboard"
+        "Change one of your team's skills from the version you last read; a skill changed since is refused with conflict. Library skills cannot be changed (copy one with create-skill). There is no delete: --enabled and --discoverable turn a skill off or hide it. A team admin deletes one in the dashboard. A successful save prints https://www.firecrawl.dev/app/alexandria/skills/<slug>"
       )
       .argument('<id>', 'team:<slug> from find-skills')
       .requiredOption('--base-version <n>', 'The version read-skill returned')

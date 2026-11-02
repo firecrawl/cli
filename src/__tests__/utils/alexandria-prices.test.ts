@@ -11,7 +11,9 @@ import {
   listedProviderSkills,
   pluginIdOf,
   providerSlugOf,
+  skillAppUrl,
   skillSlugOf,
+  teamSkillSlug,
 } from '../../commands/alexandria';
 
 describe('merged Alexandria prices', () => {
@@ -163,5 +165,66 @@ describe('provider skills', () => {
         plugin: { id: 'research' },
       },
     ]);
+  });
+
+  it('builds the app skill page from the slug and ignores sharePath', () => {
+    expect(teamSkillSlug('team:weekly-digest')).toBe('weekly-digest');
+    expect(teamSkillSlug('weekly-digest')).toBe('weekly-digest');
+    expect(teamSkillSlug('team:')).toBeUndefined();
+    expect(teamSkillSlug('team:a/b')).toBeUndefined();
+    const saved = {
+      success: true,
+      data: {
+        alexandria: [
+          {
+            capability: 'create-skill',
+            data: {
+              id: 'team:weekly-digest',
+              skill: {
+                slug: 'weekly-digest',
+                skillId: 'team:weekly-digest',
+                publicId: '55a529aa8f8e4659ab2cdc80808e0ab2',
+                sharePath: '/skills/s/55a529aa8f8e4659ab2cdc80808e0ab2',
+              },
+            },
+          },
+        ],
+      },
+    };
+    expect(skillAppUrl(saved)).toBe(
+      'https://www.firecrawl.dev/app/alexandria/skills/weekly-digest'
+    );
+    expect(
+      skillAppUrl({
+        success: true,
+        data: {
+          alexandria: [
+            {
+              capability: 'update-skill',
+              data: { id: 'team:weekly-digest' },
+            },
+          ],
+        },
+      })
+    ).toBe('https://www.firecrawl.dev/app/alexandria/skills/weekly-digest');
+    expect(
+      skillAppUrl({
+        success: true,
+        data: {
+          alexandria: [
+            {
+              capability: 'create-skill',
+              error: { code: 'invalid_option' },
+              data: {
+                skill: {
+                  publicId: '55a529aa8f8e4659ab2cdc80808e0ab2',
+                  sharePath: '/skills/s/55a529aa8f8e4659ab2cdc80808e0ab2',
+                },
+              },
+            },
+          ],
+        },
+      })
+    ).toBeUndefined();
   });
 });

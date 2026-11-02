@@ -926,6 +926,85 @@ it('turns a team skill off with enabled and discoverable', async () => {
   );
 });
 
+it('prints the app skill link after create and update', async () => {
+  const skill = {
+    slug: 'weekly-digest',
+    skillId: 'team:weekly-digest',
+    shared: false,
+    publicId: '55a529aa8f8e4659ab2cdc80808e0ab2',
+    sharePath: '/skills/s/55a529aa8f8e4659ab2cdc80808e0ab2',
+  };
+  const page = 'https://www.firecrawl.dev/app/alexandria/skills/weekly-digest';
+  responseFor = (body) => ({
+    success: true,
+    scrape_id: 'skill-save',
+    data: {
+      creditsCost: 0,
+      alexandria: [
+        {
+          provider: 'firecrawl',
+          capability: body?.alexandria?.[0]?.capability,
+          creditsCost: 0,
+          data: { id: 'team:weekly-digest', skill },
+        },
+      ],
+    },
+  });
+  const created = await cli([
+    'skills',
+    'create',
+    '--name',
+    'Digest',
+    '--description',
+    'Weekly.',
+    '--body',
+    'Summarise.',
+    '--slug',
+    'weekly-digest',
+    '--json',
+  ]);
+  expect(created.code).toBe(0);
+  expect(JSON.parse(created.stdout).url).toBe(page);
+  expect(created.stderr).toContain(page);
+  expect(created.stderr).not.toContain('/skills/s/');
+  expect(created.stderr).not.toContain(skill.publicId);
+  const updated = await cli([
+    'update-skill',
+    'team:weekly-digest',
+    '--base-version',
+    '1',
+    '--name',
+    'Weekly digest',
+    '--json',
+  ]);
+  expect(updated.code).toBe(0);
+  expect(JSON.parse(updated.stdout).url).toBe(page);
+  expect(updated.stderr).toContain(page);
+  responseFor = () => ({
+    success: true,
+    data: {
+      alexandria: [
+        {
+          capability: 'update-skill',
+          error: { code: 'conflict', message: 'Stale version.' },
+        },
+      ],
+      creditsCost: 0,
+    },
+  });
+  const conflict = await cli([
+    'skills',
+    'update',
+    'team:weekly-digest',
+    '--base-version',
+    '1',
+    '--json',
+  ]);
+  expect(conflict.code).toBe(1);
+  expect(JSON.parse(conflict.stdout)).not.toHaveProperty('url');
+  expect(conflict.stderr).not.toContain(page);
+});
+
 it('lists one provider skills and reads one with provider, plugin, and skill', async () => {
   const catalogue = {
     provider: { slug: 'carbon-arc', name: 'Carbon Arc' },
