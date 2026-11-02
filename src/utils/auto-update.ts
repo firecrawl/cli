@@ -452,22 +452,28 @@ export function run(
     const timeoutMs = options.timeoutMs ?? INSTALL_TIMEOUT_MS;
     let stopped: string | undefined;
     let escalate: NodeJS.Timeout | undefined;
+    const kill = () => child.pid && signalTree(child.pid, 'SIGKILL');
+    // Every stop escalates, so an installer that ignores the first signal
+    // still exits; a second stop kills it at once.
     const stop = (reason: string, signal: NodeJS.Signals) => {
-      stopped ??= reason;
+      if (stopped !== undefined) {
+        kill();
+        return;
+      }
+      stopped = reason;
       if (child.pid) signalTree(child.pid, signal);
+      escalate = setTimeout(kill, KILL_GRACE_MS);
     };
-    const timer = setTimeout(() => {
-      stop(`timed out after ${Math.round(timeoutMs / 1000)}s`, 'SIGTERM');
-      escalate = setTimeout(
-        () => child.pid && signalTree(child.pid, 'SIGKILL'),
-        KILL_GRACE_MS
-      );
-    }, timeoutMs);
-    // The child no longer shares the terminal's process group, so pass interrupts on.
+    const timer = setTimeout(
+      () => stop(`timed out after ${Math.round(timeoutMs / 1000)}s`, 'SIGTERM'),
+      timeoutMs
+    );
+    // The child no longer shares the terminal's process group, so pass
+    // interrupts and hangups on.
+    const forwarded = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
     const interrupt = (signal: NodeJS.Signals) =>
       stop(`interrupted by ${signal}`, signal);
-    process.on('SIGINT', interrupt);
-    process.on('SIGTERM', interrupt);
+    for (const signal of forwarded) process.on(signal, interrupt);
 
     let settled = false;
     const finish = (error: string | undefined) => {
@@ -475,8 +481,7 @@ export function run(
       settled = true;
       clearTimeout(timer);
       clearTimeout(escalate);
-      process.off('SIGINT', interrupt);
-      process.off('SIGTERM', interrupt);
+      for (const signal of forwarded) process.off(signal, interrupt);
       resolve(error);
     };
     child.on('error', (error) => finish(`${command}: ${error.message}`));
@@ -944,11 +949,12 @@ export async function updateNow(): Promise<boolean> {
     console.log(
       `Updating firecrawl ${current} -> ${latest.version} with ${CHANNEL_LABELS[channel.kind]}...`
     );
-    // stdin stays closed: the installer runs in its own process group, off the terminal.
+    // The installer keeps the terminal for prompts (registry login, one-time
+    // passwords): a process in its own session may still read it.
     const outcome = await installVersion(
       channel,
       latest.version,
-      ['ignore', 'inherit', 'inherit'],
+      'inherit',
       (message) => console.log(message)
     );
     if (outcome.status === 'failed') {

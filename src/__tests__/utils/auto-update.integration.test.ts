@@ -225,15 +225,22 @@ describe.skipIf(process.platform === 'win32')('installer processes', () => {
     }
   };
 
-  /** A stand-in package manager that starts a helper and records its pid. */
-  function installer(mode: 'hang' | 'exit'): string[] {
+  /**
+   * A stand-in package manager that starts a helper and records its pid.
+   * 'stubborn' ignores SIGINT and SIGTERM, as some installers do.
+   */
+  function installer(mode: 'hang' | 'exit' | 'stubborn'): string[] {
     const script = path.join(dir, 'installer.js');
     fs.writeFileSync(
       script,
       `const { spawn } = require('child_process');
+const fs = require('fs');
+const [, , pidFile, mode] = process.argv;
+if (mode === 'stubborn') for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => {});
 const helper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
-require('fs').writeFileSync(process.argv[2], String(helper.pid));
-if (process.argv[3] === 'exit') process.exit(0);
+fs.writeFileSync(pidFile + '.tmp', String(helper.pid));
+fs.renameSync(pidFile + '.tmp', pidFile);
+if (mode === 'exit') process.exit(0);
 setInterval(() => {}, 1000);
 `
     );
@@ -242,6 +249,28 @@ setInterval(() => {}, 1000);
 
   const helperPid = () =>
     Number(fs.readFileSync(path.join(dir, 'helper.pid'), 'utf8'));
+
+  /** Resolves once the stand-in installer is up, so no assertion races its startup. */
+  async function started(): Promise<number> {
+    const deadline = Date.now() + 10_000;
+    while (!fs.existsSync(path.join(dir, 'helper.pid'))) {
+      if (Date.now() > deadline) {
+        throw new Error('the stand-in installer did not start');
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    return helperPid();
+  }
+
+  /** Starts run() and returns the SIGINT listener it registered. */
+  function runWithInterrupt(args: string[]) {
+    const before = new Set(process.listeners('SIGINT'));
+    const pending = run(process.execPath, args, 'ignore');
+    const interrupt = process
+      .listeners('SIGINT')
+      .find((listener) => !before.has(listener)) as (signal: string) => void;
+    return { pending, interrupt };
+  }
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'firecrawl-installer-'));
@@ -257,18 +286,43 @@ setInterval(() => {}, 1000);
   });
 
   it('stops everything the installer started when it times out', async () => {
-    const error = await run(process.execPath, installer('hang'), 'ignore', {
-      timeoutMs: 500,
+    const pending = run(process.execPath, installer('hang'), 'ignore', {
+      timeoutMs: 3000,
     });
+    const helper = await started();
 
-    expect(error).toContain('timed out');
-    expect(alive(helperPid())).toBe(false);
+    expect(await pending).toContain('timed out');
+    expect(alive(helper)).toBe(false);
   });
 
   it('waits for helpers an installer leaves behind before it resolves', async () => {
-    const error = await run(process.execPath, installer('exit'), 'ignore');
+    const pending = run(process.execPath, installer('exit'), 'ignore');
+    const helper = await started();
 
-    expect(error).toBeUndefined();
-    expect(alive(helperPid())).toBe(false);
+    expect(await pending).toBeUndefined();
+    expect(alive(helper)).toBe(false);
   }, 15_000);
+
+  it('escalates a forwarded interrupt the installer ignores', async () => {
+    const { pending, interrupt } = runWithInterrupt(installer('stubborn'));
+    const helper = await started();
+
+    const begun = Date.now();
+    interrupt('SIGINT');
+    expect(await pending).toContain('interrupted by SIGINT');
+    expect(Date.now() - begun).toBeLessThan(10_000);
+    expect(alive(helper)).toBe(false);
+  }, 15_000);
+
+  it('kills the installer at once on a second interrupt', async () => {
+    const { pending, interrupt } = runWithInterrupt(installer('stubborn'));
+    const helper = await started();
+
+    const begun = Date.now();
+    interrupt('SIGINT');
+    interrupt('SIGINT');
+    expect(await pending).toContain('interrupted by SIGINT');
+    expect(Date.now() - begun).toBeLessThan(2_000);
+    expect(alive(helper)).toBe(false);
+  });
 });
