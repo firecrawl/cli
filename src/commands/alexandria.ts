@@ -546,24 +546,26 @@ export function listedProviderSkills(
     if (providerSlugOf(skill?.provider) !== options.provider) return false;
     const plugin = pluginIdOf(skill?.plugin);
     const slug = skillSlugOf(skill);
+    if (words.length) {
+      const pluginRecord =
+        skill?.plugin && typeof skill.plugin === 'object' ? skill.plugin : {};
+      const haystack = [
+        skill.id,
+        skill.name,
+        skill.description,
+        slug,
+        plugin,
+        pluginRecord.displayName,
+      ]
+        .filter((value) => typeof value === 'string')
+        .join(' ')
+        .toLowerCase();
+      if (!words.every((word) => haystack.includes(word))) return false;
+    }
     const key = `${options.provider}/${plugin ?? ''}/${slug ?? skill?.id ?? ''}`;
     if (seen.has(key)) return false;
     seen.add(key);
-    if (!words.length) return true;
-    const pluginRecord =
-      skill?.plugin && typeof skill.plugin === 'object' ? skill.plugin : {};
-    const haystack = [
-      skill.id,
-      skill.name,
-      skill.description,
-      slug,
-      plugin,
-      pluginRecord.displayName,
-    ]
-      .filter((value) => typeof value === 'string')
-      .join(' ')
-      .toLowerCase();
-    return words.every((word) => haystack.includes(word));
+    return true;
   });
   return { skills };
 }
@@ -627,7 +629,7 @@ async function handleProviderSkillList(
   try {
     const skills: any[] = [];
     const seen = new Set<string>();
-    let total = 0;
+    let reportedTotal: number | undefined;
     let page = 1;
     while (skills.length < want && page <= 20) {
       const params = new URLSearchParams({
@@ -663,25 +665,29 @@ async function handleProviderSkillList(
         seen.add(key);
         skills.push(skill);
       }
-      const reported =
-        listed.body && typeof listed.body.total === 'number'
-          ? listed.body.total
-          : skills.length;
-      total = reported;
+      const hasTotal = listed.body && typeof listed.body.total === 'number';
+      if (hasTotal) reportedTotal = listed.body.total;
       const pageSize =
         listed.body &&
         typeof listed.body.limit === 'number' &&
         listed.body.limit > 0
           ? listed.body.limit
-          : batch.length;
+          : 20;
       if (!batch.length || skills.length === before) break;
-      if (skills.length >= total || page * pageSize >= total) break;
+      if (hasTotal && reportedTotal !== undefined) {
+        if (skills.length >= reportedTotal || page * pageSize >= reportedTotal)
+          break;
+      } else if (batch.length < pageSize) break;
       page += 1;
     }
     emitAlexandria(
       {
         success: true,
-        data: { provider, skills: skills.slice(0, want), total },
+        data: {
+          provider,
+          skills: skills.slice(0, want),
+          total: reportedTotal ?? skills.length,
+        },
         requestId,
       },
       options

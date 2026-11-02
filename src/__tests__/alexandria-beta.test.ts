@@ -1187,6 +1187,40 @@ it('pages through a provider skill catalogue', async () => {
   ]);
 });
 
+it('keeps paging a provider catalogue that omits total', async () => {
+  const skills = Array.from({ length: 25 }, (_, index) => ({
+    id: `provider:acme/research/note-${index}`,
+    name: `note-${index}`,
+    description: 'A provider skill',
+    provider: { slug: 'acme', name: 'Acme' },
+    plugin: { id: 'research', displayName: 'Research' },
+  }));
+  responseFor = () => {
+    const url = new URL(requests.at(-1)?.url ?? '', 'http://127.0.0.1');
+    const page = Number(url.searchParams.get('page') ?? '1');
+    return {
+      provider: { slug: 'acme', name: 'Acme' },
+      skills: skills.slice((page - 1) * 20, page * 20),
+      page,
+      limit: 20,
+    };
+  };
+  const listed = await cli([
+    'find-skills',
+    '--provider',
+    'acme',
+    '--limit',
+    '25',
+    '--json',
+  ]);
+  expect(listed.code).toBe(0);
+  expect(JSON.parse(listed.stdout).data.skills).toHaveLength(25);
+  expect(requests.map((request) => request.url)).toEqual([
+    '/exchange/provider-skills?provider=acme&page=1&limit=20',
+    '/exchange/provider-skills?provider=acme&page=2&limit=20',
+  ]);
+});
+
 it('fills a missing discovery price from the merged catalog when costs are requested', async () => {
   response = catalogue('tools', [
     {

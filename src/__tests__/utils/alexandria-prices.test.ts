@@ -118,7 +118,7 @@ describe('provider skills', () => {
       {
         id: 'provider:other/research/brief',
         name: 'brief',
-        description: 'Someone else',
+        description: 'Audience report from someone else',
         provider: { slug: 'other', name: 'Other' },
         plugin: { id: 'research', displayName: 'Research' },
       },
@@ -130,6 +130,7 @@ describe('provider skills', () => {
 
   it('reads the live provider-skills shape, including execution-only skills', () => {
     expect(isExecutionOnlySkill({ visibility: 'Execution_Only' })).toBe(true);
+    expect(isExecutionOnlySkill(carbonArcPage.skills[0])).toBe(true);
     expect(providerSlugOf(carbonArcPage.skills[0].provider)).toBe('carbon-arc');
     expect(pluginIdOf(carbonArcPage.skills[0].plugin)).toBe(
       'carbon-arc-company-intelligence'
@@ -140,6 +141,37 @@ describe('provider skills', () => {
       query: 'audience',
     });
     expect(page.skills.map(skillSlugOf)).toEqual(['ca-audience']);
+    const duplicated = listedProviderSkills(
+      {
+        skills: [
+          {
+            id: 'provider:acme/research/brief',
+            name: 'brief',
+            description: 'plain',
+            provider: { slug: 'acme' },
+            plugin: { id: 'research' },
+          },
+        ],
+        plugins: [
+          {
+            id: 'research',
+            skills: [
+              {
+                id: 'provider:acme/research/brief',
+                name: 'brief',
+                description: 'audience brief',
+                provider: { slug: 'acme' },
+                plugin: { id: 'research' },
+              },
+            ],
+          },
+        ],
+      },
+      { provider: 'acme', query: 'audience' }
+    );
+    expect(duplicated.skills.map((skill) => skill.description)).toEqual([
+      'audience brief',
+    ]);
     const nested = listedProviderSkills(
       {
         providers: [
