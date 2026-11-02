@@ -35,8 +35,17 @@ describe('satisfiesRange', () => {
     expect(satisfiesRange('22.5.0', '> 22.4.9')).toBe(true);
   });
 
-  it('treats syntax it does not recognize as unsatisfied', () => {
-    expect(satisfiesRange('24.22.1', '22 - 24')).toBe(false);
-    expect(satisfiesRange('24.22.1', 'latest')).toBe(false);
+  it('reads hyphen ranges with an inclusive upper bound', () => {
+    expect(satisfiesRange('24.22.1', '22 - 24')).toBe(true);
+    expect(satisfiesRange('20.11.0', '18 - 24')).toBe(true);
+    expect(satisfiesRange('25.0.0', '22 - 24')).toBe(false);
+    expect(satisfiesRange('21.9.0', '22 - 24')).toBe(false);
+  });
+
+  it('reports syntax it cannot read as unknown rather than too old', () => {
+    expect(satisfiesRange('24.22.1', 'latest')).toBeUndefined();
+    expect(satisfiesRange('24.22.1', '>=99 || latest')).toBeUndefined();
+    expect(satisfiesRange('24.22.1', 'latest || >=22')).toBe(true);
+    expect(satisfiesRange('20.0.0', '>=22 latest')).toBe(false);
   });
 });

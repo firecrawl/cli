@@ -104,8 +104,10 @@ detached background process, through the channel you installed with:
 - npm, pnpm, bun, and yarn global installs update with that package manager.
   The install rewrites files that a running command may still load, so it
   waits until no other firecrawl command is running (up to 30 minutes, then it
-  tries again on a later run), and a command started during the install waits
-  for it to finish. `firecrawl update` waits the same way.
+  tries again on a later run). A command started during the install waits for
+  it to finish, then runs again on the new version; interactive terminals see a
+  one-line note while it waits. Package installs stop after 3 minutes, so that
+  wait is bounded. `firecrawl update` waits the same way.
 - Standalone binaries from the install script download the release archive for
   your platform, verify it against the release's `checksums.txt`, and replace
   the executable in place.

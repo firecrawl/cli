@@ -89,6 +89,7 @@ import { maybeShowUpdateNotice } from './utils/update-notice';
 import {
   isAutoUpdateWorker,
   registerInvocation,
+  relaunchAfterUpdate,
   runAutoUpdateWorker,
   startAutoUpdate,
   updatesAutomatically,
@@ -2996,7 +2997,10 @@ async function main() {
   const args = process.argv.slice(2);
   const isUpdate = getFirstPositionalArg(args) === 'update';
   const channel = detectInstallChannel();
-  if (!isUpdate) await registerInvocation(channel);
+  if (!isUpdate && (await registerInvocation(channel))) {
+    process.exitCode = relaunchAfterUpdate();
+    return;
+  }
 
   // Handle --version with --auth-status before Commander processes it
   // Commander's built-in --version handler doesn't support additional flags
