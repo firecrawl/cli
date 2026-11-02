@@ -110,8 +110,9 @@ detached background process, through the channel you installed with:
 The command you ran never waits for the update, and the updater never writes to
 stdout, so scripted and agent output stays the same. The next invocation runs
 the new version, and interactive terminals see a one-line note once. Updater
-output goes to `~/.firecrawl/auto-update.log`. After a failed attempt the CLI
-waits 24 hours before trying again and shows the usual update notice meanwhile.
+output goes to `~/.firecrawl/auto-update.log`. A failed install waits 24 hours
+before trying again and a failed version check waits one hour; meanwhile the
+usual update notice appears when a newer version is available.
 
 The CLI shows the update notice instead of updating when a new major version is
 out, when it runs through npx or another package runner or from a project's
@@ -126,7 +127,8 @@ firecrawl update --disable-auto    # persistent, undo with --enable-auto
 export FIRECRAWL_NO_AUTO_UPDATE=1  # per environment
 ```
 
-They are also off whenever `CI` is set. `FIRECRAWL_NO_UPDATE_CHECK=1` turns off
+They are also off when `CI` is set to anything other than `0` or `false`.
+`FIRECRAWL_NO_UPDATE_CHECK=1` turns off
 both automatic updates and update notices.
 
 To update right away, including to a new major version:

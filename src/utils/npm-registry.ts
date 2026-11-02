@@ -25,10 +25,11 @@ export async function getLatestVersion(
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const registry = (process.env.npm_config_registry || REGISTRY_URL).replace(
-      /\/+$/,
-      ''
-    );
+    const registry = (
+      process.env.npm_config_registry ||
+      process.env.NPM_CONFIG_REGISTRY ||
+      REGISTRY_URL
+    ).replace(/\/+$/, '');
     const response = await fetch(`${registry}/${packageName}/latest`, {
       signal: controller.signal,
       headers: { Accept: 'application/json' },
@@ -42,7 +43,10 @@ export async function getLatestVersion(
     }
 
     const data = (await response.json()) as { version?: string };
-    if (typeof data.version !== 'string') {
+    if (
+      typeof data.version !== 'string' ||
+      !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(data.version)
+    ) {
       return { unreachable: true, error: 'Invalid registry response' };
     }
     return { version: data.version, unreachable: false };

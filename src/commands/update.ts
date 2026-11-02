@@ -18,8 +18,18 @@ export async function handleUpdateCommand(
     return;
   }
 
+  if (
+    (options.enableAuto || options.disableAuto) &&
+    !setAutoUpdateEnabled(!!options.enableAuto)
+  ) {
+    console.error(
+      'Could not save the setting to ~/.firecrawl/auto-update.json.'
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   if (options.disableAuto) {
-    setAutoUpdateEnabled(false);
     console.log(
       'Automatic updates are off. Run firecrawl update to update manually.'
     );
@@ -27,7 +37,6 @@ export async function handleUpdateCommand(
   }
 
   if (options.enableAuto) {
-    setAutoUpdateEnabled(true);
     const blocker = autoUpdateBlocker();
     console.log(
       blocker

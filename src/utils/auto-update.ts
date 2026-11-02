@@ -63,13 +63,14 @@ function readState(dir: string): AutoUpdateState {
   }
 }
 
-function writeState(dir: string, patch: Partial<AutoUpdateState>): void {
+function writeState(dir: string, patch: Partial<AutoUpdateState>): boolean {
   try {
     fs.mkdirSync(dir, { recursive: true });
     const next = { ...readState(dir), ...patch };
     fs.writeFileSync(path.join(dir, STATE_FILE), `${JSON.stringify(next)}\n`);
+    return true;
   } catch {
-    // State is best effort; the next run starts from defaults.
+    return false;
   }
 }
 
@@ -94,8 +95,8 @@ export function autoUpdateBlocker(
   return undefined;
 }
 
-export function setAutoUpdateEnabled(enabled: boolean): void {
-  writeState(firecrawlDir(), { disabled: enabled ? undefined : true });
+export function setAutoUpdateEnabled(enabled: boolean): boolean {
+  return writeState(firecrawlDir(), { disabled: enabled ? undefined : true });
 }
 
 function sameMajor(a: string, b: string): boolean {
@@ -466,6 +467,8 @@ export async function runAutoUpdateWorker(): Promise<void> {
       log('Invoking command is still running; retrying on a later run');
       return;
     }
+    const now = new Date();
+    fs.utimesSync(path.join(dir, LOCK_FILE), now, now);
 
     log(
       `Updating ${current} -> ${latest.version} with ${CHANNEL_LABELS[channel.kind]}`
@@ -495,6 +498,10 @@ export async function runAutoUpdateWorker(): Promise<void> {
       },
     });
   } catch (error) {
+    writeState(dir, {
+      retryAt: new Date(Date.now() + FAILURE_BACKOFF_MS).toISOString(),
+      lastError: String(error),
+    });
     if (logFd !== undefined) {
       fs.writeSync(logFd, `[${new Date().toISOString()}] ${String(error)}\n`);
     }
