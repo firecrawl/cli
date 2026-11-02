@@ -580,9 +580,9 @@ async function reapGroup(pid: number): Promise<boolean> {
 /**
  * Resolves to an error message, or undefined when the command succeeded.
  * Package managers start helpers of their own, so the child gets its own
- * process group: a timeout or an interrupt stops all of it, and this resolves
- * only once that group is gone, so the caller's install lock outlives every
- * process that can still write to the install.
+ * process group: a timeout or an interrupt stops all of it, and this waits for
+ * that group to empty. A group that survives the SIGKILL grace is reported as
+ * a failure; the caller still releases its lock. Windows skips the group wait.
  */
 export function run(
   command: string,
