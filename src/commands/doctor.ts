@@ -283,7 +283,7 @@ function checkCliVersion(latest: {
     name: 'CLI Version',
     status: 'warn',
     message: `v${current} (v${latest.version} available)`,
-    fix: 'npm install -g firecrawl-cli',
+    fix: 'firecrawl update',
   };
 }
 

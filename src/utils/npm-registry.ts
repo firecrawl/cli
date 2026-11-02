@@ -17,17 +17,20 @@ export interface LatestVersionResult {
 
 /**
  * Fetch the `latest` dist-tag for a package. Returns `unreachable: true` on
- * any failure so callers can degrade to a warn instead of a fail.
+ * any failure so callers can degrade to a warn instead of a fail. A registry
+ * passed in takes precedence over the environment.
  */
 export async function getLatestVersion(
   packageName: string,
-  timeoutMs = 2000
+  timeoutMs = 2000,
+  configuredRegistry?: string
 ): Promise<LatestVersionResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const registry = (
+      configuredRegistry ||
       process.env.npm_config_registry ||
       process.env.NPM_CONFIG_REGISTRY ||
       REGISTRY_URL

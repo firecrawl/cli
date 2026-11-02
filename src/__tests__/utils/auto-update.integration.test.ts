@@ -95,6 +95,23 @@ describe('install coordination', () => {
     expect(fs.existsSync(reused)).toBe(false);
   });
 
+  it.skipIf(process.platform === 'win32')(
+    'keeps counting a stopped command that missed its heartbeats',
+    () => {
+      const command = spawn(
+        process.execPath,
+        ['-e', 'setTimeout(() => {}, 60000)', 'firecrawl'],
+        { stdio: 'ignore' }
+      );
+      children.push(command);
+      command.kill('SIGSTOP');
+      const stopped = entry(command.pid!, 11 * 60 * 1000);
+
+      expect(otherInvocations(firecrawlDir())).toBe(1);
+      expect(fs.existsSync(stopped)).toBe(true);
+    }
+  );
+
   it('registers a command without waiting when nothing is installing', async () => {
     await expect(registerInvocation(npmChannel, terminal())).resolves.toBe(
       false
@@ -124,6 +141,57 @@ describe('install coordination', () => {
     expect(write).toHaveBeenCalledWith(
       expect.stringContaining('Waiting for a firecrawl update')
     );
+  });
+
+  it('relaunches only when another release was installed meanwhile', async () => {
+    const packageRoot = path.join(home, 'firecrawl-cli');
+    fs.mkdirSync(packageRoot, { recursive: true });
+    fs.writeFileSync(
+      path.join(packageRoot, 'package.json'),
+      JSON.stringify({ version: packageJson.version })
+    );
+    fs.mkdirSync(firecrawlDir(), { recursive: true });
+    fs.writeFileSync(installLock(), JSON.stringify({ pid: liveProcess().pid }));
+    setTimeout(() => fs.rmSync(installLock(), { force: true }), 300);
+
+    await expect(
+      registerInvocation({ ...npmChannel, packageRoot }, terminal())
+    ).resolves.toBe(false);
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits on a lock that is still being written, but not on an abandoned one', async () => {
+    fs.mkdirSync(firecrawlDir(), { recursive: true });
+    fs.writeFileSync(installLock(), '');
+    setTimeout(() => fs.rmSync(installLock(), { force: true }), 300);
+    await expect(registerInvocation(npmChannel, terminal())).resolves.toBe(
+      true
+    );
+
+    fs.writeFileSync(installLock(), '');
+    const at = new Date(Date.now() - 2 * 60 * 1000);
+    fs.utimesSync(installLock(), at, at);
+    const started = Date.now();
+    await expect(registerInvocation(npmChannel, terminal())).resolves.toBe(
+      false
+    );
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it('ignores an install lock taken before the machine last booted', async () => {
+    fs.mkdirSync(firecrawlDir(), { recursive: true });
+    fs.writeFileSync(
+      installLock(),
+      JSON.stringify({
+        pid: liveProcess().pid,
+        bootedAt: Date.now() - os.uptime() * 1000 - 24 * 3_600_000,
+      })
+    );
+
+    await expect(registerInvocation(npmChannel, terminal())).resolves.toBe(
+      false
+    );
+    expect(write).not.toHaveBeenCalled();
   });
 
   it('ignores an install lock left by a process that is gone', async () => {
@@ -190,15 +258,31 @@ describe('startAutoUpdate', () => {
     fs.rmSync(home, { recursive: true, force: true });
   });
 
+  const binary = (): InstallChannel => ({
+    kind: 'binary',
+    executable: path.join(home, 'firecrawl'),
+    asset: 'firecrawl-linux-x64',
+  });
+
+  it('never starts an update for a package manager install', async () => {
+    cache('1.0.0', 48);
+    await expect(
+      startAutoUpdate({ channel: npmChannel, stderr: quiet })
+    ).resolves.toBe(false);
+    expect(
+      fs.existsSync(path.join(home, '.firecrawl', 'auto-update.lock'))
+    ).toBe(false);
+  });
+
   it('leaves a new major version to the notice, even from a stale cache', async () => {
     cache('99.0.0', 1);
     await expect(
-      startAutoUpdate({ channel: npmChannel, stderr: quiet })
+      startAutoUpdate({ channel: binary(), stderr: quiet })
     ).resolves.toBe(false);
 
     cache('99.0.0', 48);
     await expect(
-      startAutoUpdate({ channel: npmChannel, stderr: quiet })
+      startAutoUpdate({ channel: binary(), stderr: quiet })
     ).resolves.toBe(false);
     expect(
       fs.existsSync(path.join(home, '.firecrawl', 'auto-update.lock'))
@@ -208,7 +292,7 @@ describe('startAutoUpdate', () => {
   it('keeps the notice quiet when the cache shows this release is current', async () => {
     cache(packageJson.version, 1);
     await expect(
-      startAutoUpdate({ channel: npmChannel, stderr: quiet })
+      startAutoUpdate({ channel: binary(), stderr: quiet })
     ).resolves.toBe(true);
   });
 });
@@ -293,7 +377,7 @@ setInterval(() => {}, 1000);
 
     expect(await pending).toContain('timed out');
     expect(alive(helper)).toBe(false);
-  });
+  }, 15_000);
 
   it('waits for helpers an installer leaves behind before it resolves', async () => {
     const pending = run(process.execPath, installer('exit'), 'ignore');

@@ -33,7 +33,6 @@ const LOG_FILE = 'auto-update.log';
 const RUNNING_DIR = 'running';
 const WORKER_ENV = 'FIRECRAWL_AUTO_UPDATE_WORKER';
 const RELEASES_URL = 'https://github.com/firecrawl/cli/releases/download';
-const LOCK_STALE_MS = 45 * 60 * 1000;
 const IDLE_WAIT_MS = 30 * 60 * 1000;
 const CHECK_RETRY_MS = 60 * 60 * 1000;
 const FAILURE_BACKOFF_MS = 24 * 60 * 60 * 1000;
@@ -43,9 +42,11 @@ const PACKAGE_INSTALL_TIMEOUT_MS = 3 * 60 * 1000;
 const KILL_GRACE_MS = 5 * 1000;
 const HEARTBEAT_MS = 60 * 1000;
 const HEARTBEAT_STALE_MS = 10 * 60 * 1000;
+// A lock file exists for a moment before its pid is written.
+const LOCK_WRITE_GRACE_MS = 10 * 1000;
+const BOOT_TOLERANCE_MS = 5 * 60 * 1000;
 const LOG_MAX_BYTES = 256 * 1024;
 const IN_PLACE = new Set(['npm', 'pnpm', 'bun', 'yarn']);
-const AUTOMATIC = new Set([...IN_PLACE, 'binary']);
 
 const CHANNEL_LABELS = {
   npm: 'npm',
@@ -125,9 +126,16 @@ export function setAutoUpdateEnabled(enabled: boolean): boolean {
   );
 }
 
-/** Homebrew stays on the notice: an unattended brew upgrade can update brew and other formulae. */
-export function updatesAutomatically(channel: InstallChannel): boolean {
-  return AUTOMATIC.has(channel.kind);
+/**
+ * Only the standalone binary updates in the background, since it swaps in with
+ * one atomic rename. A package manager removes and rewrites the launcher and
+ * the files a starting command loads, and an unattended brew upgrade can update
+ * brew and other formulae, so those installs get the notice instead.
+ */
+export function updatesAutomatically(
+  channel: InstallChannel
+): channel is Extract<InstallChannel, { kind: 'binary' }> {
+  return channel.kind === 'binary';
 }
 
 function sameMajor(a: string, b: string): boolean {
@@ -135,23 +143,15 @@ function sameMajor(a: string, b: string): boolean {
   return major(a) === major(b);
 }
 
-/**
- * A range this cannot read blocks only unattended installs; a foreground
- * install goes ahead and the package manager reports any engine problem.
- */
+/** A range this cannot read lets the install go ahead; the package manager reports any engine problem. */
 function engineMismatch(
   channel: UpdatableChannel,
   version: string,
-  nodeRange: string | undefined,
-  unattended: boolean
+  nodeRange: string | undefined
 ): string | undefined {
   if (!IN_PLACE.has(channel.kind) || !nodeRange) return undefined;
-  const satisfied = satisfiesRange(process.versions.node, nodeRange);
-  if (satisfied === true) return undefined;
-  if (satisfied === undefined) {
-    return unattended
-      ? `firecrawl-cli ${version} declares engines.node "${nodeRange}", which the updater cannot read`
-      : undefined;
+  if (satisfiesRange(process.versions.node, nodeRange) !== false) {
+    return undefined;
   }
   return `firecrawl-cli ${version} requires Node ${nodeRange}, and this is Node ${process.versions.node}`;
 }
@@ -170,9 +170,30 @@ function runningDir(dir: string): string {
 }
 
 /**
- * Counts other live invocations and prunes the rest. An entry also needs a
- * recent heartbeat, since a killed process leaves its entry behind and its
- * pid can later belong to an unrelated process.
+ * Whether pid runs a firecrawl command. A stopped or suspended command misses
+ * heartbeats but still runs firecrawl, while a reused pid runs something else.
+ */
+function runsFirecrawl(pid: number): boolean {
+  try {
+    const args =
+      process.platform === 'linux'
+        ? fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8')
+        : spawnSync('ps', ['-p', String(pid), '-o', 'args='], {
+            encoding: 'utf8',
+            timeout: 2000,
+            windowsHide: true,
+          }).stdout;
+    return Boolean(args?.includes('firecrawl'));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Counts other live invocations and prunes the rest. A killed process leaves
+ * its entry behind and its pid can later belong to an unrelated process, so
+ * an entry without a recent heartbeat counts only while its pid still runs
+ * firecrawl.
  */
 export function otherInvocations(dir: string): number {
   let entries: string[];
@@ -192,7 +213,12 @@ export function otherInvocations(dir: string): number {
     } catch {
       continue;
     }
-    if (Number.isInteger(pid) && pid > 0 && fresh && isAlive(pid)) count++;
+    const live =
+      Number.isInteger(pid) &&
+      pid > 0 &&
+      isAlive(pid) &&
+      (fresh || runsFirecrawl(pid));
+    if (live) count++;
     else fs.rmSync(file, { force: true });
   }
   return count;
@@ -210,16 +236,66 @@ function installLockPath(dir: string): string {
   return path.join(dir, INSTALL_LOCK_FILE);
 }
 
-/** A lock is held while it is recent and the process that took it is alive. */
+function bootTime(): number {
+  return Date.now() - os.uptime() * 1000;
+}
+
+/**
+ * A lock is held while the process that took it is alive and keeps it fresh.
+ * A pid recorded before the last boot, or in a lock nobody refreshes, may now
+ * belong to an unrelated process.
+ */
 function lockHeld(file: string): boolean {
+  let age: number;
   try {
-    if (Date.now() - fs.statSync(file).mtimeMs >= LOCK_STALE_MS) return false;
+    age = Date.now() - fs.statSync(file).mtimeMs;
   } catch {
     return false;
   }
-  const pid = readJson(file).pid;
-  return typeof pid !== 'number' || isAlive(pid);
+  const { pid, bootedAt } = readJson(file);
+  if (typeof pid !== 'number') return age < LOCK_WRITE_GRACE_MS;
+  if (
+    typeof bootedAt === 'number' &&
+    Math.abs(bootedAt - bootTime()) > BOOT_TOLERANCE_MS
+  ) {
+    return false;
+  }
+  return age < HEARTBEAT_STALE_MS && isAlive(pid);
 }
+
+/**
+ * Replaces a stale lock under a short-lived guard. The lock file never
+ * disappears during a takeover, so a process creating it fresh cannot slip in
+ * between the staleness check and the replacement.
+ */
+function takeOverStaleLock(file: string, content: string): boolean {
+  const guard = `${file}.takeover`;
+  try {
+    fs.writeFileSync(guard, '', { flag: 'wx' });
+  } catch {
+    try {
+      if (Date.now() - fs.statSync(guard).mtimeMs > LOCK_WRITE_GRACE_MS) {
+        fs.rmSync(guard, { force: true });
+      }
+    } catch {
+      // Another process just released the guard.
+    }
+    return false;
+  }
+  try {
+    if (!fs.existsSync(file) || lockHeld(file)) return false;
+    const staged = `${file}.${process.pid}`;
+    fs.writeFileSync(staged, content);
+    fs.renameSync(staged, file);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    fs.rmSync(guard, { force: true });
+  }
+}
+
+const lockHeartbeats = new Map<string, NodeJS.Timeout>();
 
 /** 'failed' means the lock file could not be written at all, not that someone holds it. */
 function acquireLock(file: string): 'acquired' | 'held' | 'failed' {
@@ -228,22 +304,33 @@ function acquireLock(file: string): 'acquired' | 'held' | 'failed' {
   } catch {
     return 'failed';
   }
+  const content = JSON.stringify({ pid: process.pid, bootedAt: bootTime() });
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      fs.writeFileSync(file, JSON.stringify({ pid: process.pid }), {
-        flag: 'wx',
-      });
-      return 'acquired';
+      fs.writeFileSync(file, content, { flag: 'wx' });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') return 'failed';
       if (lockHeld(file)) return 'held';
-      fs.rmSync(file, { force: true });
+      if (!takeOverStaleLock(file, content)) continue;
     }
+    const heartbeat = setInterval(() => {
+      try {
+        const now = new Date();
+        fs.utimesSync(file, now, now);
+      } catch {
+        // The lock goes stale, which only lets another updater start sooner.
+      }
+    }, HEARTBEAT_MS);
+    heartbeat.unref();
+    lockHeartbeats.set(file, heartbeat);
+    return 'acquired';
   }
   return 'held';
 }
 
 function releaseLock(file: string): void {
+  clearInterval(lockHeartbeats.get(file));
+  lockHeartbeats.delete(file);
   try {
     if (readJson(file).pid === process.pid) fs.rmSync(file, { force: true });
   } catch {
@@ -263,14 +350,14 @@ export function unregisterInvocation(): void {
  * Package installs are rewritten in place and commands load modules lazily.
  * Each invocation registers itself so an install waits for it, and waits
  * for an install that is already running before it continues. Resolves true
- * when an install finished while it waited: this process already loaded the
- * old release, so the caller should relaunch on the new one.
+ * when another release was installed while it waited: this process already
+ * loaded the old one, so the caller should relaunch on the new one.
  */
 export async function registerInvocation(
   channel: InstallChannel,
   stderr: Pick<NodeJS.WriteStream, 'write' | 'isTTY'> = process.stderr
 ): Promise<boolean> {
-  if (!IN_PLACE.has(channel.kind)) return false;
+  if (!IN_PLACE.has(channel.kind) || !('packageRoot' in channel)) return false;
   const dir = firecrawlDir();
   const file = path.join(runningDir(dir), String(process.pid));
   // Rewriting the entry also recreates it if a pruner removed it.
@@ -313,25 +400,45 @@ export async function registerInvocation(
     waited = true;
     await sleep(200);
   }
-  return waited && !lockHeld(lock);
+  return (
+    waited &&
+    !lockHeld(lock) &&
+    installedVersion(channel.packageRoot) !== packageJson.version
+  );
 }
 
-/** Runs this command again in a new process, which loads only the installed release. */
-export function relaunchAfterUpdate(): number {
+/**
+ * Runs this command again in a new process, which loads only the installed
+ * release, and resolves to its exit code, or 128 plus the signal number when a
+ * signal stopped it. Signals sent to this process are passed on.
+ */
+export function relaunchAfterUpdate(): Promise<number> {
   unregisterInvocation();
   const script = process.argv[1];
   if (!script || !fs.existsSync(script)) {
     console.error(
       'firecrawl was updated while this command waited. Run the command again.'
     );
-    return 1;
+    return Promise.resolve(1);
   }
-  const result = spawnSync(
-    process.execPath,
-    [...process.execArgv, script, ...process.argv.slice(2)],
-    { stdio: 'inherit' }
-  );
-  return result.status ?? 1;
+  return new Promise((resolve) => {
+    const child = spawn(
+      process.execPath,
+      [...process.execArgv, script, ...process.argv.slice(2)],
+      { stdio: 'inherit' }
+    );
+    const forwarded = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+    const forward = (signal: NodeJS.Signals) => child.kill(signal);
+    for (const signal of forwarded) process.on(signal, forward);
+    const finish = (code: number) => {
+      for (const signal of forwarded) process.off(signal, forward);
+      resolve(code);
+    };
+    child.on('error', () => finish(1));
+    child.on('exit', (code, signal) =>
+      finish(code ?? 128 + (signal ? os.constants.signals[signal] : 0))
+    );
+  });
 }
 
 /**
@@ -398,11 +505,44 @@ function childEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return env;
 }
 
-/** Signals a child and everything it started: its process group, or its tree on Windows. */
+function npmEnv(channel: UpdatableChannel): NodeJS.ProcessEnv {
+  return childEnv(
+    channel.kind === 'npm' ? { npm_config_prefix: channel.prefix } : {}
+  );
+}
+
+/**
+ * npm and pnpm also read the registry from npmrc files, which the version
+ * check cannot see, so ask the one that will install. Only the URL is read.
+ */
+function configuredRegistry(channel: UpdatableChannel): string | undefined {
+  if (channel.kind !== 'npm' && channel.kind !== 'pnpm') return undefined;
+  const windows = process.platform === 'win32';
+  const result = spawnSync(
+    windows ? `${channel.kind}.cmd` : channel.kind,
+    ['config', 'get', 'registry'],
+    {
+      cwd: os.tmpdir(),
+      env: npmEnv(channel),
+      encoding: 'utf8',
+      shell: windows,
+      timeout: 10_000,
+      windowsHide: true,
+    }
+  );
+  const registry = result.stdout?.trim();
+  return registry && /^https?:\/\//.test(registry) ? registry : undefined;
+}
+
+/**
+ * Signals a child and everything it started: its process group, or its tree on
+ * Windows, where only SIGKILL forces the tree to close.
+ */
 function signalTree(pid: number, signal: NodeJS.Signals): void {
   try {
     if (process.platform === 'win32') {
-      spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], {
+      const force = signal === 'SIGKILL' ? ['/F'] : [];
+      spawnSync('taskkill', ['/pid', String(pid), '/T', ...force], {
         stdio: 'ignore',
         windowsHide: true,
       });
@@ -637,37 +777,38 @@ async function replaceBinary(
 async function installVersion(
   channel: UpdatableChannel,
   version: string,
-  stdio: StdioOptions,
   log: Log
 ): Promise<Outcome> {
   const spec = `firecrawl-cli@${version}`;
   const failed = (message: string): Outcome => ({ status: 'failed', message });
-  const timeoutMs = PACKAGE_INSTALL_TIMEOUT_MS;
+  // A global install must not pick up the project files (package.json,
+  // .npmrc, bunfig.toml) of whatever directory the command ran in.
+  const options = { cwd: os.tmpdir(), timeoutMs: PACKAGE_INSTALL_TIMEOUT_MS };
   let error: string | undefined;
   switch (channel.kind) {
     case 'npm':
-      error = await run('npm', ['install', '-g', spec], stdio, {
-        env: childEnv({ npm_config_prefix: channel.prefix }),
-        timeoutMs,
+      error = await run('npm', ['install', '-g', spec], 'inherit', {
+        ...options,
+        env: npmEnv(channel),
       });
       return error
         ? failed(error)
         : verifyPackage(channel.packageRoot, version);
     case 'pnpm':
-      error = await run('pnpm', ['add', '-g', spec], stdio, { timeoutMs });
+      error = await run('pnpm', ['add', '-g', spec], 'inherit', options);
       return error ? failed(error) : verifyPnpm(channel.packageRoot, version);
     case 'bun':
-      error = await run('bun', ['add', '-g', spec], stdio, { timeoutMs });
+      error = await run('bun', ['add', '-g', spec], 'inherit', options);
       return error
         ? failed(error)
         : verifyPackage(channel.packageRoot, version);
     case 'yarn':
-      error = await run('yarn', ['global', 'add', spec], stdio, { timeoutMs });
+      error = await run('yarn', ['global', 'add', spec], 'inherit', options);
       return error
         ? failed(error)
         : verifyPackage(channel.packageRoot, version);
     case 'brew':
-      error = await run('brew', ['upgrade', 'firecrawl-cli'], stdio);
+      error = await run('brew', ['upgrade', 'firecrawl-cli'], 'inherit');
       return error ? failed(error) : verifyKeg(channel.cellar, version);
     case 'binary':
       return replaceBinary(channel, version, log);
@@ -768,7 +909,7 @@ export async function runAutoUpdateWorker(): Promise<void> {
     const channel = detectInstallChannel();
     const current = packageJson.version;
     if (autoUpdateBlocker() || !updatesAutomatically(channel)) return;
-    if (channel.kind === 'unsupported' || isPrerelease(current)) return;
+    if (isPrerelease(current)) return;
 
     const latest = await getLatestVersion(packageJson.name, 10_000);
     if (latest.unreachable || !latest.version) {
@@ -792,19 +933,6 @@ export async function runAutoUpdateWorker(): Promise<void> {
       log(`${latest.version} is a new major version; leaving it to the notice`);
       return;
     }
-    const mismatch = engineMismatch(
-      channel,
-      latest.version,
-      latest.nodeRange,
-      true
-    );
-    if (mismatch) {
-      log(`Skipping: ${mismatch}`);
-      updateState(dir, {
-        retryAt: new Date(Date.now() + FAILURE_BACKOFF_MS).toISOString(),
-      });
-      return;
-    }
     const claim = await claimInstall(dir, channel);
     if (claim !== 'claimed') {
       log(
@@ -817,20 +945,11 @@ export async function runAutoUpdateWorker(): Promise<void> {
       return;
     }
     if (autoUpdateBlocker()) return;
-    if (alreadyInstalled(channel, latest.version)) {
-      log(`${latest.version} is already installed`);
-      return;
-    }
 
     log(
       `Updating ${current} -> ${latest.version} with ${CHANNEL_LABELS[channel.kind]}`
     );
-    const outcome = await installVersion(
-      channel,
-      latest.version,
-      ['ignore', fd, fd],
-      log
-    );
+    const outcome = await replaceBinary(channel, latest.version, log);
     if (outcome.status === 'installed') {
       log(`Updated to ${latest.version}`);
       updateState(dir, {
@@ -900,7 +1019,11 @@ export async function updateNow(): Promise<boolean> {
     return true;
   }
 
-  const latest = await getLatestVersion(packageJson.name, 10_000);
+  const latest = await getLatestVersion(
+    packageJson.name,
+    10_000,
+    configuredRegistry(channel)
+  );
   if (latest.unreachable || !latest.version) {
     console.error(
       `Could not check for updates: ${latest.error ?? 'no version returned'}`
@@ -911,12 +1034,7 @@ export async function updateNow(): Promise<boolean> {
     console.log(`firecrawl ${current} is up to date.`);
     return true;
   }
-  const mismatch = engineMismatch(
-    channel,
-    latest.version,
-    latest.nodeRange,
-    false
-  );
+  const mismatch = engineMismatch(channel, latest.version, latest.nodeRange);
   if (mismatch) {
     console.error(
       `${mismatch}. Upgrade Node, then run firecrawl update again.`
@@ -951,11 +1069,8 @@ export async function updateNow(): Promise<boolean> {
     );
     // The installer keeps the terminal for prompts (registry login, one-time
     // passwords): a process in its own session may still read it.
-    const outcome = await installVersion(
-      channel,
-      latest.version,
-      'inherit',
-      (message) => console.log(message)
+    const outcome = await installVersion(channel, latest.version, (message) =>
+      console.log(message)
     );
     if (outcome.status === 'failed') {
       console.error(`Update failed: ${outcome.message}`);

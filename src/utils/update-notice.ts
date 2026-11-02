@@ -99,13 +99,14 @@ export async function writeCachedLatest(
   cachePath: string,
   cache: UpdateCache
 ): Promise<void> {
+  const staged = `${cachePath}.${process.pid}.tmp`;
   try {
     await fs.mkdir(path.dirname(cachePath), { recursive: true });
-    const staged = `${cachePath}.${process.pid}.tmp`;
     await fs.writeFile(staged, `${JSON.stringify(cache)}\n`, 'utf-8');
     await fs.rename(staged, cachePath);
   } catch {
     // Update checks should never make a real command fail.
+    await fs.rm(staged, { force: true }).catch(() => {});
   }
 }
 

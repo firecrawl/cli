@@ -97,38 +97,37 @@ firecrawl setup workflows
 
 ### CLI updates
 
-The CLI keeps itself current. About once a day it checks npm for a newer
-release, and when one exists in the same major version it installs it in a
-detached background process, through the channel you installed with:
+Standalone binaries from the install script keep themselves current on macOS
+and Linux. About once a day the CLI checks npm for a newer release in the same
+major version and, in a detached background process, downloads the release
+archive for your platform, verifies it against the release's `checksums.txt`,
+and swaps in the new executable with one atomic rename. The command that starts
+the check does not wait for it, and the updater never writes to stdout, so
+scripted and agent output stays the same. The next invocation runs the new
+version, and interactive terminals see a one-line note once. Updater output goes
+to `~/.firecrawl/auto-update.log`. A failed install waits 24 hours before trying
+again and a failed version check waits one hour; meanwhile the usual update
+notice appears when a newer version is available.
 
-- npm, pnpm, bun, and yarn global installs update with that package manager.
-  The install rewrites files that a running command may still load, so it
-  waits until no other firecrawl command is running (up to 30 minutes, then it
-  tries again on a later run). A command started during the install waits for
-  it to finish, then runs again on the new version; interactive terminals see a
-  one-line note while it waits. Package installs stop after 3 minutes, so that
-  wait is bounded. `firecrawl update` waits the same way.
-- Standalone binaries from the install script download the release archive for
-  your platform, verify it against the release's `checksums.txt`, and replace
-  the executable in place.
+Every other install shows the update notice instead of updating itself:
 
-The check and the install run in a detached process, so the command that starts
-them does not wait for either, and the updater never writes to stdout, so
-scripted and agent output stays the same. The exception is a command that starts
-while a package install is already running: it waits for that install (about
-three and a half minutes at most) and then runs on the new version. The next
-invocation runs the new version, and interactive terminals see a one-line note
-once. Updater output goes to `~/.firecrawl/auto-update.log`. A failed install
-waits 24 hours before trying again and a failed version check waits one hour;
-meanwhile the usual update notice appears when a newer version is available.
+- npm, pnpm, bun, and yarn global installs: run `firecrawl update`, which
+  updates with the package manager that installed the CLI. The package manager
+  rewrites files that a running command may still load, so `firecrawl update`
+  first waits until no other firecrawl command is running, and a command that
+  starts during the install waits for it (about three and a half minutes at
+  most), then runs again on the new version. The package manager also removes
+  and replaces the `firecrawl` launcher itself, so a command launched at that
+  moment can fail with "command not found" or a missing module error before it
+  gets the chance to wait; run it again.
+- Homebrew installs: run `brew upgrade firecrawl-cli`.
+- npx and other package runners, a project's local `node_modules`, system
+  packages (deb, rpm, apk, pacman), install locations that are not writable
+  without sudo, and standalone Windows binaries: update the way you installed.
 
-The CLI shows the update notice instead of updating when a new major version is
-out, when it runs through npx or another package runner or from a project's
-local `node_modules`, when a system package (deb, rpm, apk, pacman) owns it,
-when its install location is not writable without sudo, for Homebrew installs
-(run `brew upgrade firecrawl-cli`), and for standalone Windows binaries. A
-release that needs a newer Node.js than the one running is skipped until Node
-is upgraded. Prerelease builds stay on the version you installed and show no
+A new major version always arrives as a notice, standalone binaries included.
+`firecrawl update` does not install a release that needs a newer Node.js than
+the one running. Prerelease builds stay on the version you installed and show no
 notice.
 
 Turn automatic updates off with either of:
@@ -150,7 +149,9 @@ To update right away, including to a new major version:
 firecrawl update
 ```
 
-Version checks honor `npm_config_registry`. Standalone binaries download from
+Version checks honor `npm_config_registry`, and `firecrawl update` on an npm or
+pnpm install also reads the registry from that package manager's configuration.
+Standalone binaries download from
 GitHub releases; set `FIRECRAWL_RELEASES_URL` to a mirror with the same layout.
 
 ### Skill updates

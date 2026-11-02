@@ -92,7 +92,6 @@ import {
   relaunchAfterUpdate,
   runAutoUpdateWorker,
   startAutoUpdate,
-  updatesAutomatically,
 } from './utils/auto-update';
 import { detectInstallChannel } from './utils/install-channel';
 import { handleUpdateCommand } from './commands/update';
@@ -2998,7 +2997,7 @@ async function main() {
   const isUpdate = getFirstPositionalArg(args) === 'update';
   const channel = detectInstallChannel();
   if (!isUpdate && (await registerInvocation(channel))) {
-    process.exitCode = relaunchAfterUpdate();
+    process.exitCode = await relaunchAfterUpdate();
     return;
   }
 
@@ -3022,7 +3021,10 @@ async function main() {
 
   if (!isUpdate && !(await startAutoUpdate({ channel }))) {
     await maybeShowUpdateNotice({
-      command: updatesAutomatically(channel) ? 'firecrawl update' : undefined,
+      command:
+        channel.kind === 'brew' || channel.kind === 'unsupported'
+          ? undefined
+          : 'firecrawl update',
     });
   }
   const isSetup =
