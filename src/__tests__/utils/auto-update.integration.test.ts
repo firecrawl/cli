@@ -24,6 +24,7 @@ describe('install coordination', () => {
   let saved: { HOME?: string; USERPROFILE?: string };
   let children: ChildProcess[];
   let write: ReturnType<typeof vi.fn>;
+  let uptime: { mockRestore: () => void };
 
   const firecrawlDir = () => path.join(home, '.firecrawl');
   const runningDir = () => path.join(firecrawlDir(), 'running');
@@ -71,9 +72,13 @@ describe('install coordination', () => {
     process.env.USERPROFILE = home;
     children = [];
     write = vi.fn();
+    // Stale entries are backdated past what a freshly booted CI runner has been up.
+    const booted = os.uptime() + 24 * 3600;
+    uptime = vi.spyOn(os, 'uptime').mockReturnValue(booted);
   });
 
   afterEach(() => {
+    uptime.mockRestore();
     unregisterInvocation();
     for (const child of children) child.kill('SIGKILL');
     for (const [key, value] of Object.entries(saved)) {
