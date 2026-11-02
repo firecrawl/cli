@@ -1327,7 +1327,7 @@ Discovery is free. These merged execution prices are what a call costs; People D
 - Influencers.club: 165 per connected-socials call; 45 per creator returned by search (56 with `return_filter_values`); 50 per similar creator; 330 per audience-overlap or full enrich call; 150 per profile enrich; 264 per analytics enrich; 17 per email enrich; 10 per raw enrich, posts call, or post details call (20 for a TikTok transcript); dictionary lookups are free.
 - People Data Labs: `person/enrich` and `person/identify` are 60 per successful call; `person/search`, `person/bulk`, `company/search`, and `company/bulk` are 50 per returned or matched record; `company/enrich` is 50 per successful call; preview, IP enrich, and jobs endpoints are 1; cleaners and autocomplete are free.
 
-`list` and search hide per-capability prices unless you pass `--include-costs`.
+`list` and `find-tools` hide per-capability prices unless you pass `--include-costs`. When that flag is set and a discovered tool has no price of its own, the CLI fills the merged price from this list. `search` always omits tool prices.
 
 ### Alexandria receipts and retries
 

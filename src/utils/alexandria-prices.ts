@@ -64,6 +64,74 @@ export function withoutResultPrices(
   return { ...envelope, data };
 }
 
+/** Fills a missing discovery price from the merged catalog. API prices stay. */
+export function withCatalogToolPrice<T>(tool: T): T {
+  if (!tool || typeof tool !== 'object' || Array.isArray(tool)) return tool;
+  const record = tool as Record<string, unknown>;
+  if (typeof record.creditsCost === 'number') return tool;
+  if (
+    typeof record.provider !== 'string' ||
+    typeof record.capability !== 'string'
+  )
+    return tool;
+  const price = alexandriaPrice(record.provider, record.capability);
+  if (!price) return tool;
+  return {
+    ...record,
+    creditsCost: price.credits,
+    perRecord:
+      price.per === 'returned or matched record' ||
+      price.per === 'creator returned',
+  } as T;
+}
+
+function withCatalogPagePrices(page: any): any {
+  if (!page || typeof page !== 'object') return page;
+  return {
+    ...page,
+    ...(Array.isArray(page.items)
+      ? { items: page.items.map(withCatalogToolPrice) }
+      : {}),
+    ...(Array.isArray(page.relatedTools)
+      ? {
+          relatedTools: page.relatedTools.map((group: any) =>
+            Array.isArray(group?.tools)
+              ? {
+                  ...group,
+                  tools: group.tools.map((entry: any) =>
+                    entry?.tool
+                      ? { ...entry, tool: withCatalogToolPrice(entry.tool) }
+                      : withCatalogToolPrice(entry)
+                  ),
+                }
+              : group
+          ),
+        }
+      : {}),
+  };
+}
+
+/** Adds catalog prices to Find Tools pages when the caller asked for costs. */
+export function withCatalogResultPrices(
+  envelope: Record<string, any>
+): Record<string, any> {
+  const results = envelope?.data?.alexandria;
+  if (!Array.isArray(results)) return envelope;
+  return {
+    ...envelope,
+    data: {
+      ...envelope.data,
+      alexandria: results.map((entry: any) =>
+        entry?.provider === 'firecrawl' &&
+        entry?.capability === 'find-tools' &&
+        entry.data
+          ? { ...entry, data: withCatalogPagePrices(entry.data) }
+          : entry
+      ),
+    },
+  };
+}
+
 export type AlexandriaPriceUnit =
   | 'call'
   | 'successful call'
@@ -299,17 +367,43 @@ export function alexandriaPrice(
   return undefined;
 }
 
+export type AlexandriaChargeOptions = {
+  /** A miss or empty record. Defaults to a match. */
+  matched?: boolean;
+  /** Influencers.club search with return_filter_values. */
+  returnFilterValues?: boolean;
+  /** Influencers.club post details that include a TikTok transcript. */
+  tiktokTranscript?: boolean;
+};
+
 /**
  * Credits for one outcome. People Data Labs misses are free.
  * A per-record price is the price of one returned or matched record.
+ * Pass true or false for matched, or an options object for a priced variant.
  */
 export function alexandriaCharge(
   provider: string,
   capability: string,
-  matched = true
+  matchedOrOptions: boolean | AlexandriaChargeOptions = true
 ): number | undefined {
+  const options: AlexandriaChargeOptions =
+    typeof matchedOrOptions === 'boolean'
+      ? { matched: matchedOrOptions }
+      : matchedOrOptions;
   const price = alexandriaPrice(provider, capability);
   if (!price) return undefined;
-  if (!matched && price.misses === 'free') return 0;
+  if (options.matched === false && price.misses === 'free') return 0;
+  if (
+    provider === 'influencers-club' &&
+    capability === 'creators/search' &&
+    options.returnFilterValues
+  )
+    return 56;
+  if (
+    provider === 'influencers-club' &&
+    capability === 'content/details' &&
+    options.tiktokTranscript
+  )
+    return 20;
   return price.credits;
 }

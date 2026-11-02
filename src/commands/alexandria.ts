@@ -7,7 +7,10 @@ import { getClient } from '../utils/client';
 import { getApiKey, getConfig } from '../utils/config';
 import { integrationHeaders } from '../utils/integration';
 import { writeOutput } from '../utils/output';
-import { withoutResultPrices } from '../utils/alexandria-prices';
+import {
+  withCatalogResultPrices,
+  withoutResultPrices,
+} from '../utils/alexandria-prices';
 import { TERMS_DASHBOARD_URL } from './terms';
 
 type Call = AlexandriaCall & { options: Record<string, unknown> };
@@ -344,8 +347,11 @@ export async function requestAlexandria(
   const receipt = receiptFor(envelope, 'scrape', requestId);
   if (options.showReceipt !== false) printReceipt(receipt, false);
   printRetry(envelope);
+  const shown = options.includeCosts
+    ? withCatalogResultPrices(envelope)
+    : withoutResultPrices(envelope);
   return {
-    ...(options.includeCosts ? envelope : withoutResultPrices(envelope)),
+    ...shown,
     requestId,
     receipt,
   };
@@ -646,7 +652,7 @@ async function attachProviderSkills(
   const query =
     typeof skillOptions.query === 'string' ? skillOptions.query : undefined;
   const limit =
-    typeof skillOptions.limit === 'number' ? skillOptions.limit : undefined;
+    typeof skillOptions.limit === 'number' ? skillOptions.limit : 20;
   try {
     const listed = await exchangeJson('/exchange/provider-skills', options);
     if (listed.status < 200 || listed.status >= 300) {
@@ -667,6 +673,17 @@ async function attachProviderSkills(
       providerSkillsError: 'Provider skills could not be listed.',
     };
   }
+}
+
+function skillFileContent(body: unknown): string | undefined {
+  if (typeof body === 'string') return body;
+  if (!body || typeof body !== 'object' || Array.isArray(body))
+    return undefined;
+  const record = body as Record<string, unknown>;
+  for (const key of ['content', 'body', 'markdown', 'text']) {
+    if (typeof record[key] === 'string') return record[key];
+  }
+  return undefined;
 }
 
 async function handleProviderSkillRead(
@@ -699,26 +716,40 @@ async function handleProviderSkillRead(
       return;
     }
     let data = skill.body;
-    if (
-      filePath === undefined &&
-      data &&
-      typeof data === 'object' &&
-      !Array.isArray(data) &&
-      !['content', 'body', 'markdown', 'text'].some(
-        (key) => typeof data[key] === 'string'
-      )
-    ) {
-      const file = await exchangeJson(`${skillPath}/file`, options);
-      if (file.status >= 200 && file.status < 300) {
-        const content =
-          typeof file.body === 'string'
-            ? file.body
-            : typeof file.body?.content === 'string'
-              ? file.body.content
-              : undefined;
-        if (content !== undefined)
-          data = { ...data, path: data.path ?? 'SKILL.md', content };
+    if (filePath === undefined && !skillFileContent(data)) {
+      const file = await exchangeJson(
+        `${skillPath}/file?path=${encodeURIComponent('SKILL.md')}`,
+        options
+      );
+      const content = skillFileContent(file.body);
+      if (file.status < 200 || file.status >= 300 || content === undefined) {
+        emitAlexandria(
+          {
+            ...apiFailure({
+              response: {
+                status: file.status,
+                data:
+                  file.body && typeof file.body === 'object'
+                    ? file.body
+                    : {
+                        error:
+                          'Provider skill file could not be read (SKILL.md).',
+                      },
+              },
+            }),
+            requestId,
+          },
+          options
+        );
+        return;
       }
+      data = {
+        ...(data && typeof data === 'object' && !Array.isArray(data)
+          ? data
+          : {}),
+        path: 'SKILL.md',
+        content,
+      };
     }
     if (data && typeof data === 'object' && !Array.isArray(data)) {
       data = {

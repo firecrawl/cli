@@ -3,6 +3,7 @@ import {
   alexandriaCharge,
   alexandriaPrice,
   MERGED_ALEXANDRIA_PRICES,
+  withCatalogToolPrice,
 } from '../../utils/alexandria-prices';
 import {
   findToolsRetryDelayMs,
@@ -57,6 +58,26 @@ describe('merged Alexandria prices', () => {
         price.capability.includes('async')
       )
     ).toBe(false);
+    expect(
+      alexandriaCharge('influencers-club', 'creators/search', {
+        returnFilterValues: true,
+      })
+    ).toBe(56);
+    expect(
+      alexandriaCharge('influencers-club', 'content/details', {
+        tiktokTranscript: true,
+      })
+    ).toBe(20);
+    expect(
+      withCatalogToolPrice({ provider: 'carbon-arc', capability: 'query' })
+    ).toMatchObject({ creditsCost: 1000, perRecord: false });
+    expect(
+      withCatalogToolPrice({
+        provider: 'carbon-arc',
+        capability: 'query',
+        creditsCost: 2,
+      })
+    ).toMatchObject({ creditsCost: 2 });
   });
 });
 
