@@ -149,6 +149,33 @@ describe('update notice', () => {
     expect(write).not.toHaveBeenCalled();
   });
 
+  it('stays quiet on a prerelease build, with a newer release cached or not', async () => {
+    const released = packageJson.version;
+    packageJson.version = '1.23.4-alexandria-beta.23';
+    try {
+      // No cache: a release build would fetch the latest version here.
+      await maybeShowUpdateNotice({ cacheDir: tmpDir, stderr: stderr() });
+
+      fs.writeFileSync(
+        path.join(tmpDir, 'update-check.json'),
+        JSON.stringify({
+          latestVersion: '99.99.99',
+          checkedAt: new Date('2026-06-04T12:00:00.000Z').toISOString(),
+        })
+      );
+      await maybeShowUpdateNotice({
+        cacheDir: tmpDir,
+        now: new Date('2026-06-04T13:00:00.000Z'),
+        stderr: stderr(),
+      });
+    } finally {
+      packageJson.version = released;
+    }
+
+    expect(getLatestVersion).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+  });
+
   it('prints a cached newer version', async () => {
     fs.writeFileSync(
       path.join(tmpDir, 'update-check.json'),

@@ -6,9 +6,12 @@ import path from 'path';
 import {
   otherInvocations,
   registerInvocation,
+  run,
+  startAutoUpdate,
   unregisterInvocation,
 } from '../../utils/auto-update';
 import type { InstallChannel } from '../../utils/install-channel';
+import packageJson from '../../../package.json';
 
 const npmChannel: InstallChannel = {
   kind: 'npm',
@@ -145,4 +148,127 @@ describe('install coordination', () => {
     await expect(registerInvocation(binary, terminal())).resolves.toBe(false);
     expect(fs.existsSync(runningDir())).toBe(false);
   });
+});
+
+describe('startAutoUpdate', () => {
+  const names = [
+    'HOME',
+    'USERPROFILE',
+    'CI',
+    'FIRECRAWL_NO_AUTO_UPDATE',
+    'FIRECRAWL_NO_UPDATE_CHECK',
+  ];
+  let home: string;
+  let saved: Record<string, string | undefined>;
+  const quiet = { isTTY: false, write: () => true };
+
+  function cache(latestVersion: string, hoursAgo: number): void {
+    const dir = path.join(home, '.firecrawl');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'update-check.json'),
+      JSON.stringify({
+        latestVersion,
+        checkedAt: new Date(Date.now() - hoursAgo * 3_600_000).toISOString(),
+      })
+    );
+  }
+
+  beforeEach(() => {
+    home = fs.mkdtempSync(path.join(os.tmpdir(), 'firecrawl-start-'));
+    saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    for (const name of names) delete process.env[name];
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+  });
+
+  afterEach(() => {
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  it('leaves a new major version to the notice, even from a stale cache', async () => {
+    cache('99.0.0', 1);
+    await expect(
+      startAutoUpdate({ channel: npmChannel, stderr: quiet })
+    ).resolves.toBe(false);
+
+    cache('99.0.0', 48);
+    await expect(
+      startAutoUpdate({ channel: npmChannel, stderr: quiet })
+    ).resolves.toBe(false);
+    expect(
+      fs.existsSync(path.join(home, '.firecrawl', 'auto-update.lock'))
+    ).toBe(false);
+  });
+
+  it('keeps the notice quiet when the cache shows this release is current', async () => {
+    cache(packageJson.version, 1);
+    await expect(
+      startAutoUpdate({ channel: npmChannel, stderr: quiet })
+    ).resolves.toBe(true);
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('installer processes', () => {
+  let dir: string;
+
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  /** A stand-in package manager that starts a helper and records its pid. */
+  function installer(mode: 'hang' | 'exit'): string[] {
+    const script = path.join(dir, 'installer.js');
+    fs.writeFileSync(
+      script,
+      `const { spawn } = require('child_process');
+const helper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+require('fs').writeFileSync(process.argv[2], String(helper.pid));
+if (process.argv[3] === 'exit') process.exit(0);
+setInterval(() => {}, 1000);
+`
+    );
+    return [script, path.join(dir, 'helper.pid'), mode];
+  }
+
+  const helperPid = () =>
+    Number(fs.readFileSync(path.join(dir, 'helper.pid'), 'utf8'));
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'firecrawl-installer-'));
+  });
+
+  afterEach(() => {
+    try {
+      process.kill(helperPid(), 'SIGKILL');
+    } catch {
+      // Already stopped, which is what the tests expect.
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('stops everything the installer started when it times out', async () => {
+    const error = await run(process.execPath, installer('hang'), 'ignore', {
+      timeoutMs: 500,
+    });
+
+    expect(error).toContain('timed out');
+    expect(alive(helperPid())).toBe(false);
+  });
+
+  it('waits for helpers an installer leaves behind before it resolves', async () => {
+    const error = await run(process.execPath, installer('exit'), 'ignore');
+
+    expect(error).toBeUndefined();
+    expect(alive(helperPid())).toBe(false);
+  }, 15_000);
 });

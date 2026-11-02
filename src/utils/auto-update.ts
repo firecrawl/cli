@@ -40,6 +40,7 @@ const FAILURE_BACKOFF_MS = 24 * 60 * 60 * 1000;
 const INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
 // Commands wait on package installs, so those get a tighter limit than downloads.
 const PACKAGE_INSTALL_TIMEOUT_MS = 3 * 60 * 1000;
+const KILL_GRACE_MS = 5 * 1000;
 const HEARTBEAT_MS = 60 * 1000;
 const HEARTBEAT_STALE_MS = 10 * 60 * 1000;
 const LOG_MAX_BYTES = 256 * 1024;
@@ -220,21 +221,26 @@ function lockHeld(file: string): boolean {
   return typeof pid !== 'number' || isAlive(pid);
 }
 
-function acquireLock(file: string): boolean {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+/** 'failed' means the lock file could not be written at all, not that someone holds it. */
+function acquireLock(file: string): 'acquired' | 'held' | 'failed' {
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+  } catch {
+    return 'failed';
+  }
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       fs.writeFileSync(file, JSON.stringify({ pid: process.pid }), {
         flag: 'wx',
       });
-      return true;
+      return 'acquired';
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') return false;
-      if (lockHeld(file)) return false;
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') return 'failed';
+      if (lockHeld(file)) return 'held';
       fs.rmSync(file, { force: true });
     }
   }
-  return false;
+  return 'held';
 }
 
 function releaseLock(file: string): void {
@@ -338,15 +344,18 @@ async function claimInstall(
   dir: string,
   channel: UpdatableChannel,
   onWait?: () => void
-): Promise<'claimed' | 'busy' | 'installing'> {
+): Promise<'claimed' | 'busy' | 'installing' | 'failed'> {
   const lock = installLockPath(dir);
   const idle = () => !IN_PLACE.has(channel.kind) || otherInvocations(dir) === 0;
   const deadline = Date.now() + IDLE_WAIT_MS;
   for (let first = true; ; first = false) {
     if (idle()) {
-      if (acquireLock(lock)) {
+      const result = acquireLock(lock);
+      if (result === 'acquired') {
         if (idle()) return 'claimed';
         releaseLock(lock);
+      } else if (result === 'failed') {
+        return 'failed';
       } else if (!onWait) {
         return 'installing';
       }
@@ -389,37 +398,95 @@ function childEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return env;
 }
 
-/** Resolves to an error message, or undefined when the command succeeded. */
-function run(
+/** Signals a child and everything it started: its process group, or its tree on Windows. */
+function signalTree(pid: number, signal: NodeJS.Signals): void {
+  try {
+    if (process.platform === 'win32') {
+      spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], {
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+    } else {
+      process.kill(-pid, signal);
+    }
+  } catch {
+    // Nothing left to signal.
+  }
+}
+
+/** Waits for the child's process group to empty, escalating to SIGKILL. */
+async function reapGroup(pid: number): Promise<boolean> {
+  for (const signal of [undefined, 'SIGTERM', 'SIGKILL'] as const) {
+    if (signal) signalTree(pid, signal);
+    const deadline = Date.now() + KILL_GRACE_MS;
+    while (isAlive(-pid) && Date.now() < deadline) await sleep(100);
+    if (!isAlive(-pid)) return true;
+  }
+  return false;
+}
+
+/**
+ * Resolves to an error message, or undefined when the command succeeded.
+ * Package managers start helpers of their own, so the child gets its own
+ * process group: a timeout or an interrupt stops all of it, and this resolves
+ * only once that group is gone, so the caller's install lock outlives every
+ * process that can still write to the install.
+ */
+export function run(
   command: string,
   args: string[],
   stdio: StdioOptions,
   options: { env?: NodeJS.ProcessEnv; cwd?: string; timeoutMs?: number } = {}
 ): Promise<string | undefined> {
   return new Promise((resolve) => {
-    const shell =
-      process.platform === 'win32' && ['npm', 'pnpm', 'yarn'].includes(command);
+    const windows = process.platform === 'win32';
+    const shell = windows && ['npm', 'pnpm', 'yarn'].includes(command);
     const child = spawn(shell ? `${command}.cmd` : command, args, {
       stdio,
       env: options.env ?? childEnv(),
       cwd: options.cwd,
       shell,
       windowsHide: true,
+      detached: !windows,
     });
-    const timer = setTimeout(
-      () => child.kill(),
-      options.timeoutMs ?? INSTALL_TIMEOUT_MS
-    );
-    child.on('error', (error) => {
+    const timeoutMs = options.timeoutMs ?? INSTALL_TIMEOUT_MS;
+    let stopped: string | undefined;
+    let escalate: NodeJS.Timeout | undefined;
+    const stop = (reason: string, signal: NodeJS.Signals) => {
+      stopped ??= reason;
+      if (child.pid) signalTree(child.pid, signal);
+    };
+    const timer = setTimeout(() => {
+      stop(`timed out after ${Math.round(timeoutMs / 1000)}s`, 'SIGTERM');
+      escalate = setTimeout(
+        () => child.pid && signalTree(child.pid, 'SIGKILL'),
+        KILL_GRACE_MS
+      );
+    }, timeoutMs);
+    // The child no longer shares the terminal's process group, so pass interrupts on.
+    const interrupt = (signal: NodeJS.Signals) =>
+      stop(`interrupted by ${signal}`, signal);
+    process.on('SIGINT', interrupt);
+    process.on('SIGTERM', interrupt);
+
+    let settled = false;
+    const finish = (error: string | undefined) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
-      resolve(`${command}: ${error.message}`);
-    });
-    child.on('close', (code, signal) => {
-      clearTimeout(timer);
-      resolve(
-        code === 0
-          ? undefined
-          : `${command} ${args.join(' ')} exited with ${code ?? signal}`
+      clearTimeout(escalate);
+      process.off('SIGINT', interrupt);
+      process.off('SIGTERM', interrupt);
+      resolve(error);
+    };
+    child.on('error', (error) => finish(`${command}: ${error.message}`));
+    child.on('exit', async (code, signal) => {
+      const reaped = windows || !child.pid || (await reapGroup(child.pid));
+      const failure =
+        stopped ?? (code === 0 ? undefined : `exited with ${code ?? signal}`);
+      if (!failure && reaped) return finish(undefined);
+      finish(
+        `${command} ${args.join(' ')} ${failure ?? 'succeeded'}${reaped ? '' : ', and processes it started are still running'}`
       );
     });
   });
@@ -642,9 +709,21 @@ export async function startAutoUpdate(
     if (state.retryAt && Date.parse(state.retryAt) > Date.now()) return false;
 
     const cached = await readCachedLatest(getCachePath(), new Date());
-    if (!cached.stale && cached.latestVersion) {
-      if (compareVersions(current, cached.latestVersion) >= 0) return true;
-      if (!sameMajor(current, cached.latestVersion)) return false;
+    if (cached.latestVersion) {
+      // The worker never crosses a major version, so that release belongs to
+      // the notice even before a stale cache is refreshed.
+      if (
+        compareVersions(current, cached.latestVersion) < 0 &&
+        !sameMajor(current, cached.latestVersion)
+      ) {
+        return false;
+      }
+      if (
+        !cached.stale &&
+        compareVersions(current, cached.latestVersion) >= 0
+      ) {
+        return true;
+      }
     }
     if (lockHeld(workerLockPath(dir))) return true;
 
@@ -678,7 +757,7 @@ export async function runAutoUpdateWorker(): Promise<void> {
   const dir = firecrawlDir();
   let logFd: number | undefined;
   try {
-    if (!acquireLock(workerLockPath(dir))) return;
+    if (acquireLock(workerLockPath(dir)) !== 'acquired') return;
     const { fd, log } = openLog(dir);
     logFd = fd;
     const channel = detectInstallChannel();
@@ -724,9 +803,11 @@ export async function runAutoUpdateWorker(): Promise<void> {
     const claim = await claimInstall(dir, channel);
     if (claim !== 'claimed') {
       log(
-        claim === 'busy'
-          ? 'Other firecrawl commands are still running; retrying on a later run'
-          : 'Another update is installing'
+        {
+          busy: 'Other firecrawl commands are still running; retrying on a later run',
+          installing: 'Another update is installing',
+          failed: `Could not create ${installLockPath(dir)}; retrying on a later run`,
+        }[claim]
       );
       return;
     }
@@ -846,9 +927,12 @@ export async function updateNow(): Promise<boolean> {
   );
   if (claim !== 'claimed') {
     console.error(
-      claim === 'busy'
-        ? 'Other firecrawl commands are still running. Try again when they finish.'
-        : 'Another firecrawl update is installing right now. Try again in a few minutes.'
+      {
+        busy: 'Other firecrawl commands are still running. Try again when they finish.',
+        installing:
+          'Another firecrawl update is installing right now. Try again in a few minutes.',
+        failed: `Could not create ${installLockPath(dir)}. Check that ${dir} is writable.`,
+      }[claim]
     );
     return false;
   }
@@ -860,10 +944,11 @@ export async function updateNow(): Promise<boolean> {
     console.log(
       `Updating firecrawl ${current} -> ${latest.version} with ${CHANNEL_LABELS[channel.kind]}...`
     );
+    // stdin stays closed: the installer runs in its own process group, off the terminal.
     const outcome = await installVersion(
       channel,
       latest.version,
-      'inherit',
+      ['ignore', 'inherit', 'inherit'],
       (message) => console.log(message)
     );
     if (outcome.status === 'failed') {
