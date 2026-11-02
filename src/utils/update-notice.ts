@@ -21,12 +21,13 @@ interface UpdateCache {
 
 export interface UpdateNoticeOptions {
   cacheDir?: string;
+  command?: string;
   installPaths?: string[];
   now?: Date;
   stderr?: Pick<NodeJS.WriteStream, 'write' | 'isTTY'>;
 }
 
-function getCachePath(cacheDir?: string): string {
+export function getCachePath(cacheDir?: string): string {
   return path.join(
     cacheDir ?? path.join(os.homedir(), '.firecrawl'),
     CACHE_FILENAME
@@ -50,7 +51,7 @@ function updateCheckDisabled(): boolean {
   return value === '1' || value === 'true';
 }
 
-async function readCachedLatest(
+export async function readCachedLatest(
   cachePath: string,
   now: Date
 ): Promise<{
@@ -85,7 +86,7 @@ async function readCachedLatest(
   }
 }
 
-async function writeCachedLatest(
+export async function writeCachedLatest(
   cachePath: string,
   cache: UpdateCache
 ): Promise<void> {
@@ -166,7 +167,7 @@ export async function maybeShowUpdateNotice(
   if (!shouldShowNotice(latestVersion) || latestVersion === undefined) return;
   if (noticeWasRecentlyShown(cached, latestVersion, now)) return;
 
-  const command = updateCommand(options.installPaths);
+  const command = options.command ?? updateCommand(options.installPaths);
   stderr.write(
     `${colorizeUpdateNotice(
       formatUpdateNotice(latestVersion, command),

@@ -1,6 +1,7 @@
 /**
- * Lightweight npm registry lookup. Used by `doctor` to compare the running
- * CLI version against the latest published version.
+ * Lightweight npm registry lookup. Used by `doctor` and the updater to compare
+ * the running CLI version against the latest published version. Honors
+ * `npm_config_registry` so mirrors and private registries work.
  */
 
 const REGISTRY_URL = 'https://registry.npmjs.org';
@@ -24,7 +25,11 @@ export async function getLatestVersion(
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(`${REGISTRY_URL}/${packageName}/latest`, {
+    const registry = (process.env.npm_config_registry || REGISTRY_URL).replace(
+      /\/+$/,
+      ''
+    );
+    const response = await fetch(`${registry}/${packageName}/latest`, {
       signal: controller.signal,
       headers: { Accept: 'application/json' },
     });

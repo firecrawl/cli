@@ -86,6 +86,13 @@ import { parseMaxPages, parseScrapeOptions } from './utils/options';
 import { isJobId } from './utils/job';
 import { ensureAuthenticated, printBanner } from './utils/auth';
 import { maybeShowUpdateNotice } from './utils/update-notice';
+import {
+  isAutoUpdateWorker,
+  runAutoUpdateWorker,
+  startAutoUpdate,
+} from './utils/auto-update';
+import { detectInstallChannel } from './utils/install-channel';
+import { handleUpdateCommand } from './commands/update';
 import { maybeShowSkillUpdateNotice } from './utils/skill-update-notice';
 import packageJson from '../package.json';
 import type { SearchSource, SearchCategory } from './types/search';
@@ -2958,6 +2965,15 @@ Exits 1 if any check fails.
   });
 
 program
+  .command('update')
+  .description('Update the Firecrawl CLI to the latest release')
+  .option('--enable-auto', 'Turn automatic background updates on')
+  .option('--disable-auto', 'Turn automatic background updates off')
+  .action(async (options) => {
+    await handleUpdateCommand(options);
+  });
+
+program
   .command('version')
   .description('Display version information')
   .option('--auth-status', 'Also show authentication status', false)
@@ -2969,6 +2985,11 @@ collectTopLevelCommands();
 
 // Handle the main entry point
 async function main() {
+  if (isAutoUpdateWorker()) {
+    await runAutoUpdateWorker();
+    return;
+  }
+
   // Parse user arguments explicitly instead of letting Commander infer whether
   // argv came from node, eval, electron, or another wrapper.
   const args = process.argv.slice(2);
@@ -2991,7 +3012,15 @@ async function main() {
     return;
   }
 
-  await maybeShowUpdateNotice();
+  if (args[0] !== 'update') {
+    const channel = detectInstallChannel();
+    if (!(await startAutoUpdate({ channel }))) {
+      await maybeShowUpdateNotice({
+        command:
+          channel.kind === 'unsupported' ? undefined : 'firecrawl update',
+      });
+    }
+  }
   const isSetup =
     args[0] === 'init' ||
     args[0] === 'setup' ||

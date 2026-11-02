@@ -95,6 +95,49 @@ firecrawl setup build
 firecrawl setup workflows
 ```
 
+### CLI updates
+
+The CLI keeps itself current. About once a day it checks npm for a newer
+release, and when one exists in the same major version it installs it in a
+detached background process, through the channel you installed with:
+
+- npm, pnpm, bun, and yarn global installs update with that package manager.
+- Homebrew installs run `brew upgrade firecrawl-cli`.
+- Standalone binaries from the install script download the release archive for
+  your platform, verify it against the release's `checksums.txt`, and replace
+  the executable in place.
+
+The command you ran never waits for the update, and the updater never writes to
+stdout, so scripted and agent output stays the same. The next invocation runs
+the new version, and interactive terminals see a one-line note once. Updater
+output goes to `~/.firecrawl/auto-update.log`. After a failed attempt the CLI
+waits 24 hours before trying again and shows the usual update notice meanwhile.
+
+The CLI shows the update notice instead of updating when a new major version is
+out, when it runs through npx or another package runner or from a project's
+local `node_modules`, when a system package (deb, rpm, apk, pacman) owns it,
+when its install location is not writable without sudo, and for standalone
+Windows binaries.
+
+Turn automatic updates off with either of:
+
+```bash
+firecrawl update --disable-auto    # persistent, undo with --enable-auto
+export FIRECRAWL_NO_AUTO_UPDATE=1  # per environment
+```
+
+They are also off whenever `CI` is set. `FIRECRAWL_NO_UPDATE_CHECK=1` turns off
+both automatic updates and update notices.
+
+To update right away, including to a new major version:
+
+```bash
+firecrawl update
+```
+
+Version checks honor `npm_config_registry`. Standalone binaries download from
+GitHub releases; set `FIRECRAWL_RELEASES_URL` to a mirror with the same layout.
+
 ### Skill updates
 
 Interactive CLI sessions (except `init`, `setup`, and the `-y`/`--yes` init
