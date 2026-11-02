@@ -15,7 +15,6 @@ import type {
 const BASE = '/v2/search/research';
 const MAX_AUTHORS = 15;
 const MAX_ABSTRACT_CHARS = 600;
-const MAX_AFFIL_CHARS = 60;
 const MAX_AUTHORS_LINE_CHARS = 400;
 const MAX_GITHUB_CONTENT_CHARS = 1200;
 
@@ -60,37 +59,32 @@ function displayId(paper: PaperHit): string {
   return paper.primaryId ?? 'missing-primary-id';
 }
 
-function fmtAuthors(
-  authors?: string | { name: string; affiliation?: string }[]
-): string | null {
+function fmtAuthors(authors?: PaperHit['authors']): string | null {
   if (!authors) return null;
-
-  let shown: string[];
-  let total: number;
-  if (typeof authors === 'string') {
-    const names = authors
-      .split(',')
-      .map((name) => name.trim())
-      .filter(Boolean);
-    if (names.length === 0) return null;
-    total = names.length;
-    shown = names.slice(0, MAX_AUTHORS);
-  } else {
-    if (authors.length === 0) return null;
-    total = authors.length;
-    shown = authors.slice(0, MAX_AUTHORS).map((author) => {
-      const affiliation = author.affiliation?.trim();
-      return affiliation
-        ? `${author.name} (${affiliation.slice(0, MAX_AFFIL_CHARS)})`
-        : author.name;
-    });
-  }
-
-  const extra = total > MAX_AUTHORS ? `; +${total - MAX_AUTHORS} more` : '';
-  return ('Authors: ' + shown.join('; ') + extra).slice(
+  const names = (typeof authors === 'string' ? authors.split(',') : authors)
+    .map((name) => name.trim())
+    .filter(Boolean);
+  if (names.length === 0) return null;
+  const extra =
+    names.length > MAX_AUTHORS
+      ? typeof authors === 'string'
+        ? `; +${names.length - MAX_AUTHORS} more`
+        : '; et al.'
+      : '';
+  return ('Authors: ' + names.slice(0, MAX_AUTHORS).join('; ') + extra).slice(
     0,
     MAX_AUTHORS_LINE_CHARS
   );
+}
+
+function fmtDates(paper: PaperHit): string | null {
+  const dates = [
+    paper.createdDate ? `created ${paper.createdDate}` : '',
+    paper.updateDate ? `updated ${paper.updateDate}` : '',
+  ]
+    .filter(Boolean)
+    .join('; ');
+  return dates ? `Dates: ${dates}` : null;
 }
 
 function fmtHits(results?: PaperHit[]): string {
@@ -101,6 +95,8 @@ function fmtHits(results?: PaperHit[]): string {
       const lines = [`## [${displayId(paper)}] ${paper.title ?? '(untitled)'}`];
       const authors = fmtAuthors(paper.authors);
       if (authors) lines.push(authors);
+      const dates = fmtDates(paper);
+      if (dates) lines.push(dates);
       lines.push(
         (paper.abstract || '(no abstract)')
           .replace(/\s+/g, ' ')
@@ -131,13 +127,8 @@ function fmtPaperMetadata(paper?: PaperHit): string {
     lines.push(`Categories: ${paper.categories.join(', ')}`);
   }
 
-  const dates = [
-    paper.createdDate ? `created ${paper.createdDate}` : '',
-    paper.updateDate ? `updated ${paper.updateDate}` : '',
-  ]
-    .filter(Boolean)
-    .join('; ');
-  if (dates) lines.push(`Dates: ${dates}`);
+  const dates = fmtDates(paper);
+  if (dates) lines.push(dates);
 
   lines.push('', '## Abstract');
   lines.push((paper.abstract || '(no abstract)').replace(/\s+/g, ' '));
@@ -206,6 +197,7 @@ export async function handleSearchPapersCommand(
     appendParam(params, 'categories', options.categories);
     appendParam(params, 'from', options.from);
     appendParam(params, 'to', options.to);
+    appendParam(params, 'sort', options.sort);
     const data = await getResearch<{ results?: PaperHit[] }>(
       withQuery(`${BASE}/papers`, params),
       options
