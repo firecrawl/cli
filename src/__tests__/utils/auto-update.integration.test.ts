@@ -97,13 +97,18 @@ describe('install coordination', () => {
 
   it.skipIf(process.platform === 'win32')(
     'keeps counting a stopped command that missed its heartbeats',
-    () => {
+    async () => {
       const command = spawn(
         process.execPath,
-        ['-e', 'setTimeout(() => {}, 60000)', 'firecrawl'],
-        { stdio: 'ignore' }
+        [
+          '-e',
+          "process.stdout.write('ready'); setTimeout(() => {}, 60000)",
+          'firecrawl',
+        ],
+        { stdio: ['ignore', 'pipe', 'ignore'] }
       );
       children.push(command);
+      await new Promise((resolve) => command.stdout!.once('data', resolve));
       command.kill('SIGSTOP');
       const stopped = entry(command.pid!, 11 * 60 * 1000);
 

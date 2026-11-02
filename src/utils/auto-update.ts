@@ -175,15 +175,27 @@ function runningDir(dir: string): string {
  */
 function runsFirecrawl(pid: number): boolean {
   try {
-    const args =
+    const [command, args] =
+      process.platform === 'win32'
+        ? [
+            'powershell.exe',
+            [
+              '-NoProfile',
+              '-NonInteractive',
+              '-Command',
+              `(Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}').CommandLine`,
+            ],
+          ]
+        : ['ps', ['-p', String(pid), '-o', 'args=']];
+    const found =
       process.platform === 'linux'
         ? fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8')
-        : spawnSync('ps', ['-p', String(pid), '-o', 'args='], {
+        : spawnSync(command, args, {
             encoding: 'utf8',
-            timeout: 2000,
+            timeout: 5000,
             windowsHide: true,
           }).stdout;
-    return Boolean(args?.includes('firecrawl'));
+    return Boolean(found?.includes('firecrawl'));
   } catch {
     return false;
   }
@@ -984,6 +996,15 @@ export async function runAutoUpdateWorker(): Promise<void> {
     releaseLock(workerLockPath(dir));
     if (logFd !== undefined) fs.closeSync(logFd);
   }
+}
+
+/** How to update this install by hand. */
+export function updateHint(channel: InstallChannel): string {
+  if (channel.kind === 'unsupported') return manualUpdateHint(channel.code);
+  if (channel.kind === 'brew') {
+    return 'Run brew upgrade firecrawl-cli to update.';
+  }
+  return 'Run firecrawl update to update.';
 }
 
 function manualUpdateHint(code: UnsupportedCode): string {

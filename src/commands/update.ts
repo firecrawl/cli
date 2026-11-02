@@ -2,6 +2,7 @@ import {
   autoUpdateBlocker,
   setAutoUpdateEnabled,
   updateNow,
+  updateHint,
   updatesAutomatically,
 } from '../utils/auto-update';
 import { detectInstallChannel } from '../utils/install-channel';
@@ -39,9 +40,10 @@ export async function handleUpdateCommand(
   }
 
   if (options.enableAuto) {
-    if (!updatesAutomatically(detectInstallChannel())) {
+    const channel = detectInstallChannel();
+    if (!updatesAutomatically(channel)) {
       console.log(
-        'Automatic updates are on, but only the standalone binary updates itself. This install shows a notice when a release is out; run firecrawl update to install it.'
+        `Automatic updates are on, but only the standalone binary updates itself. ${updateHint(channel)}`
       );
       return;
     }
