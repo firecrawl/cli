@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { Command, Option } from 'commander';
 import { type AlexandriaCall } from 'firecrawl';
 import { getClient } from '../utils/client';
-import { getApiKey } from '../utils/config';
+import { getApiKey, getConfig } from '../utils/config';
+import { integrationHeaders } from '../utils/integration';
 import { writeOutput } from '../utils/output';
 import { withoutResultPrices } from '../utils/alexandria-prices';
 import { TERMS_DASHBOARD_URL } from './terms';
@@ -199,6 +200,99 @@ export function apiFailure(error: unknown): Record<string, any> {
   return result;
 }
 
+/** One automatic Find Tools retry waits at most this long. */
+export const FIND_TOOLS_RETRY_CAP_SECONDS = 3;
+
+export function isQueryEmbedUnavailable(
+  failure: Record<string, any> | undefined
+): boolean {
+  return (
+    failure?.success === false &&
+    failure.status === 503 &&
+    failure.code === 'query_embed_unavailable'
+  );
+}
+
+/** Retry-After in milliseconds, capped so a long delay cannot stall the CLI. */
+export function findToolsRetryDelayMs(retryAfterSeconds?: number): number {
+  if (
+    retryAfterSeconds === undefined ||
+    !Number.isFinite(retryAfterSeconds) ||
+    retryAfterSeconds <= 0
+  )
+    return 0;
+  return Math.min(retryAfterSeconds, FIND_TOOLS_RETRY_CAP_SECONDS) * 1000;
+}
+
+const retryAfterByRequest = new Map<string, string>();
+
+function headerValue(headers: any, name: string): string | undefined {
+  if (!headers) return undefined;
+  const direct = headers[name] ?? headers[name.toLowerCase()];
+  if (typeof direct === 'string' && direct.trim()) return direct.trim();
+  if (Array.isArray(direct) && typeof direct[0] === 'string')
+    return direct[0].trim();
+  if (typeof headers.get === 'function') {
+    const value = headers.get(name) ?? headers.get(name.toLowerCase());
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function captureRetryAfter(client: unknown): void {
+  const instance = (
+    client as {
+      http?: { instance?: { interceptors?: any; __fcRetryAfter?: boolean } };
+    }
+  ).http?.instance;
+  if (!instance?.interceptors || instance.__fcRetryAfter) return;
+  instance.__fcRetryAfter = true;
+  const save = (headers: any, config: any) => {
+    const retry = headerValue(headers, 'retry-after');
+    const requestId = headerValue(config?.headers, 'x-request-id');
+    if (retry && requestId) retryAfterByRequest.set(requestId, retry);
+  };
+  instance.interceptors.response.use(
+    (response: any) => {
+      save(response?.headers, response?.config);
+      return response;
+    },
+    (error: any) => {
+      save(error?.response?.headers, error?.config ?? error?.response?.config);
+      return Promise.reject(error);
+    }
+  );
+}
+
+function rememberRetryHeader(error: unknown, requestId: string): void {
+  const retry = retryAfterByRequest.get(requestId);
+  retryAfterByRequest.delete(requestId);
+  if (!retry || !error || typeof error !== 'object') return;
+  const record = error as any;
+  if (headerValue(record.response?.headers, 'retry-after')) return;
+  record.response = {
+    ...(record.response ?? {}),
+    headers: { ...(record.response?.headers ?? {}), 'retry-after': retry },
+  };
+}
+
+function isFindToolsRequest(calls: Call[]): boolean {
+  return (
+    calls.length > 0 &&
+    calls.every(
+      (call) =>
+        call.provider === 'firecrawl' && call.capability === 'find-tools'
+    )
+  );
+}
+
+const QUERY_EMBED_RETRY_ERROR =
+  'Find Tools query embedding is temporarily unavailable (query_embed_unavailable). Retry this command.';
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function requestAlexandria(
   calls: Call[],
   options: AlexandriaOptions
@@ -209,25 +303,43 @@ export async function requestAlexandria(
   requireAlexandriaKey(options.apiKey);
   // Print before execution so even an interrupted request can reuse its identity.
   if (options.showReceipt !== false) console.error(`Request ID: ${requestId}`);
-  let envelope: Record<string, any>;
-  try {
-    const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
-    const result = await app.scrape({
-      alexandria: calls,
-      integration: 'cli',
-      timeout: options.timeout,
-      requestId,
-    });
-    envelope = {
-      success: true,
-      ...(result.scrapeId && { scrape_id: result.scrapeId }),
-      data: {
-        alexandria: result.alexandria,
-        creditsCost: result.creditsCost,
-      },
-    };
-  } catch (error) {
-    envelope = apiFailure(error);
+  const execute = async (): Promise<Record<string, any>> => {
+    try {
+      const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
+      captureRetryAfter(app);
+      const result = await app.scrape({
+        alexandria: calls,
+        integration: 'cli',
+        timeout: options.timeout,
+        requestId,
+      });
+      return {
+        success: true,
+        ...(result.scrapeId && { scrape_id: result.scrapeId }),
+        data: {
+          alexandria: result.alexandria,
+          creditsCost: result.creditsCost,
+        },
+      };
+    } catch (error) {
+      rememberRetryHeader(error, requestId);
+      return apiFailure(error);
+    }
+  };
+  let envelope = await execute();
+  // Find Tools embedding is briefly unavailable on its own. Retry the same
+  // request once; a paid batch is never repeated from this path.
+  if (isFindToolsRequest(calls) && isQueryEmbedUnavailable(envelope)) {
+    const delay = findToolsRetryDelayMs(envelope.retryAfterSeconds);
+    console.error(
+      'Find Tools query embedding is temporarily unavailable. Retrying once.'
+    );
+    if (delay > 0) await sleep(delay);
+    envelope = await execute();
+    if (isQueryEmbedUnavailable(envelope)) {
+      envelope.error = QUERY_EMBED_RETRY_ERROR;
+      envelope.retryable = true;
+    }
   }
   const receipt = receiptFor(envelope, 'scrape', requestId);
   if (options.showReceipt !== false) printReceipt(receipt, false);
@@ -239,11 +351,10 @@ export async function requestAlexandria(
   };
 }
 
-export async function handleAlexandria(
-  calls: Call[],
+function emitAlexandria(
+  envelope: Record<string, any>,
   options: AlexandriaOptions
-): Promise<void> {
-  const envelope = await requestAlexandria(calls, options);
+): void {
   const failed =
     !envelope.success ||
     envelope.data?.alexandria?.some((item: any) => item.error);
@@ -253,11 +364,397 @@ export async function handleAlexandria(
     envelope.guidance = `An organization admin must accept this provider's terms in the Firecrawl dashboard: ${url}. Give the user this link; they can review the terms first with firecrawl alexandria terms show <provider>. Do not retry until the terms are accepted.`;
     console.error(envelope.guidance);
   }
+  const shared = sharedSkillLine(envelope);
+  if (shared) console.error(shared);
   writeOutput(
     JSON.stringify(envelope, null, options.pretty ? 2 : undefined),
     options.output,
     !!options.output
   );
+}
+
+export async function handleAlexandria(
+  calls: Call[],
+  options: AlexandriaOptions
+): Promise<void> {
+  const envelope = await requestAlexandria(calls, options);
+  if (
+    envelope.success &&
+    calls.length === 1 &&
+    calls[0].provider === 'firecrawl' &&
+    calls[0].capability === 'find-skills'
+  ) {
+    const results = Array.isArray(envelope.data?.alexandria)
+      ? envelope.data.alexandria
+      : [];
+    let entry =
+      results.find(
+        (item: any) =>
+          item?.provider === 'firecrawl' && item?.capability === 'find-skills'
+      ) ?? results[0];
+    if (!entry) {
+      entry = {
+        provider: 'firecrawl',
+        capability: 'find-skills',
+        data: {},
+      };
+      envelope.data = { ...(envelope.data ?? {}), alexandria: [entry] };
+    }
+    await attachProviderSkills(entry, calls[0].options, options);
+  }
+  emitAlexandria(envelope, options);
+}
+
+export type ProviderSkillSummary = {
+  id: string;
+  name?: string;
+  description?: string;
+  source: 'provider';
+  provider: string;
+  plugin: string;
+  skill: string;
+  files?: string[];
+};
+
+/** `provider:<provider>/<plugin>/<skill>` or the same path without the prefix. */
+export function parseProviderSkillId(
+  id: string
+): { provider: string; plugin: string; skill: string } | undefined {
+  const match = /^(?:provider:)?([^/:]+)\/([^/:]+)\/([^/:]+)$/.exec(id.trim());
+  if (!match) return undefined;
+  const [, provider, plugin, skill] = match;
+  if (!provider || !plugin || !skill) return undefined;
+  return { provider, plugin, skill };
+}
+
+export function providerSkillId(
+  provider: string,
+  plugin: string,
+  skill: string
+): string {
+  return `provider:${provider}/${plugin}/${skill}`;
+}
+
+export function isExecutionOnlySkill(skill: any): boolean {
+  if (!skill || typeof skill !== 'object') return false;
+  if (skill.executionOnly === true || skill.execution_only === true)
+    return true;
+  return [skill.kind, skill.mode, skill.purpose].some((value) => {
+    if (typeof value !== 'string') return false;
+    const normalized = value.toLowerCase().replace(/_/g, '-').trim();
+    return normalized === 'execution' || normalized === 'execution-only';
+  });
+}
+
+function skillText(skill: any, key: string): string | undefined {
+  const value = skill?.[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function providerSkillFromRecord(skill: any): ProviderSkillSummary | undefined {
+  if (!skill || typeof skill !== 'object' || isExecutionOnlySkill(skill))
+    return undefined;
+  const parsed =
+    typeof skill.id === 'string' ? parseProviderSkillId(skill.id) : undefined;
+  const provider = skillText(skill, 'provider') ?? parsed?.provider;
+  const plugin =
+    skillText(skill, 'plugin') ??
+    skillText(skill, 'pluginId') ??
+    skillText(skill, 'pluginSlug') ??
+    parsed?.plugin;
+  const name =
+    skillText(skill, 'skill') ??
+    skillText(skill, 'slug') ??
+    parsed?.skill ??
+    skillText(skill, 'name');
+  if (!provider || !plugin || !name) return undefined;
+  const skillId = skillText(skill, 'skill') ?? skillText(skill, 'slug') ?? name;
+  if (!skillId || skillId.includes('/')) return undefined;
+  const files = Array.isArray(skill.files)
+    ? skill.files.filter((file: unknown) => typeof file === 'string')
+    : undefined;
+  return {
+    id:
+      typeof skill.id === 'string' && skill.id.startsWith('provider:')
+        ? skill.id
+        : providerSkillId(provider, plugin, skillId),
+    ...(skillText(skill, 'name') ? { name: skillText(skill, 'name') } : {}),
+    ...(skillText(skill, 'description')
+      ? { description: skillText(skill, 'description') }
+      : {}),
+    source: 'provider',
+    provider,
+    plugin,
+    skill: skillId,
+    ...(files ? { files } : {}),
+  };
+}
+
+function collectSkillRecords(body: any): any[] {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return [];
+  const records: any[] = [];
+  for (const key of ['skills', 'items', 'results', 'providerSkills']) {
+    if (Array.isArray(body[key])) records.push(...body[key]);
+  }
+  const groups = body.plugins ?? body.providers;
+  if (Array.isArray(groups)) {
+    for (const group of groups) {
+      if (!group || typeof group !== 'object') continue;
+      const nested = group.skills ?? group.items;
+      if (!Array.isArray(nested)) continue;
+      for (const skill of nested) {
+        records.push({
+          provider: group.provider,
+          plugin: group.plugin ?? group.pluginId ?? group.slug ?? group.id,
+          ...skill,
+        });
+      }
+    }
+  }
+  return records;
+}
+
+export function visibleProviderSkills(
+  body: unknown,
+  query?: string
+): ProviderSkillSummary[] {
+  const words = (query ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+  const seen = new Set<string>();
+  const skills: ProviderSkillSummary[] = [];
+  for (const record of collectSkillRecords(body)) {
+    const skill = providerSkillFromRecord(record);
+    if (!skill || seen.has(skill.id)) continue;
+    const haystack =
+      `${skill.id} ${skill.name ?? ''} ${skill.description ?? ''}`.toLowerCase();
+    if (!words.every((word) => haystack.includes(word))) continue;
+    seen.add(skill.id);
+    skills.push(skill);
+  }
+  return skills;
+}
+
+export function mergeProviderSkills(
+  page: any,
+  skills: ProviderSkillSummary[],
+  limit?: number
+): any {
+  if (!page || typeof page !== 'object' || Array.isArray(page)) return page;
+  const existing = (Array.isArray(page.skills) ? page.skills : []).filter(
+    (skill: any) => !isExecutionOnlySkill(skill)
+  );
+  const seen = new Set(
+    existing
+      .map((skill: any) => (typeof skill?.id === 'string' ? skill.id : ''))
+      .filter(Boolean)
+  );
+  const incoming = skills.filter((skill) => !seen.has(skill.id));
+  const isTeam = (skill: any) =>
+    skill?.source === 'team' ||
+    (typeof skill?.id === 'string' && skill.id.startsWith('team:'));
+  let merged = [
+    ...existing.filter(isTeam),
+    ...incoming,
+    ...existing.filter((skill: any) => !isTeam(skill)),
+  ];
+  if (limit !== undefined) merged = merged.slice(0, limit);
+  return { ...page, skills: merged, total: merged.length };
+}
+
+function stringField(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+export function sharedSkillLine(
+  envelope: Record<string, any>
+): string | undefined {
+  const entry = envelope?.data?.alexandria?.[0];
+  if (
+    entry?.capability !== 'create-skill' &&
+    entry?.capability !== 'update-skill'
+  )
+    return undefined;
+  const pools = [
+    entry.data,
+    entry.data?.skill,
+    entry.data?.share,
+    entry.data?.sharing,
+  ];
+  let publicId: string | undefined;
+  let link: string | undefined;
+  for (const pool of pools) {
+    if (!pool || typeof pool !== 'object') continue;
+    publicId ??=
+      stringField(pool.publicId) ??
+      stringField(pool.public_id) ??
+      stringField(pool.publicID);
+    for (const key of [
+      'url',
+      'link',
+      'shareUrl',
+      'sharedUrl',
+      'publicUrl',
+      'href',
+    ]) {
+      const value = stringField(pool[key]);
+      if (value && /^https?:\/\//.test(value)) link ??= value;
+    }
+  }
+  if (!publicId && !link) return undefined;
+  if (link && publicId) return `Shared skill: ${link} (${publicId})`;
+  return `Shared skill: ${link ?? publicId}`;
+}
+
+function apiBase(options: AlexandriaOptions): string {
+  return (
+    options.apiUrl ||
+    getConfig().apiUrl ||
+    'https://api.firecrawl.dev'
+  ).replace(/\/$/, '');
+}
+
+async function exchangeJson(
+  path: string,
+  options: AlexandriaOptions
+): Promise<{ status: number; body: any }> {
+  requireAlexandriaKey(options.apiKey);
+  const response = await fetch(`${apiBase(options)}${path}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${getApiKey(options.apiKey)}`,
+      Accept: 'application/json',
+      ...integrationHeaders(),
+    },
+    redirect: 'error',
+    signal: AbortSignal.timeout(getConfig().timeoutMs ?? 30000),
+  });
+  const text = await response.text();
+  let body: any = text;
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = { content: text };
+  }
+  return { status: response.status, body };
+}
+
+async function attachProviderSkills(
+  entry: any,
+  skillOptions: Record<string, unknown>,
+  options: AlexandriaOptions
+): Promise<void> {
+  if (!entry || entry.error) return;
+  const query =
+    typeof skillOptions.query === 'string' ? skillOptions.query : undefined;
+  const limit =
+    typeof skillOptions.limit === 'number' ? skillOptions.limit : undefined;
+  try {
+    const listed = await exchangeJson('/exchange/provider-skills', options);
+    if (listed.status < 200 || listed.status >= 300) {
+      entry.data = {
+        ...(entry.data ?? {}),
+        providerSkillsError:
+          typeof listed.body?.error === 'string'
+            ? listed.body.error
+            : `Provider skills are unavailable (HTTP ${listed.status}).`,
+      };
+      return;
+    }
+    const skills = visibleProviderSkills(listed.body, query);
+    entry.data = mergeProviderSkills(entry.data ?? {}, skills, limit);
+  } catch {
+    entry.data = {
+      ...(entry.data ?? {}),
+      providerSkillsError: 'Provider skills could not be listed.',
+    };
+  }
+}
+
+async function handleProviderSkillRead(
+  id: string,
+  parts: { provider: string; plugin: string; skill: string },
+  options: AlexandriaOptions & { path?: string }
+): Promise<void> {
+  const requestId = options.requestId ?? randomUUID();
+  if (options.showReceipt !== false) console.error(`Request ID: ${requestId}`);
+  const encoded = [parts.provider, parts.plugin, parts.skill]
+    .map(encodeURIComponent)
+    .join('/');
+  const skillPath = `/exchange/provider-skills/${encoded}`;
+  const filePath =
+    options.path !== undefined
+      ? `${skillPath}/file?path=${encodeURIComponent(options.path)}`
+      : undefined;
+  try {
+    const skill = await exchangeJson(filePath ?? skillPath, options);
+    if (skill.status < 200 || skill.status >= 300) {
+      emitAlexandria(
+        {
+          ...apiFailure({
+            response: { status: skill.status, data: skill.body },
+          }),
+          requestId,
+        },
+        options
+      );
+      return;
+    }
+    let data = skill.body;
+    if (
+      filePath === undefined &&
+      data &&
+      typeof data === 'object' &&
+      !Array.isArray(data) &&
+      !['content', 'body', 'markdown', 'text'].some(
+        (key) => typeof data[key] === 'string'
+      )
+    ) {
+      const file = await exchangeJson(`${skillPath}/file`, options);
+      if (file.status >= 200 && file.status < 300) {
+        const content =
+          typeof file.body === 'string'
+            ? file.body
+            : typeof file.body?.content === 'string'
+              ? file.body.content
+              : undefined;
+        if (content !== undefined)
+          data = { ...data, path: data.path ?? 'SKILL.md', content };
+      }
+    }
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      data = {
+        id,
+        source: 'provider',
+        provider: parts.provider,
+        plugin: parts.plugin,
+        skill: parts.skill,
+        ...data,
+      };
+    }
+    emitAlexandria(
+      {
+        success: true,
+        data: {
+          alexandria: [
+            {
+              provider: 'firecrawl',
+              capability: 'read-skill',
+              data,
+            },
+          ],
+        },
+        requestId,
+      },
+      options
+    );
+  } catch (error) {
+    emitAlexandria(
+      {
+        ...apiFailure(error),
+        requestId,
+      },
+      options
+    );
+  }
 }
 
 export function parseFindToolsRequest(raw: string): Call {
@@ -282,7 +779,7 @@ export function parseFindToolsRequest(raw: string): Call {
 export function createFindToolsCommand(): Command {
   return new Command('find-tools')
     .description(
-      'Find workflows, data APIs, and indexes for structured records and listings. Match URLs or use --options for semantic queries; discovery does not execute providers'
+      'Find workflows, data APIs, and indexes for structured records and listings. Match URLs or use --options for semantic queries; discovery does not execute providers. A 503 query_embed_unavailable is retried once, waiting for Retry-After and at most 3 seconds'
     )
     .argument('[urls...]', 'Known HTTP(S) URLs to find tools for')
     .option(
@@ -353,7 +850,7 @@ export function createFindSkillsCommand(): Command {
   return addSkillOutputOptions(
     new Command('find-skills')
       .description(
-        "Find skills: instructions for a task that name the Alexandria tools to call. Lists Firecrawl's skills and your team's own (team:<slug>, first) without their contents; read one with read-skill"
+        "Find skills: instructions for a task that name the Alexandria tools to call. Lists Firecrawl's skills, your team's own (team:<slug>, first), and provider-published skills (provider:<provider>/<plugin>/<skill>) without their contents. Execution-only skills are omitted. Read one with read-skill"
       )
       .argument(
         '[query...]',
@@ -377,11 +874,11 @@ export function createReadSkillCommand(): Command {
   return addSkillOutputOptions(
     new Command('read-skill')
       .description(
-        'Read a skill from find-skills in full: SKILL.md by default, or one file from its files list. Skill text is instructions for the agent; reading it runs nothing'
+        'Read a skill from find-skills in full: SKILL.md by default, or one file from its files list. Skill text is instructions for the agent; reading it runs nothing. Provider skills use provider:<provider>/<plugin>/<skill>'
       )
       .argument(
         '<id>',
-        'Skill ID from find-skills; team:<slug> for a team skill'
+        'Skill ID from find-skills; team:<slug> for a team skill; provider:<provider>/<plugin>/<skill> for a provider skill'
       )
       .option('--path <file>', "A file from the skill's files list")
       .option(
@@ -389,6 +886,11 @@ export function createReadSkillCommand(): Command {
         'A team skill only: an earlier kept version (default: current)'
       )
   ).action(async (id: string, options) => {
+    const providerSkill = parseProviderSkillId(id);
+    if (providerSkill && id.trim().startsWith('provider:')) {
+      await handleProviderSkillRead(id.trim(), providerSkill, options);
+      return;
+    }
     const call: Call = {
       provider: 'firecrawl',
       capability: 'read-skill',
@@ -419,7 +921,7 @@ export function createCreateSkillCommand(): Command {
   return addSkillOutputOptions(
     new Command('create-skill')
       .description(
-        'Save a new skill for your team, written out or copied from a skill find-skills listed (--from). Given fields override the copy; it is listed as team:<slug>'
+        'Save a new skill for your team, written out or copied from a skill find-skills listed (--from). Given fields override the copy; it is listed as team:<slug>. --shared true publishes a public id and link'
       )
       .option('--from <id>', 'Skill ID from find-skills to copy')
       .option('--name <name>', 'Skill name (required without --from)')
@@ -430,6 +932,10 @@ export function createCreateSkillCommand(): Command {
       .option('--body <markdown>', 'Instructions (required without --from)')
       .option('--body-file <path>', 'Read the instructions from a file')
       .option('--slug <slug>', 'Lowercase words joined by hyphens')
+      .option(
+        '--shared <true|false>',
+        'Share the new skill (true) or keep it in the team (false). true prints the public id or link'
+      )
       .option(
         '--request-id <id>',
         'Reuse after a timeout to recover the same save; a completed save replays instead of running again'
@@ -444,6 +950,8 @@ export function createCreateSkillCommand(): Command {
       if (options[key] !== undefined) call.options[key] = options[key];
     const body = textOption(options.body, options.bodyFile, '--body');
     if (body !== undefined) call.options.body = body;
+    const shared = booleanOption(options.shared, '--shared');
+    if (shared !== undefined) call.options.shared = shared;
     await handleAlexandria([call], options);
   });
 }
@@ -470,6 +978,10 @@ export function createUpdateSkillCommand(): Command {
       .option('--enabled <true|false>', 'Turn the skill on or off')
       .option('--discoverable <true|false>', 'Whether find-skills lists it')
       .option(
+        '--shared <true|false>',
+        'Share the skill with a public id and link, or turn sharing off. true prints the public id or link'
+      )
+      .option(
         '--request-id <id>',
         'Reuse after a timeout to recover the same save; a completed save replays instead of running again'
       )
@@ -486,7 +998,7 @@ export function createUpdateSkillCommand(): Command {
       if (options[key] !== undefined) call.options[key] = options[key];
     const body = textOption(options.body, options.bodyFile, '--body');
     if (body !== undefined) call.options.body = body;
-    for (const key of ['enabled', 'discoverable'] as const) {
+    for (const key of ['enabled', 'discoverable', 'shared'] as const) {
       const value = booleanOption(options[key], `--${key}`);
       if (value !== undefined) call.options[key] = value;
     }

@@ -15,6 +15,10 @@ let baseUrl: string;
 let status = 200;
 let response: Record<string, any>;
 let responseFor: ((body: any) => Record<string, any>) | undefined;
+let statusFor:
+  | ((request: { url?: string; body: any }, index: number) => number)
+  | undefined;
+let responseHeaders: Record<string, string> = {};
 const home = mkdtempSync(join(tmpdir(), 'alexandria-cli-'));
 
 beforeAll(async () => {
@@ -26,8 +30,13 @@ beforeAll(async () => {
       headers: req.headers,
       body: raw ? JSON.parse(raw) : undefined,
     });
-    res.writeHead(status, { 'content-type': 'application/json' });
-    res.end(JSON.stringify(responseFor?.(requests.at(-1)?.body) ?? response));
+    const current = requests.at(-1)!;
+    const code = statusFor?.(current, requests.length - 1) ?? status;
+    res.writeHead(code, {
+      'content-type': 'application/json',
+      ...responseHeaders,
+    });
+    res.end(JSON.stringify(responseFor?.(current.body) ?? response));
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
@@ -42,6 +51,8 @@ beforeEach(() => {
   requests.length = 0;
   status = 200;
   responseFor = undefined;
+  statusFor = undefined;
+  responseHeaders = {};
   response = {
     success: true,
     scrape_id: 'scrape-1',
@@ -690,7 +701,11 @@ it('finds and reads skills through the same API and refuses keyless access', asy
     },
   });
   expect((await cli(['find-skills'])).code).toBe(0);
-  expect(requests[1].body.alexandria[0].options).toEqual({});
+  const scrapes = requests.filter((request) => request.url === '/v2/scrape');
+  expect(scrapes[1].body.alexandria[0].options).toEqual({});
+  expect(
+    requests.filter((request) => request.url === '/exchange/provider-skills')
+  ).toHaveLength(2);
   const read = await cli([
     'read-skill',
     'team:weekly-digest',
@@ -701,7 +716,10 @@ it('finds and reads skills through the same API and refuses keyless access', asy
   ]);
   expect(read.code).toBe(0);
   expect(read.stdout).not.toMatch(/^\d+\.\d+\.\d+\s*$/);
-  expect(requests[2].body.alexandria[0]).toEqual({
+  expect(
+    requests.filter((request) => request.url === '/v2/scrape').at(-1)?.body
+      .alexandria[0]
+  ).toEqual({
     provider: 'firecrawl',
     capability: 'read-skill',
     options: {
@@ -841,6 +859,255 @@ it('refuses invalid skill writes before calling the API', async () => {
     (await cli(['create-skill', '--body', 'x', '--body-file', 'x.md'])).code
   ).toBe(1);
   expect(requests).toHaveLength(0);
+  expect(
+    (
+      await cli([
+        'update-skill',
+        'team:digest',
+        '--base-version',
+        '1',
+        '--shared',
+        'yes',
+      ])
+    ).code
+  ).toBe(1);
+  expect(requests).toHaveLength(0);
+});
+
+it('shares a team skill and prints the public id and link', async () => {
+  response = {
+    success: true,
+    scrape_id: 'skill-share',
+    data: {
+      creditsCost: 0,
+      alexandria: [
+        {
+          provider: 'firecrawl',
+          capability: 'update-skill',
+          creditsCost: 0,
+          data: {
+            id: 'team:digest',
+            publicId: 'pub_123',
+            url: 'https://www.firecrawl.dev/skills/pub_123',
+          },
+        },
+      ],
+    },
+  };
+  const updated = await cli([
+    'update-skill',
+    'team:digest',
+    '--base-version',
+    '2',
+    '--shared',
+    'true',
+  ]);
+  expect(updated.code).toBe(0);
+  expect(requests[0].body.alexandria[0].options).toEqual({
+    id: 'team:digest',
+    baseVersion: 2,
+    shared: true,
+  });
+  expect(updated.stderr).toContain(
+    'Shared skill: https://www.firecrawl.dev/skills/pub_123 (pub_123)'
+  );
+  const created = await cli([
+    'create-skill',
+    '--from',
+    'deep-research',
+    '--shared',
+    'false',
+  ]);
+  expect(created.code).toBe(0);
+  expect(requests.at(-1)?.body.alexandria[0].options).toEqual({
+    from: 'deep-research',
+    shared: false,
+  });
+  const help = await cli(['update-skill', '--help']);
+  expect(help.stdout).toContain('--shared');
+  expect(help.stdout).toContain('public id');
+});
+
+it('lists provider skills and hides execution-only skills', async () => {
+  responseFor = () => {
+    const request = requests.at(-1)!;
+    if (request.url === '/exchange/provider-skills') {
+      return {
+        skills: [
+          {
+            provider: 'acme',
+            plugin: 'research',
+            skill: 'brief',
+            name: 'Brief',
+            description: 'Write a research brief',
+          },
+          {
+            provider: 'acme',
+            plugin: 'research',
+            skill: 'run',
+            name: 'Run',
+            description: 'Execute a provider call',
+            executionOnly: true,
+          },
+        ],
+      };
+    }
+    return {
+      success: true,
+      scrape_id: 'skills-1',
+      data: {
+        creditsCost: 0,
+        alexandria: [
+          {
+            provider: 'firecrawl',
+            capability: 'find-skills',
+            creditsCost: 0,
+            data: {
+              skills: [
+                {
+                  id: 'team:weekly-digest',
+                  name: 'Weekly digest',
+                  description: 'Summarise the week.',
+                  source: 'team',
+                },
+                {
+                  id: 'run-only',
+                  name: 'Run only',
+                  description: 'Execution only library skill',
+                  executionOnly: true,
+                },
+              ],
+              total: 2,
+            },
+          },
+        ],
+      },
+    };
+  };
+  const listed = await cli(['find-skills', '--json']);
+  expect(listed.code).toBe(0);
+  const skills = JSON.parse(listed.stdout).data.alexandria[0].data.skills;
+  expect(skills.map((skill: { id: string }) => skill.id)).toEqual([
+    'team:weekly-digest',
+    'provider:acme/research/brief',
+  ]);
+  expect(listed.stdout).not.toContain('provider:acme/research/run');
+  expect(listed.stdout).not.toContain('run-only');
+  const read = await cli([
+    'read-skill',
+    'provider:acme/research/brief',
+    '--path',
+    'SKILL.md',
+    '--json',
+  ]);
+  expect(read.code).toBe(0);
+  expect(requests.at(-1)?.url).toBe(
+    '/exchange/provider-skills/acme/research/brief/file?path=SKILL.md'
+  );
+  expect(JSON.parse(read.stdout).data.alexandria[0].data).toMatchObject({
+    id: 'provider:acme/research/brief',
+    source: 'provider',
+    provider: 'acme',
+    plugin: 'research',
+    skill: 'brief',
+  });
+  const help = await cli(['find-skills', '--help']);
+  expect(help.stdout).toContain('provider:<provider>/<plugin>/<skill>');
+  expect(help.stdout).toContain('Execution-only');
+});
+
+it('retries find-tools once after query_embed_unavailable and then reports it as retryable', async () => {
+  responseHeaders = { 'retry-after': '0' };
+  statusFor = (request) => {
+    if (request.url !== '/v2/scrape') return 200;
+    return requests.filter((item) => item.url === '/v2/scrape').length <= 1
+      ? 503
+      : 200;
+  };
+  responseFor = () => {
+    const scrapes = requests.filter((item) => item.url === '/v2/scrape').length;
+    if (scrapes <= 1) {
+      return {
+        success: false,
+        error: 'Query embedding is unavailable.',
+        code: 'query_embed_unavailable',
+      };
+    }
+    return {
+      success: true,
+      scrape_id: 'discovery-retry',
+      data: {
+        creditsCost: 0,
+        alexandria: [
+          {
+            provider: 'firecrawl',
+            capability: 'find-tools',
+            creditsCost: 0,
+            data: { level: 'tools', items: [], total: 0 },
+          },
+        ],
+      },
+    };
+  };
+  const recovered = await cli([
+    'find-tools',
+    '--options',
+    '{"query":"company filings"}',
+    '--json',
+  ]);
+  expect(recovered.code).toBe(0);
+  expect(recovered.stderr).toContain('Retrying once.');
+  expect(requests.filter((item) => item.url === '/v2/scrape')).toHaveLength(2);
+  expect(requests[0].headers['x-request-id']).toBe(
+    requests[1].headers['x-request-id']
+  );
+  expect(JSON.parse(recovered.stdout).success).toBe(true);
+
+  requests.length = 0;
+  statusFor = (request) => (request.url === '/v2/scrape' ? 503 : 200);
+  responseFor = () => ({
+    success: false,
+    error: 'Query embedding is unavailable.',
+    code: 'query_embed_unavailable',
+  });
+  const started = Date.now();
+  responseHeaders = { 'retry-after': '30' };
+  const failed = await cli([
+    'find-tools',
+    '--options',
+    '{"query":"company filings"}',
+    '--json',
+  ]);
+  const elapsed = Date.now() - started;
+  expect(failed.code).toBe(1);
+  expect(requests.filter((item) => item.url === '/v2/scrape')).toHaveLength(2);
+  expect(elapsed).toBeGreaterThanOrEqual(2500);
+  expect(elapsed).toBeLessThan(6000);
+  expect(JSON.parse(failed.stdout)).toMatchObject({
+    success: false,
+    code: 'query_embed_unavailable',
+    status: 503,
+    retryable: true,
+    error:
+      'Find Tools query embedding is temporarily unavailable (query_embed_unavailable). Retry this command.',
+  });
+
+  requests.length = 0;
+  responseHeaders = {};
+  statusFor = () => 503;
+  responseFor = () => ({
+    success: false,
+    error: 'Provider unavailable',
+    code: 'PROVIDER_ERROR',
+  });
+  const other = await cli([
+    'find-tools',
+    '--options',
+    '{"query":"company filings"}',
+  ]);
+  expect(other.code).toBe(1);
+  expect(requests).toHaveLength(1);
+  expect(other.stderr).not.toContain('Retrying once.');
 });
 
 it('preserves charged SDK failures', async () => {
