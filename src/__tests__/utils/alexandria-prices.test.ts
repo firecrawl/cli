@@ -93,6 +93,7 @@ describe('provider skills', () => {
   it('hides execution-only skills and keeps the provider id', () => {
     expect(isExecutionOnlySkill({ executionOnly: true })).toBe(true);
     expect(isExecutionOnlySkill({ kind: 'execution-only' })).toBe(true);
+    expect(isExecutionOnlySkill({ visibility: 'Execution_Only' })).toBe(true);
     const page = listedProviderSkills(
       {
         skills: [
@@ -127,8 +128,34 @@ describe('provider skills', () => {
       },
       { provider: 'acme', query: 'brief' }
     );
+    expect(page.provider).toBe('acme');
     expect(page.skills.map((skill) => skill.skill)).toEqual(['brief']);
     expect(page.total).toBe(1);
+    const nested = listedProviderSkills(
+      {
+        providers: [
+          {
+            provider: 'acme',
+            plugins: [
+              {
+                plugin: 'research',
+                skills: [{ skill: 'nested', name: 'Nested brief' }],
+              },
+            ],
+          },
+        ],
+      },
+      { provider: 'acme', query: 'nested' }
+    );
+    expect(nested.provider).toBe('acme');
+    expect(nested.skills).toEqual([
+      {
+        skill: 'nested',
+        name: 'Nested brief',
+        provider: 'acme',
+        plugin: 'research',
+      },
+    ]);
   });
 
   it('prints a shared skill id or link from a skill write', () => {

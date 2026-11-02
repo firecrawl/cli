@@ -390,26 +390,51 @@ export function isExecutionOnlySkill(skill: any): boolean {
   if (!skill || typeof skill !== 'object' || Array.isArray(skill)) return false;
   if (skill.executionOnly === true || skill.execution_only === true)
     return true;
-  const visibility =
-    skill.visibility ?? skill.listing ?? skill.mode ?? skill.kind;
-  return (
-    visibility === 'execution' ||
-    visibility === 'execution-only' ||
-    visibility === 'execute'
-  );
+  return [
+    skill.visibility,
+    skill.listing,
+    skill.mode,
+    skill.kind,
+    skill.purpose,
+  ].some((value) => {
+    if (typeof value !== 'string') return false;
+    const normalized = value.toLowerCase().replace(/_/g, '-').trim();
+    return (
+      normalized === 'execution' ||
+      normalized === 'execution-only' ||
+      normalized === 'execute'
+    );
+  });
 }
 
-function collectSkillRecords(body: any, into: any[] = []): any[] {
+function collectSkillRecords(
+  body: any,
+  into: any[] = [],
+  parent: { provider?: string; plugin?: string } = {}
+): any[] {
   if (Array.isArray(body)) {
-    for (const entry of body) collectSkillRecords(entry, into);
+    for (const entry of body) collectSkillRecords(entry, into, parent);
     return into;
   }
   if (!body || typeof body !== 'object') return into;
+  const provider =
+    typeof body.provider === 'string' ? body.provider : parent.provider;
+  const plugin = typeof body.plugin === 'string' ? body.plugin : parent.plugin;
+  const inherited = { provider, plugin };
   for (const key of ['skills', 'items'] as const) {
-    if (Array.isArray(body[key])) into.push(...body[key]);
+    if (!Array.isArray(body[key])) continue;
+    for (const skill of body[key]) {
+      if (!skill || typeof skill !== 'object' || Array.isArray(skill)) continue;
+      into.push({
+        ...skill,
+        ...(typeof skill.provider !== 'string' && provider ? { provider } : {}),
+        ...(typeof skill.plugin !== 'string' && plugin ? { plugin } : {}),
+      });
+    }
   }
   for (const value of Object.values(body)) {
-    if (value && typeof value === 'object') collectSkillRecords(value, into);
+    if (value && typeof value === 'object')
+      collectSkillRecords(value, into, inherited);
   }
   return into;
 }
