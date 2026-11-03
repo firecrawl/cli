@@ -814,6 +814,15 @@ describe('skill update lifecycle', () => {
     expect(notice).not.toContain('Run firecrawl setup verticals');
     expect(notice).not.toContain('firecrawl-health-research');
 
+    await installSkillsForAgent(
+      'claude-code',
+      { nativeSkills: true, quiet: true },
+      ['firecrawl/skills']
+    );
+    expect(
+      fs.existsSync(path.join(installed, 'firecrawl-health-research'))
+    ).toBe(false);
+
     await setup('verticals');
     expect(
       [

@@ -310,6 +310,25 @@ describe('handleSetupCommand', () => {
       }
     );
 
+    it('reports a catalog outage during setup verticals', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const exit = vi.spyOn(process, 'exit').mockImplementation(((
+        code?: number
+      ) => {
+        throw new Error(`process.exit:${code}`);
+      }) as never);
+      vi.mocked(getCatalogSkills).mockRejectedValueOnce(new Error('offline'));
+      await expect(handleSetupCommand('verticals', {})).rejects.toThrow(
+        'process.exit:1'
+      );
+      expect(console.error).toHaveBeenCalledWith(
+        'Failed to install skills from firecrawl/skills:',
+        'offline'
+      );
+      expect(execFileSync).not.toHaveBeenCalled();
+      exit.mockRestore();
+    });
+
     it('rejects a bare name the catalog cannot confirm', async () => {
       const exit = vi.spyOn(process, 'exit').mockImplementation(((
         code?: number

@@ -680,7 +680,16 @@ async function installSkills(
     }
 
     if (hasNpx()) {
-      const skills = await resolveSkillSelection(selection);
+      let skills: readonly string[] | undefined;
+      try {
+        skills = await resolveSkillSelection(selection);
+      } catch (error) {
+        console.error(
+          `Failed to install skills from ${repo}:`,
+          error instanceof Error ? error.message : 'Unknown error'
+        );
+        process.exit(1);
+      }
       const args = buildSkillsInstallArgs({
         repo,
         agent: options.agent,

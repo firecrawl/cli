@@ -419,6 +419,10 @@ export async function installSkillsNative(
       skills = skills.filter(
         (skill) => skill.skillPath.split(path.sep)[0] === options.family
       );
+    } else if (!options.skills) {
+      skills = skills.filter(
+        (skill) => skill.skillPath.split(path.sep)[0] !== 'verticals'
+      );
     }
     if (skills.length === 0) {
       throw new Error('No skills found in repository');
