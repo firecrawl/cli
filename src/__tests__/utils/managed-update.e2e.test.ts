@@ -232,6 +232,8 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
           [
             'install',
             '-g',
+            '--prefix',
+            '.',
             'package.tgz',
             '--ignore-scripts',
             '--no-audit',
@@ -241,6 +243,16 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
           { ...bootstrapEnv, npm_config_prefix: installedTemplate }
         )
       );
+      const templateEntry = path.join(
+        installedTemplate,
+        ...(process.platform === 'win32' ? [] : ['lib']),
+        'node_modules',
+        'firecrawl-cli',
+        'dist',
+        'launcher.js'
+      );
+      if (!fs.existsSync(templateEntry))
+        throw new Error(`npm did not install the fixture at ${templateEntry}`);
       fs.rmSync(path.join(installedTemplate, 'package.tgz'));
       server = http.createServer((req, res) => {
         requests.push(req.url!);
