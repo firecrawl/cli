@@ -97,47 +97,71 @@ firecrawl setup workflows
 
 ### CLI updates
 
-Standalone binaries from the install script keep themselves current on macOS
-and Linux. About once a day the CLI checks npm for a newer release in the same
-major version and, in a detached background process, downloads the release
-archive for your platform, verifies it against the release's `checksums.txt`,
-and swaps in the new executable with one atomic rename. The command that starts
-the check does not wait for it, and the updater never writes to stdout, so
-scripted and agent output stays the same. The next invocation runs the new
-version, and interactive terminals see a one-line note once. Updater output goes
-to `~/.firecrawl/auto-update.log`. A failed install waits 24 hours before trying
-again and a failed version check waits one hour; meanwhile the usual update
-notice appears when a newer version is available.
+Global npm, pnpm, bun, and yarn installations, plus standalone binaries on macOS
+and Linux, check for updates in the background. Commands do not wait for an
+update, and the updater never writes to stdout. The next invocation uses the
+updated release, with a one-time notice on an interactive terminal.
 
-Package-managed installs show an update notice with the appropriate command:
-`npm install -g firecrawl-cli@latest`, `pnpm add -g firecrawl-cli@latest`,
-`bun add -g firecrawl-cli@latest`, `yarn global add firecrawl-cli@latest`, or
-`brew upgrade firecrawl-cli`. The CLI never runs these package managers itself.
-Project-local installs, package runners, system packages, non-writable installs,
-binaries owned by another user, and standalone Windows binaries must be updated
-the way they were installed.
+For global package installs, the installed package is a stable launcher. The
+updater uses npm to install a new release into a separate directory under
+`~/.firecrawl/versions/`, verifies it, then atomically switches the current
+version pointer. It never rewrites the global installation or removes files
+used by running commands. Managed versions are separated by Node runtime
+version, and npm enforces the release's Node requirements. Install scripts are
+disabled. Older managed versions are retained for running commands and rollback.
 
-Automatic updates never cross a major version or install a prerelease.
-Prerelease builds stay on the installed version and show no update notice.
-To update a standalone binary immediately, including to a new major version:
+Standalone binaries download their release archive, verify its SHA-256 checksum
+and reported version, then atomically replace the executable. The previous
+binary is retained beside it with a `.previous` suffix.
+
+A newly observed release waits at least 24 hours before unattended installation.
+The worker rechecks that it is still the latest release after this delay; a
+changed candidate starts a new waiting period. Version checks normally refresh
+about once a day. Automatic updates never cross a major version or install a
+prerelease. Prerelease installations remain pinned.
+
+To update immediately, bypassing the waiting period, including to a new major
+version:
 
 ```bash
 firecrawl update
 ```
 
-Turn automatic updates off with either of:
+To restore the previous version without the network:
 
 ```bash
-firecrawl update --disable-auto   # persistent, undo with --enable-auto
-export FIRECRAWL_NO_AUTO_UPDATE=1 # per environment
+firecrawl update --rollback
 ```
 
-They are also off when `CI` is set, unless it is `0` or `false`.
-`FIRECRAWL_NO_UPDATE_CHECK=1` turns off both automatic updates and notices.
-These settings do not prevent an explicit `firecrawl update`.
+Rollback disables automatic updates so the same release is not immediately
+installed again. The first managed-package rollback returns to the original
+package-manager installation; later updates can roll back to the previous
+managed version. Moving the registry's latest tag back does not automatically
+downgrade an existing installation.
 
-Version checks honor `npm_config_registry`. Binary downloads use GitHub
-releases; set `FIRECRAWL_RELEASES_URL` to a mirror with the same layout.
+Control automatic updates with:
+
+```bash
+firecrawl update --disable-auto
+firecrawl update --enable-auto
+export FIRECRAWL_NO_AUTO_UPDATE=1
+```
+
+Automatic updates are also off when `CI` is set, unless it is `0` or `false`.
+`FIRECRAWL_NO_UPDATE_CHECK=1` disables both automatic updates and notices.
+Explicit updates still work with these settings. Failures leave the active
+installation unchanged and back off before retrying. Details are recorded in
+`~/.firecrawl/auto-update.log`.
+
+Homebrew and other system packages, project-local installs, package runners
+such as npx, and standalone Windows binaries retain their selected release and
+show the appropriate manual update instruction. Enable/disable flags report
+that these installations are externally managed and do not save a setting.
+Non-writable or differently owned standalone binaries are not replaced.
+
+Package updates use npm's registry configuration. Binary version checks honor
+`npm_config_registry`; binary downloads use GitHub releases, or the mirror set
+with `FIRECRAWL_RELEASES_URL`.
 
 ### Skill updates
 

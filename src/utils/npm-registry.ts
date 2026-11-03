@@ -19,13 +19,15 @@ export interface LatestVersionResult {
  */
 export async function getLatestVersion(
   packageName: string,
-  timeoutMs = 2000
+  timeoutMs = 2000,
+  configuredRegistry?: string
 ): Promise<LatestVersionResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const registry = (
+      configuredRegistry ||
       process.env.npm_config_registry ||
       process.env.NPM_CONFIG_REGISTRY ||
       REGISTRY_URL

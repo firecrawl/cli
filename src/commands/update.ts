@@ -2,6 +2,7 @@ import {
   autoUpdateBlocker,
   setAutoUpdateEnabled,
   updateNow,
+  rollbackUpdate,
   updateHint,
   updatesAutomatically,
 } from '../utils/auto-update';
@@ -10,13 +11,34 @@ import { detectInstallChannel } from '../utils/install-channel';
 export interface UpdateOptions {
   enableAuto?: boolean;
   disableAuto?: boolean;
+  rollback?: boolean;
 }
 
 export async function handleUpdateCommand(
   options: UpdateOptions = {}
 ): Promise<void> {
-  if (options.enableAuto && options.disableAuto) {
-    console.error('Pass only one of --enable-auto and --disable-auto.');
+  if (
+    [options.enableAuto, options.disableAuto, options.rollback].filter(Boolean)
+      .length > 1
+  ) {
+    console.error(
+      'Pass only one of --enable-auto, --disable-auto, and --rollback.'
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  if (options.rollback) {
+    if (!(await rollbackUpdate())) process.exitCode = 1;
+    return;
+  }
+  if (
+    (options.enableAuto || options.disableAuto) &&
+    !updatesAutomatically(detectInstallChannel())
+  ) {
+    console.error(
+      `Automatic updates are not supported for this installation. ${updateHint(detectInstallChannel())}`
+    );
     process.exitCode = 1;
     return;
   }
@@ -40,13 +62,6 @@ export async function handleUpdateCommand(
   }
 
   if (options.enableAuto) {
-    const channel = detectInstallChannel();
-    if (!updatesAutomatically(channel)) {
-      console.log(
-        `Automatic updates are on, but only the standalone binary updates itself. ${updateHint(channel)}`
-      );
-      return;
-    }
     const blocker = autoUpdateBlocker();
     console.log(
       blocker

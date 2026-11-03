@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import { managedRoot, stableVersion } from './managed-paths';
 
-export type PackageManagerChannel = 'npm' | 'pnpm' | 'bun' | 'yarn';
+export type PackageManagerChannel = 'npm' | 'pnpm' | 'bun' | 'yarn' | 'managed';
 
 export type InstallChannel =
   | { kind: PackageManagerChannel; packageRoot: string; prefix?: string }
@@ -89,6 +90,15 @@ export function classifyInstall({
   const root = p.resolve(moduleDir, '..', '..');
   const slashed = root.replaceAll('\\', '/');
 
+  const relative = p.relative(managedRoot(), root).split(p.sep);
+  if (
+    relative.length === 3 &&
+    stableVersion(relative[0]) &&
+    relative.slice(1).join('/') === 'node_modules/firecrawl-cli'
+  ) {
+    return { kind: 'managed', packageRoot: root };
+  }
+
   if (slashed.includes('/_npx/')) {
     return unsupported('npx', 'running through npx');
   }
@@ -150,7 +160,7 @@ function ownedByUser(file: string): boolean {
   }
 }
 
-/** Classify the running install and confirm this user can replace it in place. */
+/** Classify the running install; only self-updating binaries need a write check. */
 export function detectInstallChannel(
   paths: InstallPaths = {
     moduleDir: isCompiledBinary() ? '/$bunfs/root' : __dirname,
@@ -168,38 +178,26 @@ export function detectInstallChannel(
     // Keep the reported path.
   }
   const channel = classifyInstall({ ...paths, moduleDir });
+  if (channel.kind === 'npm') {
+    // A project dependency can have the same layout, especially on Windows.
+    // Only a global install has its launcher directly in the prefix's bin path.
+    const shim =
+      paths.platform === 'win32'
+        ? path.join(channel.prefix!, 'firecrawl.cmd')
+        : path.join(channel.prefix!, 'bin', 'firecrawl');
+    if (!fs.existsSync(shim))
+      return unsupported('not-global', 'not installed as a global package');
+  }
   const notWritable = unsupported(
     'not-writable',
     'the install location is not writable by this user'
   );
 
-  switch (channel.kind) {
-    case 'unsupported':
-      return channel;
-    case 'brew':
-      return writable(channel.cellar) ? channel : notWritable;
-    case 'binary':
-      if (!writable(path.dirname(channel.executable), channel.executable)) {
-        return notWritable;
-      }
-      return ownedByUser(channel.executable)
-        ? channel
-        : unsupported('not-writable', 'the binary belongs to another user');
-    case 'npm': {
-      const shim =
-        paths.platform === 'win32'
-          ? path.join(channel.prefix!, 'firecrawl.cmd')
-          : path.join(channel.prefix!, 'bin', 'firecrawl');
-      if (!fs.existsSync(shim)) {
-        return unsupported('not-global', 'not installed as a global package');
-      }
-      return writable(path.dirname(channel.packageRoot), path.dirname(shim))
-        ? channel
-        : notWritable;
-    }
-    default:
-      return writable(path.dirname(channel.packageRoot))
-        ? channel
-        : notWritable;
+  if (channel.kind !== 'binary') return channel;
+  if (!writable(path.dirname(channel.executable), channel.executable)) {
+    return notWritable;
   }
+  return ownedByUser(channel.executable)
+    ? channel
+    : unsupported('not-writable', 'the binary belongs to another user');
 }

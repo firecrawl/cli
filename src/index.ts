@@ -2970,6 +2970,10 @@ program
   .description('Update the Firecrawl CLI to the latest release')
   .option('--enable-auto', 'Turn automatic background updates on')
   .option('--disable-auto', 'Turn automatic background updates off')
+  .option(
+    '--rollback',
+    'Restore the previous version and disable automatic updates'
+  )
   .action(async (options) => {
     await handleUpdateCommand(options);
   });

@@ -213,6 +213,20 @@ describe.skipIf(
     registryGate = undefined;
     releaseRegistry = undefined;
     requests = [];
+    // Exercise elapsed observation periods through the persisted state, without
+    // changing production clocks or waiting a day in CI.
+    fs.mkdirSync(path.dirname(dataFile('auto-update-state.json')), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      dataFile('auto-update-state.json'),
+      JSON.stringify({
+        candidate: {
+          version: next,
+          observedAt: new Date(Date.now() - 25 * 3_600_000).toISOString(),
+        },
+      })
+    );
   });
   afterEach(async () => {
     releaseRegistry?.();
@@ -226,6 +240,108 @@ describe.skipIf(
     if (server)
       await new Promise<void>((resolve) => server.close(() => resolve()));
     if (root) fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('waits a full observation period and rechecks the registry before installing', async () => {
+    fs.rmSync(dataFile('auto-update-state.json'));
+    await cli(['--version']);
+    await until(
+      () => !!readState().retryAt,
+      'observation delay was not recorded'
+    );
+    await until(
+      () => !fs.existsSync(dataFile('auto-update.lock')),
+      'worker did not finish'
+    );
+    expect(readState().candidate.version).toBe(next);
+    expect(Date.parse(readState().retryAt) - Date.now()).toBeGreaterThan(
+      23 * 3_600_000
+    );
+    expect(requests).toEqual(['/firecrawl-cli/latest']);
+    expect((await version()).stdout.trim()).toBe(current);
+    await cli(['--version']);
+    expect(requests).toHaveLength(1);
+    const past = new Date(Date.now() - 25 * 3_600_000).toISOString();
+    fs.writeFileSync(
+      dataFile('auto-update-state.json'),
+      JSON.stringify({
+        candidate: { version: next, observedAt: past },
+        retryAt: past,
+      })
+    );
+    await cli(['--version']);
+    await until(
+      () => readState().updated?.to === next,
+      'mature release did not install'
+    );
+    expect(
+      requests.filter((request) => request === '/firecrawl-cli/latest')
+    ).toHaveLength(2);
+    expect((await version()).stdout.trim()).toBe(next);
+  });
+
+  it('starts a new observation period when the candidate changes', async () => {
+    latest = `${major}.${minor}.${patch + 2}`;
+    await cli(['--version']);
+    await until(
+      () => !!readState().retryAt,
+      'replacement candidate was not deferred'
+    );
+    expect(readState().candidate.version).toBe(latest);
+    expect(requests).toEqual(['/firecrawl-cli/latest']);
+    expect((await version()).stdout.trim()).toBe(current);
+  });
+
+  it('discards a withdrawn candidate before it can install', async () => {
+    latest = current;
+    await cli(['--version']);
+    await until(
+      () => fs.existsSync(dataFile('update-check.json')),
+      'version was not checked'
+    );
+    await until(
+      () => !fs.existsSync(dataFile('auto-update.lock')),
+      'worker did not finish'
+    );
+    expect(readState().candidate).toBeUndefined();
+    expect(requests).toEqual(['/firecrawl-cli/latest']);
+    expect((await version()).stdout.trim()).toBe(current);
+  });
+
+  it('restores the verified previous binary offline and leaves automatic updates disabled', async () => {
+    expect((await cli(['update'])).code).toBe(0);
+    expect((await version()).stdout.trim()).toBe(next);
+    const requestsBeforeRollback = requests.length;
+    registryFailure = true;
+    const result = await cli(['update', '--rollback']);
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout).toContain(`Restored firecrawl ${current}`);
+    expect((await cli(['--version'])).stdout.trim()).toBe(current);
+    expect(requests).toHaveLength(requestsBeforeRollback);
+    expect(
+      fs
+        .readFileSync(executable)
+        .equals(fs.readFileSync(path.join(root, current, asset)))
+    ).toBe(true);
+    expect(
+      JSON.parse(fs.readFileSync(dataFile('auto-update.json'), 'utf8')).disabled
+    ).toBe(true);
+  });
+
+  it('refuses rollback when the previous binary was modified', async () => {
+    expect((await cli(['update'])).code).toBe(0);
+    fs.appendFileSync(`${executable}.previous`, 'corrupt');
+    const result = await cli(['update', '--rollback']);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('failed verification');
+    expect((await version()).stdout.trim()).toBe(next);
+  });
+
+  it('reports unavailable rollback without changing the executable', async () => {
+    const result = await cli(['update', '--rollback']);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('No previous version');
+    expect((await version()).stdout.trim()).toBe(current);
   });
 
   it('returns clean stdout before the registry responds, then atomically installs the verified binary', async () => {

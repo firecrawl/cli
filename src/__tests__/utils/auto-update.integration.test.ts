@@ -5,12 +5,6 @@ import path from 'path';
 import { startAutoUpdate } from '../../utils/auto-update';
 import type { InstallChannel } from '../../utils/install-channel';
 import packageJson from '../../../package.json';
-const npmChannel: InstallChannel = {
-  kind: 'npm',
-  packageRoot: '/unused/lib/node_modules/firecrawl-cli',
-  prefix: '/unused',
-};
-
 describe('startAutoUpdate', () => {
   const names = [
     'HOME',
@@ -57,10 +51,13 @@ describe('startAutoUpdate', () => {
     asset: 'firecrawl-linux-x64',
   });
 
-  it('never starts an update for a package manager install', async () => {
+  it('never starts an update for an external system package manager', async () => {
     cache('1.0.0', 48);
     await expect(
-      startAutoUpdate({ channel: npmChannel, stderr: quiet })
+      startAutoUpdate({
+        channel: { kind: 'brew', cellar: '/unused/Cellar/firecrawl-cli' },
+        stderr: quiet,
+      })
     ).resolves.toBe(false);
     expect(
       fs.existsSync(path.join(home, '.firecrawl', 'auto-update.lock'))

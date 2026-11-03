@@ -72,7 +72,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v4.5.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '22'
 
@@ -92,7 +92,7 @@ jobs:
           ./${{ matrix.binary }} --version
           ./${{ matrix.binary }} --help
 
-      - name: Verify standalone updates end to end (Unix)
+      - name: Verify binary and package updates end to end (Unix)
         if: runner.os != 'Windows'
         run: bun run test:update
 
@@ -166,6 +166,10 @@ jobs:
           npx -y --package $($Package.FullName) firecrawl login --help
           npx -y --package $($Package.FullName) firecrawl setup --help
           npx -y --package $($Package.FullName) firecrawl help setup
+
+      - name: Verify managed package updates on Windows
+        if: runner.os == 'Windows'
+        run: pnpm run test:update
 
       - name: Verify secure MCP setup through Windows npx.cmd
         if: runner.os == 'Windows'

@@ -5,6 +5,11 @@ import os from 'os';
 import path from 'path';
 import packageJson from '../../package.json';
 import {
+  installManagedVersion,
+  managedRegistry,
+  rollbackManagedVersion,
+} from './managed-update';
+import {
   detectInstallChannel,
   isCompiledBinary,
   type InstallChannel,
@@ -31,6 +36,7 @@ const LOG_FILE = 'auto-update.log';
 const WORKER_ENV = 'FIRECRAWL_AUTO_UPDATE_WORKER';
 const RELEASES_URL = 'https://github.com/firecrawl/cli/releases/download';
 const CHECK_RETRY_MS = 60 * 60 * 1000;
+const OBSERVATION_DELAY_MS = 24 * 60 * 60 * 1000;
 const FAILURE_BACKOFF_MS = 24 * 60 * 60 * 1000;
 const INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
 const HEARTBEAT_MS = 60 * 1000;
@@ -41,6 +47,8 @@ const BOOT_TOLERANCE_MS = 5 * 60 * 1000;
 const LOG_MAX_BYTES = 256 * 1024;
 
 interface AutoUpdateState {
+  candidate?: { version: string; observedAt: string };
+  previous?: { executable: string; version: string; sha256: string };
   retryAt?: string;
   lastError?: string;
   updated?: { from: string; to: string; at: string; announced?: boolean };
@@ -82,8 +90,8 @@ function readState(dir: string): AutoUpdateState {
   return readJson(path.join(dir, STATE_FILE)) as AutoUpdateState;
 }
 
-function updateState(dir: string, patch: AutoUpdateState): void {
-  writeJson(path.join(dir, STATE_FILE), { ...readState(dir), ...patch });
+function updateState(dir: string, patch: AutoUpdateState): boolean {
+  return writeJson(path.join(dir, STATE_FILE), { ...readState(dir), ...patch });
 }
 
 /** Why automatic updates are off, or undefined when they are on. */
@@ -108,16 +116,34 @@ export function setAutoUpdateEnabled(enabled: boolean): boolean {
   );
 }
 
-/**
- * Only the standalone binary updates in the background, since it swaps in with
- * one atomic rename. A package manager removes and rewrites the launcher and
- * the files a starting command loads, and an unattended brew upgrade can update
- * brew and other formulae, so those installs get the notice instead.
- */
+/** Eligible installs use atomic binary replacement or a versioned package store. */
 export function updatesAutomatically(
   channel: InstallChannel
-): channel is Extract<InstallChannel, { kind: 'binary' }> {
-  return channel.kind === 'binary';
+): channel is Extract<
+  InstallChannel,
+  { kind: 'binary' | 'npm' | 'pnpm' | 'bun' | 'yarn' | 'managed' }
+> {
+  return ['binary', 'npm', 'pnpm', 'bun', 'yarn', 'managed'].includes(
+    channel.kind
+  );
+}
+
+async function installUpdate(
+  channel: InstallChannel,
+  version: string,
+  log: Log
+): Promise<Outcome> {
+  if (channel.kind === 'binary') return replaceBinary(channel, version, log);
+  try {
+    log(`Installing ${version} in the managed version store`);
+    await installManagedVersion(version, packageJson.version);
+    return { status: 'installed' };
+  } catch (error) {
+    return {
+      status: 'failed',
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 function sameMajor(a: string, b: string): boolean {
@@ -277,6 +303,22 @@ async function download(url: string): Promise<Buffer> {
   return Buffer.from(await response.arrayBuffer());
 }
 
+/** Probe in a separate process with all automatic checks disabled. */
+function binaryVersion(executable: string): string | undefined {
+  const probe = spawnSync(executable, ['--version'], {
+    encoding: 'utf8',
+    timeout: 30_000,
+    killSignal: 'SIGKILL',
+    env: childEnv({ FIRECRAWL_NO_UPDATE_CHECK: '1' }),
+  });
+  const version = probe.stdout?.trim();
+  return !probe.error &&
+    probe.status === 0 &&
+    /^\d+\.\d+\.\d+$/.test(version ?? '')
+    ? version
+    : undefined;
+}
+
 /** Download, verify, and atomically swap in the release binary. */
 async function replaceBinary(
   channel: Extract<InstallChannel, { kind: 'binary' }>,
@@ -332,16 +374,10 @@ async function replaceBinary(
     const extracted = path.join(tmp, channel.asset);
     if (!fs.lstatSync(extracted).isFile())
       return failed('The release binary is not a regular file.');
-    const probe = spawnSync(extracted, ['--version'], {
-      encoding: 'utf8',
-      timeout: 30_000,
-      killSignal: 'SIGKILL',
-      env: childEnv({ FIRECRAWL_NO_UPDATE_CHECK: '1' }),
-    });
-    const reported = probe.stdout?.trim();
-    if (probe.error || probe.status !== 0 || reported !== version) {
+    const reported = binaryVersion(extracted);
+    if (reported !== version) {
       return failed(
-        `downloaded binary reported ${reported || probe.error?.message || 'nothing'}, expected ${version}`
+        `downloaded binary reported ${reported || 'nothing'}, expected ${version}`
       );
     }
 
@@ -357,6 +393,30 @@ async function replaceBinary(
         message:
           'The executable changed during the update. Run firecrawl again.',
       };
+    }
+    const previousVersion = binaryVersion(channel.executable);
+    if (!previousVersion)
+      return failed(
+        'Could not verify the installed binary before backing it up.'
+      );
+    const previous = path.join(tmp, 'previous');
+    fs.copyFileSync(channel.executable, previous);
+    const sha256 = createHash('sha256')
+      .update(fs.readFileSync(previous))
+      .digest('hex');
+    fs.renameSync(previous, `${channel.executable}.previous`);
+    if (
+      !updateState(firecrawlDir(), {
+        previous: {
+          executable: channel.executable,
+          version: previousVersion,
+          sha256,
+        },
+      })
+    ) {
+      return failed(
+        'Could not record the previous version; leaving the installed binary unchanged.'
+      );
     }
     fs.renameSync(extracted, channel.executable);
     return { status: 'installed' };
@@ -473,7 +533,11 @@ export async function runAutoUpdateWorker(): Promise<void> {
     if (autoUpdateBlocker() || !updatesAutomatically(channel)) return;
     if (isPrerelease(current)) return;
 
-    const latest = await getLatestVersion(packageJson.name, 10_000);
+    const latest = await getLatestVersion(
+      packageJson.name,
+      10_000,
+      channel.kind === 'binary' ? undefined : managedRegistry()
+    );
     if (latest.unreachable || !latest.version) {
       log(`Version check failed: ${latest.error ?? 'no version returned'}`);
       updateState(dir, {
@@ -491,6 +555,10 @@ export async function runAutoUpdateWorker(): Promise<void> {
       lastShownHint: cached.lastShownHint,
     });
 
+    const remembered = readState(dir).candidate;
+    if (remembered && remembered.version !== latest.version) {
+      updateState(dir, { candidate: undefined });
+    }
     if (
       isPrerelease(latest.version) ||
       compareVersions(current, latest.version) >= 0
@@ -500,14 +568,39 @@ export async function runAutoUpdateWorker(): Promise<void> {
       log(`${latest.version} is a new major version; leaving it to the notice`);
       return;
     }
+    const state = readState(dir);
+    const observedAt =
+      state.candidate?.version === latest.version
+        ? Date.parse(state.candidate.observedAt)
+        : NaN;
+    if (!Number.isFinite(observedAt) || observedAt > Date.now()) {
+      updateState(dir, {
+        candidate: {
+          version: latest.version,
+          observedAt: new Date().toISOString(),
+        },
+        retryAt: new Date(Date.now() + OBSERVATION_DELAY_MS).toISOString(),
+      });
+      log(
+        `Observed ${latest.version}; waiting 24 hours before automatic installation.`
+      );
+      return;
+    }
+    if (Date.now() - observedAt < OBSERVATION_DELAY_MS) {
+      updateState(dir, {
+        retryAt: new Date(observedAt + OBSERVATION_DELAY_MS).toISOString(),
+      });
+      return;
+    }
     if (autoUpdateBlocker()) return;
     log(`Updating ${current} -> ${latest.version}`);
-    const outcome = await replaceBinary(channel, latest.version, log);
+    const outcome = await installUpdate(channel, latest.version, log);
     if (outcome.status === 'installed') {
       log(`Updated to ${latest.version}`);
       updateState(dir, {
         retryAt: undefined,
         lastError: undefined,
+        candidate: undefined,
         updated: {
           from: current,
           to: latest.version,
@@ -542,10 +635,11 @@ export async function runAutoUpdateWorker(): Promise<void> {
 export function updateHint(channel: InstallChannel): string {
   if (channel.kind === 'unsupported') return manualUpdateHint(channel.code);
   const commands = {
-    npm: 'npm install -g firecrawl-cli@latest',
-    pnpm: 'pnpm add -g firecrawl-cli@latest',
-    bun: 'bun add -g firecrawl-cli@latest',
-    yarn: 'yarn global add firecrawl-cli@latest',
+    npm: 'firecrawl update',
+    managed: 'firecrawl update',
+    pnpm: 'firecrawl update',
+    bun: 'firecrawl update',
+    yarn: 'firecrawl update',
     brew: 'brew upgrade firecrawl-cli',
     binary: 'firecrawl update',
   };
@@ -571,7 +665,7 @@ function manualUpdateHint(code: UnsupportedCode): string {
 export async function updateNow(): Promise<boolean> {
   const current = packageJson.version;
   const channel = detectInstallChannel();
-  if (channel.kind !== 'binary') {
+  if (!updatesAutomatically(channel)) {
     console.error(
       `This installation is updated externally. ${updateHint(channel)}`
     );
@@ -584,7 +678,11 @@ export async function updateNow(): Promise<boolean> {
     return true;
   }
 
-  const latest = await getLatestVersion(packageJson.name, 10_000);
+  const latest = await getLatestVersion(
+    packageJson.name,
+    10_000,
+    channel.kind === 'binary' ? undefined : managedRegistry()
+  );
   if (latest.unreachable || !latest.version) {
     console.error(
       `Could not check for updates: ${latest.error ?? 'no version returned'}`
@@ -614,7 +712,7 @@ export async function updateNow(): Promise<boolean> {
   }
   try {
     console.log(`Updating firecrawl ${current} -> ${latest.version}...`);
-    const outcome = await replaceBinary(channel, latest.version, (message) =>
+    const outcome = await installUpdate(channel, latest.version, (message) =>
       console.log(message)
     );
     if (outcome.status === 'failed') {
@@ -638,6 +736,95 @@ export async function updateNow(): Promise<boolean> {
     console.log(`Updated firecrawl to ${latest.version}.`);
     return true;
   } finally {
+    releaseLock(lock);
+  }
+}
+
+/** Restore the previous installation without needing the network. */
+export async function rollbackUpdate(): Promise<boolean> {
+  const channel = detectInstallChannel();
+  if (!updatesAutomatically(channel)) {
+    console.error(
+      `Rollback is not supported for this installation. ${updateHint(channel)}`
+    );
+    return false;
+  }
+  const dir = firecrawlDir();
+  const lock = workerLockPath(dir);
+  if (acquireLock(lock) !== 'acquired') {
+    console.error(
+      'Could not acquire the update lock. Check permissions or wait for the running update.'
+    );
+    return false;
+  }
+  let tmp: string | undefined;
+  try {
+    if (channel.kind !== 'binary') {
+      const restored = rollbackManagedVersion(packageJson.version, () => {
+        if (!setAutoUpdateEnabled(false))
+          throw new Error(
+            'Could not disable automatic updates before rollback.'
+          );
+      });
+      updateState(dir, {
+        updated: undefined,
+        candidate: undefined,
+        retryAt: undefined,
+        lastError: undefined,
+      });
+      console.log(`Restored firecrawl ${restored}. Automatic updates are off.`);
+      return true;
+    }
+    const previous = readState(dir).previous;
+    const backup = `${channel.executable}.previous`;
+    if (
+      !previous ||
+      previous.executable !== channel.executable ||
+      !fs.lstatSync(backup).isFile()
+    ) {
+      console.error('No previous version is available for this installation.');
+      return false;
+    }
+    tmp = fs.mkdtempSync(
+      path.join(path.dirname(channel.executable), '.firecrawl-update-')
+    );
+    const staged = path.join(tmp, 'firecrawl');
+    fs.copyFileSync(backup, staged);
+    const sha256 = createHash('sha256')
+      .update(fs.readFileSync(staged))
+      .digest('hex');
+    if (
+      sha256 !== previous.sha256 ||
+      binaryVersion(staged) !== previous.version
+    ) {
+      console.error(
+        'The previous binary failed verification; leaving the installed version unchanged.'
+      );
+      return false;
+    }
+    if (!setAutoUpdateEnabled(false)) {
+      console.error('Could not disable automatic updates before rollback.');
+      return false;
+    }
+    fs.chmodSync(staged, 0o755);
+    fs.renameSync(staged, channel.executable);
+    updateState(dir, {
+      updated: undefined,
+      candidate: undefined,
+      retryAt: undefined,
+      lastError: undefined,
+    });
+    console.log(
+      `Restored firecrawl ${previous.version}. Automatic updates are off; use firecrawl update --enable-auto to re-enable them.`
+    );
+    return true;
+  } catch (error) {
+    console.error(
+      `Rollback failed: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return false;
+  } finally {
+    if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
     releaseLock(lock);
   }
 }

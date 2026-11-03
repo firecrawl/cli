@@ -7,7 +7,7 @@
   "description": "Command-line interface for Firecrawl, the context API for AI agents. Search, scrape, parse, crawl, map, interact, run agent jobs, and monitor changes directly from your terminal, including research papers, developer sources, and government sources.",
   "main": "dist/index.js",
   "bin": {
-    "firecrawl": "dist/index.js"
+    "firecrawl": "dist/launcher.js"
   },
   "scripts": {
     "build": "tsc",
@@ -22,7 +22,7 @@
     "type-check": "tsc --noEmit",
     "test:watch": "vitest",
     "test": "vitest run",
-    "test:update": "vitest run src/__tests__/utils/auto-update.e2e.test.ts",
+    "test:update": "vitest run src/__tests__/utils/auto-update.e2e.test.ts src/__tests__/utils/managed-update.e2e.test.ts",
     "publish-beta": "npm publish --tag beta",
     "publish-prod": "npm publish --access public",
     "build:binary": "bash scripts/build-binaries.sh",
