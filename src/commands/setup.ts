@@ -500,8 +500,12 @@ async function resolveCatalogSkill(name: string): Promise<string | undefined> {
     return catalog.some((skill) => skill.name === fullName)
       ? fullName
       : undefined;
-  } catch {
-    return fullName === name ? name : undefined;
+  } catch (error) {
+    if (fullName === name) return name;
+    console.error(
+      `Could not reach the skill catalog to confirm "${name}" (${error instanceof Error ? error.message : 'unknown error'}). Retry later, or run: firecrawl setup ${fullName}`
+    );
+    process.exit(1);
   }
 }
 

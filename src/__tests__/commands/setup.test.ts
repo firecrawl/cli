@@ -329,7 +329,8 @@ describe('handleSetupCommand', () => {
       exit.mockRestore();
     });
 
-    it('rejects a bare name the catalog cannot confirm', async () => {
+    it('rejects a bare name the catalog cannot confirm and says why', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
       const exit = vi.spyOn(process, 'exit').mockImplementation(((
         code?: number
       ) => {
@@ -338,6 +339,12 @@ describe('handleSetupCommand', () => {
       vi.mocked(getCatalogSkills).mockRejectedValueOnce(new Error('offline'));
       await expect(handleSetupCommand('legal-research', {})).rejects.toThrow(
         'process.exit:1'
+      );
+      expect(console.error).toHaveBeenCalledWith(
+        'Could not reach the skill catalog to confirm "legal-research" (offline). Retry later, or run: firecrawl setup firecrawl-legal-research'
+      );
+      expect(console.error).not.toHaveBeenCalledWith(
+        expect.stringContaining('Unknown setup subcommand')
       );
       expect(execFileSync).not.toHaveBeenCalled();
       exit.mockRestore();
