@@ -25,7 +25,7 @@ export type AlexandriaOptions = {
 export function requireAlexandriaKey(apiKey?: string): void {
   if (!getApiKey(apiKey))
     throw new Error(
-      'Alexandria requires a Firecrawl API key with access enabled.'
+      'Alexandria needs a Firecrawl account. Run "firecrawl login --browser" to sign in or create a free one (1,000 credits a month), or set FIRECRAWL_API_KEY.'
     );
 }
 
