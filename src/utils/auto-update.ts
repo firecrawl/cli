@@ -40,6 +40,9 @@ const INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
 // Commands wait on package installs, so those get a tighter limit than downloads.
 const PACKAGE_INSTALL_TIMEOUT_MS = 3 * 60 * 1000;
 const KILL_GRACE_MS = 5 * 1000;
+// A stopped package manager first waits for its downloads, then restores the
+// previous install. Killing it before that leaves firecrawl uninstalled.
+const STOP_GRACE_MS = 60 * 1000;
 const HEARTBEAT_MS = 60 * 1000;
 const HEARTBEAT_STALE_MS = 10 * 60 * 1000;
 // A lock file exists for a moment before its pid is written.
@@ -173,11 +176,19 @@ function runningDir(dir: string): string {
  * Whether pid may run a firecrawl command. A stopped or suspended command
  * misses heartbeats but still runs firecrawl, while a reused pid runs
  * something else. Only a command line that was read and names something else
- * rules firecrawl out: a failed, timed out or empty lookup cannot tell, since
- * Windows hides the command line of processes it will not show.
+ * rules firecrawl out: a failed or timed out lookup cannot tell, and neither
+ * can an empty one outside Linux, since Windows hides the command line of
+ * processes it will not show. On Linux an empty /proc command line belongs to
+ * a kernel thread or a zombie.
  */
 function mayRunFirecrawl(pid: number): boolean {
   try {
+    if (process.platform === 'linux') {
+      return fs
+        .readFileSync(`/proc/${pid}/cmdline`, 'utf8')
+        .toLowerCase()
+        .includes('firecrawl');
+    }
     const [command, args] =
       process.platform === 'win32'
         ? [
@@ -190,19 +201,15 @@ function mayRunFirecrawl(pid: number): boolean {
             ],
           ]
         : ['ps', ['-p', String(pid), '-o', 'args=']];
-    let found: string;
-    if (process.platform === 'linux') {
-      found = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8');
-    } else {
-      const result = spawnSync(command, args, {
-        encoding: 'utf8',
-        timeout: 5000,
-        windowsHide: true,
-      });
-      if (result.error || result.status !== 0) return true;
-      found = result.stdout;
-    }
-    return !found.trim() || found.toLowerCase().includes('firecrawl');
+    const result = spawnSync(command, args, {
+      encoding: 'utf8',
+      timeout: 5000,
+      windowsHide: true,
+    });
+    if (result.error || result.status !== 0) return true;
+    return (
+      !result.stdout.trim() || result.stdout.toLowerCase().includes('firecrawl')
+    );
   } catch {
     return true;
   }
@@ -411,7 +418,8 @@ export async function registerInvocation(
   };
 
   const lock = installLockPath(dir);
-  const deadline = Date.now() + PACKAGE_INSTALL_TIMEOUT_MS + 30_000;
+  const deadline =
+    Date.now() + PACKAGE_INSTALL_TIMEOUT_MS + STOP_GRACE_MS + 30_000;
   let waited = false;
   while (lockHeld(lock) && Date.now() < deadline) {
     if (!waited && stderr.isTTY) {
@@ -591,12 +599,21 @@ async function reapGroup(pid: number): Promise<boolean> {
  * process group: a timeout or an interrupt stops all of it, and this waits for
  * that group to empty. A group that survives the SIGKILL grace is reported as
  * a failure; the caller still releases its lock. Windows skips the group wait.
+ *
+ * The first timeout or interrupt only passes the signal on, so the installer
+ * can restore what it replaced, and SIGKILL follows if it is still running
+ * after graceMs. A second interrupt kills it at once.
  */
 export function run(
   command: string,
   args: string[],
   stdio: StdioOptions,
-  options: { env?: NodeJS.ProcessEnv; cwd?: string; timeoutMs?: number } = {}
+  options: {
+    env?: NodeJS.ProcessEnv;
+    cwd?: string;
+    timeoutMs?: number;
+    graceMs?: number;
+  } = {}
 ): Promise<string | undefined> {
   return new Promise((resolve) => {
     const windows = process.platform === 'win32';
@@ -613,16 +630,20 @@ export function run(
     let stopped: string | undefined;
     let escalate: NodeJS.Timeout | undefined;
     const kill = () => child.pid && signalTree(child.pid, 'SIGKILL');
-    // Every stop escalates, so an installer that ignores the first signal
-    // still exits; a second stop kills it at once.
     const stop = (reason: string, signal: NodeJS.Signals) => {
       if (stopped !== undefined) {
         kill();
         return;
       }
       stopped = reason;
+      clearTimeout(timer);
       if (child.pid) signalTree(child.pid, signal);
-      escalate = setTimeout(kill, KILL_GRACE_MS);
+      escalate = setTimeout(kill, options.graceMs ?? STOP_GRACE_MS);
+      if (signal === 'SIGINT' && stdio === 'inherit') {
+        console.error(
+          `Stopping ${command} so it can restore the previous version. Press Ctrl+C again to stop it now, which can leave firecrawl uninstalled.`
+        );
+      }
     };
     const timer = setTimeout(
       () => stop(`timed out after ${Math.round(timeoutMs / 1000)}s`, 'SIGTERM'),
@@ -733,12 +754,17 @@ async function replaceBinary(
   );
   const base = `${releases}/v${version}`;
   const archive = `${channel.asset}.tar.gz`;
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'firecrawl-update-'));
-  const staged = path.join(
-    path.dirname(channel.executable),
-    `.firecrawl-update-${process.pid}`
-  );
   const failed = (message: string): Outcome => ({ status: 'failed', message });
+  // Staged beside the executable: the system temp directory may be mounted
+  // noexec, and the rename into place must stay on one filesystem.
+  let tmp: string;
+  try {
+    tmp = fs.mkdtempSync(
+      path.join(path.dirname(channel.executable), '.firecrawl-update-')
+    );
+  } catch (error) {
+    return failed(error instanceof Error ? error.message : String(error));
+  }
   try {
     log(`Downloading ${base}/${archive}`);
     const [tarball, checksums] = await Promise.all([
@@ -776,9 +802,8 @@ async function replaceBinary(
       );
     }
 
-    fs.copyFileSync(extracted, staged);
-    fs.chmodSync(staged, 0o755);
-    fs.renameSync(staged, channel.executable);
+    fs.chmodSync(extracted, 0o755);
+    fs.renameSync(extracted, channel.executable);
     return { status: 'installed' };
   } catch (error) {
     if ((error as { status?: number }).status === 404) {
@@ -789,7 +814,6 @@ async function replaceBinary(
     }
     return failed(error instanceof Error ? error.message : String(error));
   } finally {
-    fs.rmSync(staged, { force: true });
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 }

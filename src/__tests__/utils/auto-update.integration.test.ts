@@ -321,9 +321,13 @@ describe.skipIf(process.platform === 'win32')('installer processes', () => {
 
   /**
    * A stand-in package manager that starts a helper and records its pid.
-   * 'stubborn' ignores SIGINT and SIGTERM, as some installers do.
+   * 'stubborn' ignores SIGINT and SIGTERM, as some installers do. 'rollback'
+   * takes longer than the old 5s kill grace to restore the previous install
+   * after either signal, as npm does while its downloads finish.
    */
-  function installer(mode: 'hang' | 'exit' | 'stubborn'): string[] {
+  function installer(
+    mode: 'hang' | 'exit' | 'stubborn' | 'rollback'
+  ): string[] {
     const script = path.join(dir, 'installer.js');
     fs.writeFileSync(
       script,
@@ -331,6 +335,7 @@ describe.skipIf(process.platform === 'win32')('installer processes', () => {
 const fs = require('fs');
 const [, , pidFile, mode] = process.argv;
 if (mode === 'stubborn') for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => {});
+if (mode === 'rollback') for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => setTimeout(() => { fs.writeFileSync(pidFile + '.restored', ''); process.exit(1); }, 6000));
 const helper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
 fs.writeFileSync(pidFile + '.tmp', String(helper.pid));
 fs.renameSync(pidFile + '.tmp', pidFile);
@@ -357,9 +362,9 @@ setInterval(() => {}, 1000);
   }
 
   /** Starts run() and returns the SIGINT listener it registered. */
-  function runWithInterrupt(args: string[]) {
+  function runWithInterrupt(args: string[], graceMs?: number) {
     const before = new Set(process.listeners('SIGINT'));
-    const pending = run(process.execPath, args, 'ignore');
+    const pending = run(process.execPath, args, 'ignore', { graceMs });
     const interrupt = process
       .listeners('SIGINT')
       .find((listener) => !before.has(listener)) as (signal: string) => void;
@@ -397,14 +402,40 @@ setInterval(() => {}, 1000);
     expect(alive(helper)).toBe(false);
   }, 15_000);
 
-  it('escalates a forwarded interrupt the installer ignores', async () => {
-    const { pending, interrupt } = runWithInterrupt(installer('stubborn'));
+  const restored = () => fs.existsSync(path.join(dir, 'helper.pid.restored'));
+
+  it('lets an interrupted installer restore the previous install', async () => {
+    const { pending, interrupt } = runWithInterrupt(installer('rollback'));
+    await started();
+
+    const begun = Date.now();
+    interrupt('SIGINT');
+    expect(await pending).toContain('interrupted by SIGINT');
+    expect(Date.now() - begun).toBeGreaterThanOrEqual(6_000);
+    expect(restored()).toBe(true);
+  }, 20_000);
+
+  it('lets an installer that timed out restore the previous install', async () => {
+    const pending = run(process.execPath, installer('rollback'), 'ignore', {
+      timeoutMs: 1000,
+    });
+    await started();
+
+    expect(await pending).toContain('timed out');
+    expect(restored()).toBe(true);
+  }, 20_000);
+
+  it('kills an installer that ignores an interrupt once the grace runs out', async () => {
+    const { pending, interrupt } = runWithInterrupt(
+      installer('stubborn'),
+      1000
+    );
     const helper = await started();
 
     const begun = Date.now();
     interrupt('SIGINT');
     expect(await pending).toContain('interrupted by SIGINT');
-    expect(Date.now() - begun).toBeLessThan(10_000);
+    expect(Date.now() - begun).toBeLessThan(5_000);
     expect(alive(helper)).toBe(false);
   }, 15_000);
 

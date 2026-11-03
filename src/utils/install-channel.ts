@@ -137,6 +137,19 @@ function writable(...paths: string[]): boolean {
   }
 }
 
+/**
+ * Root can write anywhere, so a replacement staged as root would hand another
+ * user's binary to root and stop that user's own updates.
+ */
+function ownedByUser(file: string): boolean {
+  if (!process.getuid) return true;
+  try {
+    return fs.statSync(file).uid === process.getuid();
+  } catch {
+    return false;
+  }
+}
+
 /** Classify the running install and confirm this user can replace it in place. */
 export function detectInstallChannel(
   paths: InstallPaths = {
@@ -166,9 +179,12 @@ export function detectInstallChannel(
     case 'brew':
       return writable(channel.cellar) ? channel : notWritable;
     case 'binary':
-      return writable(path.dirname(channel.executable), channel.executable)
+      if (!writable(path.dirname(channel.executable), channel.executable)) {
+        return notWritable;
+      }
+      return ownedByUser(channel.executable)
         ? channel
-        : notWritable;
+        : unsupported('not-writable', 'the binary belongs to another user');
     case 'npm': {
       const shim =
         paths.platform === 'win32'

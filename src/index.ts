@@ -92,6 +92,7 @@ import {
   relaunchAfterUpdate,
   runAutoUpdateWorker,
   startAutoUpdate,
+  updateHint,
 } from './utils/auto-update';
 import { detectInstallChannel } from './utils/install-channel';
 import { handleUpdateCommand } from './commands/update';
@@ -3020,12 +3021,11 @@ async function main() {
   }
 
   if (!isUpdate && !(await startAutoUpdate({ channel }))) {
-    await maybeShowUpdateNotice({
-      command:
-        channel.kind === 'brew' || channel.kind === 'unsupported'
-          ? undefined
-          : 'firecrawl update',
-    });
+    await maybeShowUpdateNotice(
+      channel.kind === 'unsupported'
+        ? { hint: updateHint(channel) }
+        : { command: channel.kind === 'brew' ? undefined : 'firecrawl update' }
+    );
   }
   const isSetup =
     args[0] === 'init' ||

@@ -27,6 +27,8 @@ interface UpdateCache {
 export interface UpdateNoticeOptions {
   cacheDir?: string;
   command?: string;
+  /** Replaces the "Run <command> to update." line, for installs no command updates. */
+  hint?: string;
   installPaths?: string[];
   now?: Date;
   stderr?: Pick<NodeJS.WriteStream, 'write' | 'isTTY'>;
@@ -112,12 +114,13 @@ export async function writeCachedLatest(
 
 export function formatUpdateNotice(
   latestVersion: string,
-  command: string = updateCommand()
+  command: string = updateCommand(),
+  hint = `Run ${command} to update.`
 ): string {
   const currentVersion = packageJson.version;
   const lines = [
     `✨ Update available! ${currentVersion} -> ${latestVersion}`,
-    `Run ${command} to update.`,
+    hint,
     '',
     'See full release notes:',
     RELEASE_NOTES_URL,
@@ -188,11 +191,11 @@ export async function maybeShowUpdateNotice(
   const command = options.command ?? updateCommand(options.installPaths);
   stderr.write(
     `${colorizeUpdateNotice(
-      formatUpdateNotice(latestVersion, command),
+      formatUpdateNotice(latestVersion, command, options.hint),
       stderr,
       {
         title: 'Update available!',
-        commands: [command],
+        commands: options.hint ? [] : [command],
         url: RELEASE_NOTES_URL,
       }
     )}\n\n`

@@ -115,15 +115,20 @@ Every other install shows the update notice instead of updating itself:
   updates with the package manager that installed the CLI. The package manager
   rewrites files that a running command may still load, so `firecrawl update`
   first waits until no other firecrawl command is running, and a command that
-  starts during the install waits for it (about three and a half minutes at
-  most), then runs again on the new version. The package manager also removes
+  starts during the install waits for it (about four and a half minutes at
+  most), then runs again on the new version. Pressing Ctrl+C during the install
+  lets the package manager put the previous version back, which can take up to
+  a minute; pressing it again stops the package manager at once and can leave
+  firecrawl uninstalled until you reinstall it. The package manager also removes
   and replaces the `firecrawl` launcher itself, so a command launched at that
   moment can fail with "command not found" or a missing module error before it
   gets the chance to wait; run it again.
 - Homebrew installs: run `brew upgrade firecrawl-cli`.
 - npx and other package runners, a project's local `node_modules`, system
   packages (deb, rpm, apk, pacman), install locations that are not writable
-  without sudo, and standalone Windows binaries: update the way you installed.
+  without sudo, standalone binaries run by a user other than their owner (for
+  example with sudo), and standalone Windows binaries: update the way you
+  installed.
 
 A new major version always arrives as a notice, standalone binaries included.
 `firecrawl update` does not install a release that needs a newer Node.js than
