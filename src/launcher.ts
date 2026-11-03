@@ -23,8 +23,30 @@ process.env[LAUNCHER_ID_ENV] = identity;
 process.env.FIRECRAWL_INSTALL_CHANNEL = channel.kind;
 process.env.FIRECRAWL_LAUNCHER_PATH = __filename;
 const args = process.argv.slice(2);
+let commandIndex = 0;
+while (commandIndex < args.length) {
+  const arg = args[commandIndex];
+  if (arg === '--') {
+    commandIndex += 1;
+    break;
+  }
+  if (!arg.startsWith('-')) break;
+  if (['-k', '--api-key', '--api-url', '--enable'].includes(arg)) {
+    commandIndex += 2;
+  } else if (
+    ['--status', '-h', '--help', '-V', '--version'].includes(arg) ||
+    ['--api-key=', '--api-url=', '--enable='].some((option) =>
+      arg.startsWith(option)
+    ) ||
+    (arg.startsWith('-k') && !arg.startsWith('--'))
+  ) {
+    commandIndex += 1;
+  } else break;
+}
 // Rollback runs from this package so a broken release cannot block recovery.
-const recovering = args[0] === 'update' && args.includes('--rollback');
+const recovering =
+  args[commandIndex] === 'update' &&
+  args.slice(commandIndex + 1).includes('--rollback');
 // Package runners, local dependencies, and system package managers retain
 // their selected release. A global launcher stays untouched by self-updates.
 if (

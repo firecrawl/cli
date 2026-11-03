@@ -74,22 +74,22 @@ export async function getPublishTime(
   registry: string,
   timeoutMs = 30_000
 ): Promise<number | undefined> {
-  try {
-    const response = await fetch(
-      `${registry.replace(/\/+$/, '')}/${packageName}`,
-      {
-        signal: AbortSignal.timeout(timeoutMs),
-        headers: { Accept: 'application/json' },
-      }
-    );
-    if (!response.ok) return undefined;
-    const data = (await response.json()) as { time?: Record<string, unknown> };
-    const published = data.time?.[version];
-    const time = typeof published === 'string' ? Date.parse(published) : NaN;
-    return Number.isFinite(time) ? time : undefined;
-  } catch {
-    return undefined;
-  }
+  const response = await fetch(
+    `${registry.replace(/\/+$/, '')}/${packageName}`,
+    {
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { Accept: 'application/json' },
+    }
+  );
+  if (!response.ok)
+    throw new Error(`Registry request failed: HTTP ${response.status}`);
+  const data = (await response.json()) as { time?: Record<string, unknown> };
+  const published = data.time?.[version];
+  if (published === undefined) return undefined;
+  const time = typeof published === 'string' ? Date.parse(published) : NaN;
+  if (!Number.isFinite(time))
+    throw new Error(`Invalid publish time for ${version}`);
+  return time;
 }
 
 /**

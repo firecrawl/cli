@@ -293,7 +293,7 @@ function parseAgentWebhookOption(
 function getFirstPositionalArg(args: string[]): string | undefined {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (!arg || arg === '--') {
+    if (!arg || arg === '--' || arg === '--status') {
       continue;
     }
 

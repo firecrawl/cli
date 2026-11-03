@@ -521,7 +521,7 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
         const countFile = path.join(home, 'reads');
         fs.writeFileSync(
           reader,
-          `const fs=require('fs'),path=require('path'); let reads=0; setInterval(()=>{ const pkg=path.dirname(path.dirname(process.argv[1])); const file=pkg+'/dist/utils/url.js'; delete require.cache[require.resolve(file)]; require(file).normalizeUrl('example.com'); fs.writeFileSync(process.env.FIRECRAWL_TEST_READS,String(++reads)); },10);`
+          `const fs=require('fs'),path=require('path'); let reads=0; setInterval(()=>{ const pkg=path.dirname(path.dirname(process.argv[1])); const file=pkg+'/dist/utils/url.js'; delete require.cache[require.resolve(file)]; require(file).normalizeUrl('example.com'); const count=process.env.FIRECRAWL_TEST_READS; fs.writeFileSync(count+'.tmp',String(++reads)); fs.renameSync(count+'.tmp',count); },10);`
         );
         held = spawn(process.execPath, [launcher, 'version'], {
           env: {
@@ -879,6 +879,25 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
       { timeout: caseTimeout },
       async () => {
         latest = dependent;
+        const registryFailure = path.join(home, 'registry-failure.cjs');
+        for (const [response, message] of [
+          [
+            "throw new Error('registry connection failed')",
+            'registry connection failed',
+          ],
+          ['return new Response(null,{status:503})', 'HTTP 503'],
+        ]) {
+          fs.writeFileSync(
+            registryFailure,
+            `const original=global.fetch; global.fetch=async(input,...args)=>{if(String(input)===${JSON.stringify(`${url}/firecrawl-cli`)}){${response}}return original(input,...args);};`
+          );
+          const failed = await run(['update'], {
+            NODE_OPTIONS: '--require ' + JSON.stringify(registryFailure),
+          });
+          expect(failed.code).toBe(1);
+          expect(failed.stderr).toContain(message);
+          expect(fs.existsSync(pointer())).toBe(false);
+        }
         omitPublishTime = true;
         const unbounded = await run(['update']);
         expect(unbounded.code).toBe(1);
@@ -905,10 +924,16 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
       }
     );
 
-    it(
-      'rolls back from the launcher when the active release cannot start',
+    it.each([
+      { rootOptions: [] },
+      { rootOptions: ['--api-key', 'update'] },
+      { rootOptions: ['--api-url=http://localhost'] },
+      { rootOptions: ['-kupdate', '--enable', 'alexandria'] },
+      { rootOptions: ['--status'] },
+    ])(
+      'rolls back from the launcher when the active release cannot start with root options %j',
       { timeout: caseTimeout },
-      async () => {
+      async ({ rootOptions }) => {
         expect((await run(['update'])).code).toBe(0);
         fs.writeFileSync(
           path.join(
@@ -922,7 +947,13 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
           "throw new Error('broken release');"
         );
         expect((await version()).code).not.toBe(0);
-        const result = await run(['update', '--rollback']);
+        expect(
+          (await run(['--api-key', 'update', 'version', '--rollback'])).stderr
+        ).toContain('broken release');
+        expect(
+          (await run(['scrape', 'update', '--rollback'])).stderr
+        ).toContain('broken release');
+        const result = await run([...rootOptions, 'update', '--rollback']);
         expect(result.code, result.stderr).toBe(0);
         expect((await version()).stdout.trim()).toBe(current);
       }
