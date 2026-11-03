@@ -1232,7 +1232,9 @@ function createSearchCommand(): Command {
         for (const category of categories) {
           if (!validCategories.includes(category)) {
             console.error(
-              `Error: Invalid category "${category}". Valid categories: ${validCategories.join(', ')}`
+              (category as string) === 'github'
+                ? 'Error: The github category was removed. Use --categories developer or `firecrawl developer`.'
+                : `Error: Invalid category "${category}". Valid categories: ${validCategories.join(', ')}`
             );
             process.exit(1);
           }
