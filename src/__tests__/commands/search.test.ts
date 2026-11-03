@@ -397,6 +397,25 @@ describe('executeSearch', () => {
       });
     });
 
+    it('does not retry a refusal of an explicit skill source', async () => {
+      mockHttpPost.mockRejectedValue({
+        response: {
+          status: 403,
+          data: { error: 'Exchange is not enabled for this team.' },
+        },
+      });
+      const result = await executeSearch({
+        query: 'records',
+        sources: ['alexandria-skills'],
+      });
+      expect(result.success).toBe(false);
+      expect(mockHttpPost).toHaveBeenCalledTimes(1);
+      expect(mockHttpPost.mock.calls[0][1].sources).toEqual([
+        { type: 'alexandria-skills' },
+        { type: 'alexandria' },
+      ]);
+    });
+
     it('does not retry when alexandria was requested explicitly', async () => {
       mockHttpPost.mockRejectedValue({
         response: {

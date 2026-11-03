@@ -56,14 +56,20 @@ export async function executeSearch(
       : ['web'];
     const hasKey = !!getApiKey(options.apiKey);
     const sources: SearchSource[] = [...requestedSources];
+    // Retry only when every discovery source in the request was added here.
+    // An explicit alexandria or alexandria-skills source stays, so a refusal
+    // of that source is not retried.
+    const requestedDiscovery =
+      requestedSources.includes('alexandria') ||
+      requestedSources.includes('alexandria-skills');
     let addedDiscovery = false;
     if (hasKey && !sources.includes('alexandria')) {
       sources.push('alexandria');
-      addedDiscovery = true;
+      if (!requestedDiscovery) addedDiscovery = true;
     }
     if (hasKey && !explicitSources && !sources.includes('alexandria-skills')) {
       sources.push('alexandria-skills');
-      addedDiscovery = true;
+      if (!requestedDiscovery) addedDiscovery = true;
     }
     searchParams.sources = sources.map((source) => ({ type: source }));
     const pairsWithWeb =
