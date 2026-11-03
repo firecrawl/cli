@@ -87,6 +87,19 @@ describe('executeBatchScrape', () => {
     vi.clearAllMocks();
   });
 
+  describe('onlyMainContent', () => {
+    it('sends onlyMainContent: false for --full-page', async () => {
+      mockClient.startBatchScrape.mockResolvedValue({ id: JOB_ID, url: '' });
+
+      await executeBatchScrape({ urls: URLS, onlyMainContent: false });
+
+      expect(mockClient.startBatchScrape).toHaveBeenCalledWith(URLS, {
+        options: { onlyMainContent: false },
+        integration: 'cli',
+      });
+    });
+  });
+
   describe('start (no wait)', () => {
     it('starts a batch job and returns the job ID', async () => {
       mockClient.startBatchScrape.mockResolvedValue({
@@ -97,7 +110,7 @@ describe('executeBatchScrape', () => {
       const result = await executeBatchScrape({ urls: URLS });
 
       expect(mockClient.startBatchScrape).toHaveBeenCalledWith(URLS, {
-        options: { onlyMainContent: false },
+        options: {},
         integration: 'cli',
       });
       expect(mockClient.batchScrape).not.toHaveBeenCalled();
@@ -317,7 +330,7 @@ describe('executeBatchScrape', () => {
       });
 
       expect(mockClient.batchScrape).toHaveBeenCalledWith(URLS, {
-        options: { onlyMainContent: false },
+        options: {},
         integration: 'cli',
         pollInterval: 2,
         timeout: 60,

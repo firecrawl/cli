@@ -52,6 +52,20 @@ describe('CLI argv parsing', () => {
     }
   });
 
+  testWithBuiltCli('rejects crawl delays outside 1-60000 ms', () => {
+    for (const value of ['0', '60001', '1.5', 'abc']) {
+      const result = spawnSync(
+        process.execPath,
+        [cliPath, 'crawl', 'https://example.com', '--delay', value],
+        { encoding: 'utf8' }
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        'must be between 1 and 60000 milliseconds'
+      );
+    }
+  });
+
   testWithBuiltCli(
     'documents the PDF cap and per-page price in scrape help',
     () => {

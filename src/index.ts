@@ -81,7 +81,12 @@ import { handleStatusCommand } from './commands/status';
 import { handleDoctorCommand } from './commands/doctor';
 import { isUrl, normalizeUrl } from './utils/url';
 import { resolveScrapeTarget } from './utils/scrape-target';
-import { parseMaxPages, parseScrapeOptions } from './utils/options';
+import {
+  onlyMainContentFlag,
+  parseCrawlDelay,
+  parseMaxPages,
+  parseScrapeOptions,
+} from './utils/options';
 import { isJobId } from './utils/job';
 import { ensureAuthenticated, printBanner } from './utils/auth';
 import { maybeShowUpdateNotice } from './utils/update-notice';
@@ -405,7 +410,14 @@ function createScrapeCommand(): Command {
       'Maximum PDF pages to parse (1-10000). PDFs cost 1 credit per parsed page; extra options may cost more.',
       parseMaxPages
     )
-    .option('--only-main-content', 'Include only main content', false)
+    .option(
+      '--only-main-content',
+      'Include only the main content (the API default)'
+    )
+    .option(
+      '--full-page',
+      'Keep the whole page, including navigation, headers and footers'
+    )
     .option(
       '--wait-for <ms>',
       'Wait time before scraping in milliseconds',
@@ -467,6 +479,7 @@ function createScrapeCommand(): Command {
     .option('--proxy <proxy>', 'Proxy mode for scraping (e.g., auto, basic)')
 
     .action(async (positionalArgs, options) => {
+      onlyMainContentFlag(options);
       const target = resolveScrapeTarget(positionalArgs ?? [], options);
       if (target.kind === 'alexandria') {
         await handleAlexandria(target.calls, options);
@@ -584,7 +597,14 @@ function createDownloadCommand(): Command {
       '-S, --summary',
       'Download as summary (shortcut for --format summary)'
     )
-    .option('--only-main-content', 'Include only main content', false)
+    .option(
+      '--only-main-content',
+      'Include only the main content (the API default)'
+    )
+    .option(
+      '--full-page',
+      'Keep the whole page, including navigation, headers and footers'
+    )
     .option(
       '--wait-for <ms>',
       'Wait time before scraping in milliseconds',
@@ -703,7 +723,11 @@ function createCrawlCommand(): Command {
     .option('--crawl-entire-domain', 'Crawl entire domain', false)
     .option('--allow-external-links', 'Allow external links', false)
     .option('--allow-subdomains', 'Allow subdomains', false)
-    .option('--delay <ms>', 'Delay between requests in milliseconds', parseInt)
+    .option(
+      '--delay <ms>',
+      'Delay between requests in milliseconds, 1 to 60000 (sent to the API in seconds)',
+      parseCrawlDelay
+    )
     .option(
       '--max-concurrency <number>',
       'Maximum concurrent requests',
@@ -815,7 +839,14 @@ function createBatchScrapeCommand(): Command {
       '-f, --format <formats>',
       'Output format(s), comma-separated (default: markdown). Available: markdown, html, rawHtml, links, images, screenshot, summary, changeTracking, json, attributes, branding'
     )
-    .option('--only-main-content', 'Include only main content', false)
+    .option(
+      '--only-main-content',
+      'Include only the main content (the API default)'
+    )
+    .option(
+      '--full-page',
+      'Keep the whole page, including navigation, headers and footers'
+    )
     .option(
       '--wait-for <ms>',
       'Wait time before scraping in milliseconds',
@@ -924,7 +955,7 @@ function createBatchScrapeCommand(): Command {
         apiKey: options.apiKey,
         apiUrl: options.apiUrl,
         format: options.format,
-        onlyMainContent: options.onlyMainContent,
+        onlyMainContent: onlyMainContentFlag(options),
         waitFor: options.waitFor,
         maxAge: options.maxAge,
         schema,
@@ -1025,7 +1056,14 @@ function createParseCommand(): Command {
       '-f, --format <formats>',
       'Output format(s). Multiple formats can be specified with commas (e.g., "markdown,links"). Available: markdown, html, rawHtml, links, images, summary, json, attributes. Single format outputs raw content; multiple formats output JSON.'
     )
-    .option('--only-main-content', 'Include only main content', false)
+    .option(
+      '--only-main-content',
+      'Include only the main content (the API default)'
+    )
+    .option(
+      '--full-page',
+      'Keep the whole page, including navigation, headers and footers'
+    )
     .option('-S, --summary', 'Output summary (shortcut for --format summary)')
     .option('--include-tags <tags>', 'Comma-separated list of tags to include')
     .option('--exclude-tags <tags>', 'Comma-separated list of tags to exclude')
@@ -1164,8 +1202,11 @@ function createSearchCommand(): Command {
     )
     .option(
       '--only-main-content',
-      'Include only main content when scraping',
-      true
+      'Include only the main content when scraping (the API default)'
+    )
+    .option(
+      '--full-page',
+      'Keep the whole page when scraping, including navigation, headers and footers'
     )
     .option(
       '-k, --api-key <key>',
@@ -1264,7 +1305,7 @@ function createSearchCommand(): Command {
         highlights: options.highlights,
         scrape: options.scrape,
         scrapeFormats,
-        onlyMainContent: options.onlyMainContent,
+        onlyMainContent: onlyMainContentFlag(options),
         apiKey: options.apiKey,
         apiUrl: options.apiUrl,
         output: options.output,

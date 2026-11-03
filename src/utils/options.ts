@@ -80,9 +80,33 @@ export function parseMaxPages(value: string): number {
   return pages;
 }
 
+export function parseCrawlDelay(value: string): number {
+  const ms = Number(value);
+  if (!/^\d+$/.test(value) || ms < 1 || ms > 60000) {
+    throw new InvalidArgumentError(
+      'must be between 1 and 60000 milliseconds (the API allows at most 60 seconds)'
+    );
+  }
+  return ms;
+}
+
 /**
  * Convert commander options to ScrapeOptions
  */
+/**
+ * onlyMainContent for a scrape: true with --only-main-content, false with
+ * --full-page, and unset otherwise so the API default (main content) applies.
+ */
+export function onlyMainContentFlag(options: {
+  onlyMainContent?: boolean;
+  fullPage?: boolean;
+}): boolean | undefined {
+  if (options.onlyMainContent && options.fullPage) {
+    throw new Error('Use either --only-main-content or --full-page, not both');
+  }
+  return options.fullPage ? false : options.onlyMainContent;
+}
+
 export function parseScrapeOptions(options: any): ScrapeOptions {
   // Parse formats from comma-separated string
   let formats: ScrapeFormat[] | undefined;
@@ -117,7 +141,7 @@ export function parseScrapeOptions(options: any): ScrapeOptions {
     domainTools: options.domainTools,
     toolDetail: options.toolDetail,
     formats,
-    onlyMainContent: options.onlyMainContent,
+    onlyMainContent: onlyMainContentFlag(options),
     waitFor: options.waitFor,
     screenshot: options.screenshot,
     fullPageScreenshot: options.fullPageScreenshot,

@@ -131,7 +131,7 @@ export async function executeCrawl(
       crawlOptions.allowSubdomains = options.allowSubdomains;
     }
     if (options.delay !== undefined) {
-      crawlOptions.delay = options.delay;
+      crawlOptions.delay = options.delay / 1000;
     }
     if (options.maxConcurrency !== undefined) {
       crawlOptions.maxConcurrency = options.maxConcurrency;

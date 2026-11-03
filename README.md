@@ -263,29 +263,30 @@ firecrawl scrape https://firecrawl.dev https://firecrawl.dev/blog https://docs.f
 
 #### Scrape Options
 
-| Option                     | Description                                             |
-| -------------------------- | ------------------------------------------------------- |
-| `-f, --format <formats>`   | Output format(s), comma-separated                       |
-| `-H, --html`               | Shortcut for `--format html`                            |
-| `-S, --summary`            | Shortcut for `--format summary`                         |
-| `--only-main-content`      | Extract only main content (removes navs, footers, etc.) |
-| `--wait-for <ms>`          | Wait time before scraping (for JS-rendered content)     |
-| `--screenshot`             | Take a screenshot                                       |
-| `--full-page-screenshot`   | Take a full page screenshot                             |
-| `--include-tags <tags>`    | Only include specific HTML tags                         |
-| `--exclude-tags <tags>`    | Exclude specific HTML tags                              |
-| `--max-age <milliseconds>` | Maximum age of cached content in milliseconds           |
-| `--lockdown`               | Enable lockdown mode for the scrape                     |
-| `--redact-pii`             | Redact personally identifiable information from output  |
-| `--schema <json>`          | JSON schema for structured extraction                   |
-| `--schema-file <path>`     | Path to JSON schema file for structured extraction      |
-| `--actions <json>`         | JSON actions array to run during scrape                 |
-| `--actions-file <path>`    | Path to JSON actions file                               |
-| `--proxy <proxy>`          | Proxy mode for scraping (for example, `auto`, `basic`)  |
-| `-o, --output <path>`      | Save output to file                                     |
-| `--json`                   | Output as JSON format                                   |
-| `--pretty`                 | Pretty print JSON output                                |
-| `--timing`                 | Show request timing info                                |
+| Option                     | Description                                            |
+| -------------------------- | ------------------------------------------------------ |
+| `-f, --format <formats>`   | Output format(s), comma-separated                      |
+| `-H, --html`               | Shortcut for `--format html`                           |
+| `-S, --summary`            | Shortcut for `--format summary`                        |
+| `--only-main-content`      | Extract only main content (the default)                |
+| `--full-page`              | Keep the whole page, including navs and footers        |
+| `--wait-for <ms>`          | Wait time before scraping (for JS-rendered content)    |
+| `--screenshot`             | Take a screenshot                                      |
+| `--full-page-screenshot`   | Take a full page screenshot                            |
+| `--include-tags <tags>`    | Only include specific HTML tags                        |
+| `--exclude-tags <tags>`    | Exclude specific HTML tags                             |
+| `--max-age <milliseconds>` | Maximum age of cached content in milliseconds          |
+| `--lockdown`               | Enable lockdown mode for the scrape                    |
+| `--redact-pii`             | Redact personally identifiable information from output |
+| `--schema <json>`          | JSON schema for structured extraction                  |
+| `--schema-file <path>`     | Path to JSON schema file for structured extraction     |
+| `--actions <json>`         | JSON actions array to run during scrape                |
+| `--actions-file <path>`    | Path to JSON actions file                              |
+| `--proxy <proxy>`          | Proxy mode for scraping (for example, `auto`, `basic`) |
+| `-o, --output <path>`      | Save output to file                                    |
+| `--json`                   | Output as JSON format                                  |
+| `--pretty`                 | Pretty print JSON output                               |
+| `--timing`                 | Show request timing info                               |
 
 #### Available Formats
 
@@ -392,7 +393,8 @@ firecrawl search "AI data tools"
 | `--ignore-invalid-urls`      | Exclude URLs invalid for other Firecrawl endpoints                                                                                                                                                                |
 | `--scrape`                   | Enable scraping of search results                                                                                                                                                                                 |
 | `--scrape-formats <formats>` | Scrape formats when `--scrape` enabled (default: markdown)                                                                                                                                                        |
-| `--only-main-content`        | Include only main content when scraping (default: true)                                                                                                                                                           |
+| `--only-main-content`        | Include only the main content when scraping (the API default)                                                                                                                                                     |
+| `--full-page`                | Keep the whole page when scraping, including navs and footers                                                                                                                                                     |
 | `-o, --output <path>`        | Save to file                                                                                                                                                                                                      |
 | `--json`                     | Output as compact JSON                                                                                                                                                                                            |
 
@@ -669,27 +671,27 @@ firecrawl crawl https://example.com --limit 100 --max-depth 3
 
 #### Crawl Options
 
-| Option                         | Description                              |
-| ------------------------------ | ---------------------------------------- |
-| `--wait`                       | Wait for crawl to complete               |
-| `--progress`                   | Show progress while waiting              |
-| `--limit <n>`                  | Maximum pages to crawl                   |
-| `--max-depth <n>`              | Maximum crawl depth                      |
-| `--include-paths <paths>`      | Only crawl matching paths                |
-| `--exclude-paths <paths>`      | Skip matching paths                      |
-| `--sitemap <mode>`             | `include`, `skip`, or `only`             |
-| `--allow-subdomains`           | Include subdomains                       |
-| `--allow-external-links`       | Follow external links                    |
-| `--crawl-entire-domain`        | Crawl entire domain                      |
-| `--ignore-query-parameters`    | Treat URLs with different params as same |
-| `--delay <ms>`                 | Delay between requests                   |
-| `--max-concurrency <n>`        | Max concurrent requests                  |
-| `--scrape-options <json>`      | JSON scrape options passed to each page  |
-| `--scrape-options-file <path>` | Path to scrape options JSON file         |
-| `--webhook <url-or-json>`      | Webhook URL or configuration             |
-| `--cancel`                     | Cancel an active crawl job by job ID     |
-| `--timeout <seconds>`          | Timeout when waiting                     |
-| `--poll-interval <seconds>`    | Status check interval                    |
+| Option                         | Description                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------- |
+| `--wait`                       | Wait for crawl to complete                                                      |
+| `--progress`                   | Show progress while waiting                                                     |
+| `--limit <n>`                  | Maximum pages to crawl                                                          |
+| `--max-depth <n>`              | Maximum crawl depth                                                             |
+| `--include-paths <paths>`      | Only crawl matching paths                                                       |
+| `--exclude-paths <paths>`      | Skip matching paths                                                             |
+| `--sitemap <mode>`             | `include`, `skip`, or `only`                                                    |
+| `--allow-subdomains`           | Include subdomains                                                              |
+| `--allow-external-links`       | Follow external links                                                           |
+| `--crawl-entire-domain`        | Crawl entire domain                                                             |
+| `--ignore-query-parameters`    | Treat URLs with different params as same                                        |
+| `--delay <ms>`                 | Delay between requests in milliseconds, 1 to 60000 (sent to the API in seconds) |
+| `--max-concurrency <n>`        | Max concurrent requests                                                         |
+| `--scrape-options <json>`      | JSON scrape options passed to each page                                         |
+| `--scrape-options-file <path>` | Path to scrape options JSON file                                                |
+| `--webhook <url-or-json>`      | Webhook URL or configuration                                                    |
+| `--cancel`                     | Cancel an active crawl job by job ID                                            |
+| `--timeout <seconds>`          | Timeout when waiting                                                            |
+| `--poll-interval <seconds>`    | Status check interval                                                           |
 
 #### Examples
 
@@ -739,7 +741,8 @@ firecrawl batch-scrape <job-id> --cancel
 | ------------------------------ | ----------------------------------------------- |
 | `--urls-file <path>`           | File with one URL per line                      |
 | `-f, --format <formats>`       | Output format(s), comma-separated               |
-| `--only-main-content`          | Extract only main content                       |
+| `--only-main-content`          | Extract only main content (the default)         |
+| `--full-page`                  | Keep the whole page, including navs and footers |
 | `--wait-for <ms>`              | Wait time before scraping each page             |
 | `--max-age <milliseconds>`     | Maximum age of cached content in milliseconds   |
 | `--schema <json>`              | JSON schema for extraction (adds `json` format) |
