@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn, spawnSync, type ChildProcess } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -139,7 +139,60 @@ describe('install coordination', () => {
   }
 
   it.skipIf(process.platform === 'win32')(
-    'prunes a stale entry whose pid now runs another firecrawl program',
+    'prunes a stale entry once its pid runs another program, without a cached verdict',
+    async () => {
+      const cli = path.join(
+        home,
+        'lib/node_modules/firecrawl-cli/dist/index.js'
+      );
+      const other = path.join(home, 'firecrawl-mcp/dist/index.js');
+      fs.mkdirSync(path.dirname(other), { recursive: true });
+      fs.writeFileSync(other, 'setInterval(() => {}, 1000);');
+      // One pid: a shell listed with the CLI's script path, which then execs
+      // an unrelated program, as a reused pid would.
+      const shell = spawn(
+        'sh',
+        ['-c', 'sleep 1; exec "$1" "$2"', cli, process.execPath, other],
+        { stdio: 'ignore' }
+      );
+      children.push(shell);
+      const listing = () =>
+        spawnSync('ps', ['-p', String(shell.pid), '-o', 'args='], {
+          encoding: 'utf8',
+        }).stdout;
+      const stale = entry(shell.pid!, 11 * 60 * 1000, cli);
+      for (let i = 0; i < 50 && !listing().includes(cli); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+
+      expect(otherInvocations(firecrawlDir())).toBe(1);
+      // The shell's own arguments name both paths, so wait for the exec.
+      for (let i = 0; i < 50 && listing().includes(cli); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      expect(listing()).not.toContain(cli);
+      expect(otherInvocations(firecrawlDir())).toBe(0);
+      expect(fs.existsSync(stale)).toBe(false);
+    }
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'treats a backslash as part of a file name outside Windows',
+    async () => {
+      // A command recorded under ".../pkg\name/..." is not ".../pkg/name/...".
+      const recorded = path.join(home, 'pkg\\name', 'index.js');
+      const running = await stoppedScript(
+        path.join(home, 'pkg', 'name', 'index.js')
+      );
+      const stale = entry(running.pid!, 11 * 60 * 1000, recorded);
+
+      expect(otherInvocations(firecrawlDir())).toBe(0);
+      expect(fs.existsSync(stale)).toBe(false);
+    }
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'tells a stopped command apart from a program that only mentions firecrawl',
     async () => {
       const cli = path.join(
         home,

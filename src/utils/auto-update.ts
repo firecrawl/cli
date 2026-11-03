@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { isatty } from 'tty';
 import packageJson from '../../package.json';
 import {
   detectInstallChannel,
@@ -180,28 +181,24 @@ function commandMarker(): string {
   return isCompiledBinary() ? '' : (process.argv[1] ?? '');
 }
 
-/** Lowercase with one forward slash per separator, since launchers can double them. */
+/**
+ * Lowercase with one separator per run of separators, since launchers can
+ * double them. Only Windows treats a backslash as a separator.
+ */
 function normalizeCommandLine(text: string): string {
-  return text.toLowerCase().replace(/[\\/]+/g, '/');
+  const separators = process.platform === 'win32' ? /[\\/]+/g : /\/+/g;
+  return text.toLowerCase().replace(separators, '/');
 }
-
-const PROBE_TTL_MS = 30 * 1000;
-const probes = new Map<string, { at: number; verdict: boolean }>();
 
 /**
  * Whether pid may still run the command that recorded marker. A stopped or
  * suspended command misses heartbeats but still runs it, while a reused pid
  * runs something else. An entry without a marker falls back to the word
- * firecrawl. Verdicts are cached briefly, since waiting loops ask every 500ms.
+ * firecrawl. This is only asked about entries and locks that missed their
+ * heartbeats, so the lookup is not cached: a pid can be reused at any time.
  */
 function mayRunFirecrawl(pid: number, marker = ''): boolean {
-  const needle = normalizeCommandLine(marker || 'firecrawl');
-  const key = `${pid}\0${needle}`;
-  const cached = probes.get(key);
-  if (cached && Date.now() - cached.at < PROBE_TTL_MS) return cached.verdict;
-  const verdict = probeCommandLine(pid, needle);
-  probes.set(key, { at: Date.now(), verdict });
-  return verdict;
+  return probeCommandLine(pid, normalizeCommandLine(marker || 'firecrawl'));
 }
 
 /**
@@ -487,9 +484,11 @@ export async function registerInvocation(
 /**
  * Runs this command again in a new process, which loads only the installed
  * release, and resolves to its exit code, or 128 plus the signal number when a
- * signal stopped it. The child shares the terminal's process group, so it
- * already receives Ctrl-C and hangups; this process only outlives them, and
- * passes on SIGTERM, which is sent to one pid.
+ * signal stopped it. SIGTERM is always passed on. The child shares this
+ * process's group, so when a terminal is attached its Ctrl-C and hangup
+ * already reach the child; forwarding them too would deliver each twice.
+ * Without a terminal, SIGINT and SIGHUP are passed on like SIGTERM. Either
+ * way this process outlives them until the child exits.
  */
 export function relaunchAfterUpdate(): Promise<number> {
   unregisterInvocation();
@@ -507,14 +506,14 @@ export function relaunchAfterUpdate(): Promise<number> {
       { stdio: 'inherit' }
     );
     const forward = (signal: NodeJS.Signals) => child.kill(signal);
-    const ignore = () => {};
+    const fromTerminal = isatty(0) ? () => {} : forward;
     process.on('SIGTERM', forward);
-    process.on('SIGINT', ignore);
-    process.on('SIGHUP', ignore);
+    process.on('SIGINT', fromTerminal);
+    process.on('SIGHUP', fromTerminal);
     const finish = (code: number) => {
       process.off('SIGTERM', forward);
-      process.off('SIGINT', ignore);
-      process.off('SIGHUP', ignore);
+      process.off('SIGINT', fromTerminal);
+      process.off('SIGHUP', fromTerminal);
       resolve(code);
     };
     child.on('error', () => finish(1));
