@@ -110,7 +110,11 @@ describe('executeSearch', () => {
         limit: 5,
         integration: 'cli',
         toolDetail: 'compact',
-        sources: [{ type: 'web' }, { type: 'alexandria' }],
+        sources: [
+          { type: 'web' },
+          { type: 'alexandria' },
+          { type: 'alexandria-skills' },
+        ],
         domainTools: true,
       });
       const body = mockHttpPost.mock.calls[0][1];
@@ -243,7 +247,15 @@ describe('executeSearch', () => {
     });
 
     it.each([
-      [undefined, [{ type: 'web' }, { type: 'alexandria' }], true],
+      [
+        undefined,
+        [
+          { type: 'web' },
+          { type: 'alexandria' },
+          { type: 'alexandria-skills' },
+        ],
+        true,
+      ],
       [['web'], [{ type: 'web' }, { type: 'alexandria' }], true],
       [['web', 'alexandria'], [{ type: 'web' }, { type: 'alexandria' }], true],
       [
@@ -357,6 +369,30 @@ describe('executeSearch', () => {
       expect(mockHttpPost).toHaveBeenCalledTimes(2);
       expect(mockHttpPost.mock.calls[1][1]).toMatchObject({
         sources: [{ type: 'news' }],
+        domainTools: false,
+      });
+    });
+
+    it('drops default skill cards when added discovery is refused', async () => {
+      mockHttpPost
+        .mockRejectedValueOnce({
+          response: {
+            status: 403,
+            data: {
+              error: 'Exchange is not enabled for this team.',
+            },
+          },
+        })
+        .mockResolvedValueOnce(mockSearchResponse({ web: [] }));
+      const result = await executeSearch({ query: 'records' });
+      expect(result.success).toBe(true);
+      expect(mockHttpPost.mock.calls[0][1].sources).toEqual([
+        { type: 'web' },
+        { type: 'alexandria' },
+        { type: 'alexandria-skills' },
+      ]);
+      expect(mockHttpPost.mock.calls[1][1]).toMatchObject({
+        sources: [{ type: 'web' }],
         domainTools: false,
       });
     });

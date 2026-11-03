@@ -459,8 +459,9 @@ it('documents the default discovery flow and adds alexandria to explicit sources
   expect(help.stdout).toContain('find-tools');
   const searchHelp = await cli(['search', '--help']);
   expect(searchHelp.stdout.replace(/\s+/g, ' ')).toContain(
-    'with an API key, alexandria is always added'
+    'the default is web, alexandria, and alexandria-skills'
   );
+  expect(searchHelp.stdout).toContain('alexandria-skills');
   expect(searchHelp.stdout).toContain('--no-domain-tools');
   const scrapeHelp = await cli(['scrape', '--help']);
   expect(scrapeHelp.stdout).toContain('--alexandria');
@@ -498,6 +499,18 @@ it('documents the default discovery flow and adds alexandria to explicit sources
     sources: [{ type: 'news' }],
     domainTools: false,
   });
+  const skillsOnly = await cli([
+    'search',
+    'pizza hut',
+    '--sources',
+    'alexandria-skills',
+    '--json',
+  ]);
+  expect(skillsOnly.code).toBe(0);
+  expect(requests.at(-1)?.body).toMatchObject({
+    sources: [{ type: 'alexandria-skills' }, { type: 'alexandria' }],
+    domainTools: false,
+  });
 });
 
 it('preserves mixed search results, tools and billing metadata', async () => {
@@ -517,7 +530,11 @@ it('preserves mixed search results, tools and billing metadata', async () => {
     url: '/v2/search',
     headers: { authorization: 'Bearer fc-test' },
     body: {
-      sources: [{ type: 'web' }, { type: 'alexandria' }],
+      sources: [
+        { type: 'web' },
+        { type: 'alexandria' },
+        { type: 'alexandria-skills' },
+      ],
       domainTools: true,
     },
   });
@@ -1413,7 +1430,11 @@ it('keeps natural query text and disables only domain matching when requested', 
     body: {
       query,
       domainTools: false,
-      sources: [{ type: 'web' }, { type: 'alexandria' }],
+      sources: [
+        { type: 'web' },
+        { type: 'alexandria' },
+        { type: 'alexandria-skills' },
+      ],
     },
   });
 });

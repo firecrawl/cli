@@ -1168,7 +1168,7 @@ function createSearchCommand(): Command {
     )
     .option(
       '--sources <sources>',
-      'Comma-separated sources: web, images, news, alexandria (default: web; with an API key, alexandria is always added)'
+      'Comma-separated sources: web, images, news, alexandria, alexandria-skills. With an API key and no --sources, the default is web, alexandria, and alexandria-skills. Without a key, the default is web. An explicit list is used as given; alexandria is still added when a key is set'
     )
     .option(
       '--categories <categories>',
@@ -1259,7 +1259,13 @@ function createSearchCommand(): Command {
           .map((s: string) => s.trim().toLowerCase()) as SearchSource[];
 
         // Validate sources
-        const validSources = ['web', 'images', 'news', 'alexandria'];
+        const validSources = [
+          'web',
+          'images',
+          'news',
+          'alexandria',
+          'alexandria-skills',
+        ];
         for (const source of sources) {
           if (!validSources.includes(source)) {
             console.error(

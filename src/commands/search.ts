@@ -35,7 +35,11 @@ export async function executeSearch(
   options: SearchOptions
 ): Promise<SearchResult> {
   try {
-    if (options.domainTools || options.sources?.includes('alexandria'))
+    if (
+      options.domainTools ||
+      options.sources?.includes('alexandria') ||
+      options.sources?.includes('alexandria-skills')
+    )
       requireAlexandriaKey(options.apiKey);
     // Build search options for the SDK
     const searchParams: Record<string, any> = {
@@ -44,20 +48,30 @@ export async function executeSearch(
     };
     searchParams.toolDetail = options.toolDetail ?? 'compact';
 
-    // Authenticated searches always include Alexandria, keeping the requested sources.
-    const requestedSources: SearchSource[] = options.sources?.length
+    // An explicit --sources list is kept. Alexandria is still added for a key.
+    // Skill cards are included only in the default, and only with a key.
+    const explicitSources = !!options.sources?.length;
+    const requestedSources: SearchSource[] = explicitSources
       ? [...new Set(options.sources)]
       : ['web'];
-    const addsAlexandria =
-      !!getApiKey(options.apiKey) && !requestedSources.includes('alexandria');
-    const sources: SearchSource[] = addsAlexandria
-      ? [...requestedSources, 'alexandria']
-      : requestedSources;
+    const hasKey = !!getApiKey(options.apiKey);
+    const sources: SearchSource[] = [...requestedSources];
+    let addedDiscovery = false;
+    if (hasKey && !sources.includes('alexandria')) {
+      sources.push('alexandria');
+      addedDiscovery = true;
+    }
+    if (hasKey && !explicitSources && !sources.includes('alexandria-skills')) {
+      sources.push('alexandria-skills');
+      addedDiscovery = true;
+    }
     searchParams.sources = sources.map((source) => ({ type: source }));
-    searchParams.domainTools =
-      options.domainTools ??
-      (sources.includes('alexandria') &&
-        sources.some((source) => source !== 'alexandria'));
+    const pairsWithWeb =
+      sources.includes('alexandria') &&
+      sources.some(
+        (source) => source !== 'alexandria' && source !== 'alexandria-skills'
+      );
+    searchParams.domainTools = options.domainTools ?? pairsWithWeb;
 
     if (options.highlights !== undefined) {
       searchParams.highlights = options.highlights;
@@ -143,7 +157,7 @@ export async function executeSearch(
         const refused =
           response?.status === 403 &&
           DISCOVERY_REFUSALS.includes(response?.data?.error);
-        if (!addsAlexandria || options.domainTools === true || !refused)
+        if (!addedDiscovery || options.domainTools === true || !refused)
           throw error;
         return post({
           ...searchBody,
@@ -178,7 +192,9 @@ export async function executeSearch(
     return {
       success: false,
       error:
-        options.domainTools || options.sources?.includes('alexandria')
+        options.domainTools ||
+        options.sources?.includes('alexandria') ||
+        options.sources?.includes('alexandria-skills')
           ? JSON.stringify(apiFailure(error))
           : error instanceof Error
             ? error.message
