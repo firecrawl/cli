@@ -176,7 +176,7 @@ export function rollbackManagedVersion(
   if (
     !pointer ||
     pointer.installation !== activeInstallationId() ||
-    pointer.version !== currentVersion
+    compareVersions(pointer.version, currentVersion) < 0
   )
     throw new Error('No managed update is active for this installation.');
   if (pointer.previous) {

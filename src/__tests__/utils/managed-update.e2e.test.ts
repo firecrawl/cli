@@ -906,6 +906,29 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
     );
 
     it(
+      'rolls back from the launcher when the active release cannot start',
+      { timeout: caseTimeout },
+      async () => {
+        expect((await run(['update'])).code).toBe(0);
+        fs.writeFileSync(
+          path.join(
+            store,
+            next,
+            'node_modules',
+            'firecrawl-cli',
+            'dist',
+            'index.js'
+          ),
+          "throw new Error('broken release');"
+        );
+        expect((await version()).code).not.toBe(0);
+        const result = await run(['update', '--rollback']);
+        expect(result.code, result.stderr).toBe(0);
+        expect((await version()).stdout.trim()).toBe(current);
+      }
+    );
+
+    it(
       'restores the previous managed release after a second update',
       { timeout: caseTimeout },
       async () => {

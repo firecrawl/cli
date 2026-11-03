@@ -148,7 +148,9 @@ To restore the previous version without the network:
 firecrawl update --rollback
 ```
 
-Rollback disables automatic updates so the same release is not immediately
+For global package installs, the launcher handles rollback without loading the
+active release, so it works even when that release cannot start. Rollback
+disables automatic updates so the same release is not immediately
 installed again. The first managed-package rollback returns to the original
 package-manager installation; later updates can roll back to the previous
 managed version. Moving the registry's latest tag back does not automatically
