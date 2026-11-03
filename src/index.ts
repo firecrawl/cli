@@ -41,7 +41,6 @@ import {
   handleInspectPaperCommand,
   handleReadPaperCommand,
   handleRelatedPapersCommand,
-  handleSearchGitHubCommand,
   handleSearchPapersCommand,
 } from './commands/research';
 import {
@@ -1233,7 +1232,9 @@ function createSearchCommand(): Command {
         for (const category of categories) {
           if (!validCategories.includes(category)) {
             console.error(
-              `Error: Invalid category "${category}". Valid categories: ${validCategories.join(', ')}`
+              (category as string) === 'github'
+                ? 'Error: The github category was removed. Use --categories developer or `firecrawl developer`.'
+                : `Error: Invalid category "${category}". Valid categories: ${validCategories.join(', ')}`
             );
             process.exit(1);
           }
@@ -1444,7 +1445,7 @@ Examples:
 function createResearchCommand(): Command {
   const researchCmd = new Command('research')
     .description(
-      "Search Firecrawl's research paper index: ~43M abstracts, around 90% biomedical (PubMed, bioRxiv, medRxiv) plus arXiv. Use this for biomedical, clinical, and scientific literature instead of scraping PubMed, bioRxiv, or Google Scholar by hand. Also searches GitHub issue/PR history."
+      "Search Firecrawl's research paper index: ~43M abstracts, around 90% biomedical (PubMed, bioRxiv, medRxiv) plus arXiv. Use this for biomedical, clinical, and scientific literature instead of scraping PubMed, bioRxiv, or Google Scholar by hand."
     )
     .addHelpText(
       'after',
@@ -1456,7 +1457,6 @@ Examples:
   $ firecrawl research related-papers pmcid:PMC12530322 --intent "in vivo delivery"
   $ firecrawl research read-paper doi:10.1016/j.neunet.2025.108095 --question "What was the sample size?"
   $ firecrawl research read-paper arxiv:1706.03762 --question "What is the attention mechanism?"
-  $ firecrawl research search-github "foundationdb queue worker shutdown" --limit 10
 `
     );
 
@@ -1641,37 +1641,19 @@ Examples:
       });
     });
 
-  researchCmd
-    .command('search-github')
-    .description(
-      'Search GitHub issue/PR history and repository readmes. Returns ranked matches with repo, url, a short snippet, and when available the full matched content in markdown.'
-    )
-    .argument('<query>', 'GitHub history/readme search query')
-    .option(
-      '--limit <number>',
-      'Number of results to return (max: 100)',
-      parseInt
-    )
-    .addOption(new Option('--k <number>').argParser(parseInt).hideHelp())
-    .option(
-      '-k, --api-key <key>',
-      'Firecrawl API key (overrides global --api-key)'
-    )
-    .option('--api-url <url>', 'API URL (overrides global --api-url)')
-    .option('-o, --output <path>', 'Output file path (default: stdout)')
-    .option('--json', 'Output as compact JSON', false)
-    .option('--pretty', 'Pretty print JSON output', false)
-    .action(async (query, options) => {
-      await handleSearchGitHubCommand({
-        query,
-        k: researchLimit(options),
-        apiKey: options.apiKey,
-        apiUrl: options.apiUrl,
-        output: options.output,
-        json: options.json,
-        pretty: options.pretty,
-      });
-    });
+  researchCmd.addCommand(
+    new Command('search-github')
+      .helpOption(false)
+      .allowUnknownOption()
+      .allowExcessArguments()
+      .action(() => {
+        console.error(
+          'Error: `firecrawl research search-github` was removed after 2026-11-03. Use `firecrawl developer "<query>"` instead.'
+        );
+        process.exit(1);
+      }),
+    { hidden: true }
+  );
 
   return researchCmd;
 }

@@ -2,13 +2,11 @@ import { getClient, isKeylessMode, keylessGet } from '../utils/client';
 import { getCliOrigin } from '../utils/agent-origin';
 import { writeOutput } from '../utils/output';
 import type {
-  GitHubItem,
   InspectPaperOptions,
   PaperHit,
   ReadPaperOptions,
   RelatedPapersOptions,
   ResearchBaseOptions,
-  SearchGitHubOptions,
   SearchPapersOptions,
 } from '../types/research';
 
@@ -17,7 +15,6 @@ const MAX_AUTHORS = 15;
 const MAX_ABSTRACT_CHARS = 600;
 const MAX_AFFIL_CHARS = 60;
 const MAX_AUTHORS_LINE_CHARS = 400;
-const MAX_GITHUB_CONTENT_CHARS = 1200;
 
 function appendParam(
   params: URLSearchParams,
@@ -144,35 +141,6 @@ function fmtPaperMetadata(paper?: PaperHit): string {
   return lines.join('\n');
 }
 
-function fmtGithub(results?: GitHubItem[]): string {
-  if (!results || results.length === 0) return '(no results)';
-
-  return results
-    .map((item) => {
-      const lines: string[] = [];
-      if (item.number == null && item.pageType == null) {
-        lines.push(`[${item.repo ?? '?'}] README`);
-      } else {
-        const ref = item.number != null ? `#${item.number}` : '';
-        const meta = [
-          item.pageType,
-          item.segmentCount ? `${item.segmentCount} segments` : '',
-        ]
-          .filter(Boolean)
-          .join(', ');
-        lines.push(`[${item.repo ?? '?'}${ref}]${meta ? ` (${meta})` : ''}`);
-      }
-      const url = item.readmeUrl ?? item.url;
-      if (url) lines.push(url);
-      const body = (item.contentMd || item.snippet || '').trim();
-      lines.push(
-        body ? body.slice(0, MAX_GITHUB_CONTENT_CHARS) : '(no content)'
-      );
-      return lines.join('\n');
-    })
-    .join('\n\n');
-}
-
 function writeResearchOutput(
   data: unknown,
   readable: string,
@@ -285,23 +253,6 @@ export async function handleReadPaperCommand(
         : '(no full-text passages available for this paper)',
       options
     );
-  } catch (error) {
-    handleError(error);
-  }
-}
-
-export async function handleSearchGitHubCommand(
-  options: SearchGitHubOptions
-): Promise<void> {
-  try {
-    const params = new URLSearchParams();
-    appendParam(params, 'query', options.query);
-    appendParam(params, 'k', options.k);
-    const data = await getResearch<{ results?: GitHubItem[] }>(
-      withQuery(`${BASE}/github`, params),
-      options
-    );
-    writeResearchOutput(data, fmtGithub(data.results), options);
   } catch (error) {
     handleError(error);
   }
