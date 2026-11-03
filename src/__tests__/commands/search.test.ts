@@ -1104,7 +1104,7 @@ describe('executeSearch', () => {
         'Read: firecrawl skills read firecrawl-deep-research'
       );
       expect(readable).toContain(
-        'Read: firecrawl skills read provider:carbon-arc/carbon-arc-company-intelligence/ca-audience'
+        'Read: firecrawl skills read --provider carbon-arc --plugin carbon-arc-company-intelligence --skill ca-audience'
       );
 
       await handleSearchCommand({ query: 'GDP growth', json: true });

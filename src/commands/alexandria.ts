@@ -534,34 +534,18 @@ function collectSkillRecords(
 /**
  * Skills from one provider-skills page. Matches `provider.slug` and
  * `plugin.id`, including skills nested under a provider or plugin group.
+ * The server ranks `q`; this does not require every query word.
  * A `?provider=` response includes execution-only skills; those stay.
  */
 export function listedProviderSkills(
   body: unknown,
-  options: { provider: string; query?: string }
+  options: { provider: string }
 ): { skills: any[] } {
-  const words = options.query?.toLowerCase().split(/\s+/).filter(Boolean) ?? [];
   const seen = new Set<string>();
   const skills = collectSkillRecords(body).filter((skill) => {
     if (providerSlugOf(skill?.provider) !== options.provider) return false;
     const plugin = pluginIdOf(skill?.plugin);
     const slug = skillSlugOf(skill);
-    if (words.length) {
-      const pluginRecord =
-        skill?.plugin && typeof skill.plugin === 'object' ? skill.plugin : {};
-      const haystack = [
-        skill.id,
-        skill.name,
-        skill.description,
-        slug,
-        plugin,
-        pluginRecord.displayName,
-      ]
-        .filter((value) => typeof value === 'string')
-        .join(' ')
-        .toLowerCase();
-      if (!words.every((word) => haystack.includes(word))) return false;
-    }
     const key = `${options.provider}/${plugin ?? ''}/${slug ?? skill?.id ?? ''}`;
     if (seen.has(key)) return false;
     seen.add(key);
@@ -654,10 +638,7 @@ async function handleProviderSkillList(
         );
         return;
       }
-      const batch = listedProviderSkills(listed.body, {
-        provider,
-        query: selection.query,
-      }).skills;
+      const batch = listedProviderSkills(listed.body, { provider }).skills;
       const before = skills.length;
       for (const skill of batch) {
         const key = `${pluginIdOf(skill.plugin) ?? ''}/${skillSlugOf(skill) ?? skill.id ?? ''}`;

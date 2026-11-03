@@ -138,7 +138,6 @@ describe('provider skills', () => {
     expect(skillSlugOf(carbonArcPage.skills[0])).toBe('ca-audience');
     const page = listedProviderSkills(carbonArcPage, {
       provider: 'carbon-arc',
-      query: 'audience',
     });
     expect(page.skills.map(skillSlugOf)).toEqual(['ca-audience']);
     const duplicated = listedProviderSkills(
@@ -167,10 +166,10 @@ describe('provider skills', () => {
           },
         ],
       },
-      { provider: 'acme', query: 'audience' }
+      { provider: 'acme' }
     );
     expect(duplicated.skills.map((skill) => skill.description)).toEqual([
-      'audience brief',
+      'plain',
     ]);
     const nested = listedProviderSkills(
       {
@@ -187,7 +186,7 @@ describe('provider skills', () => {
           },
         ],
       },
-      { provider: 'acme', query: 'nested' }
+      { provider: 'acme' }
     );
     expect(nested.skills).toEqual([
       {

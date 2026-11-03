@@ -384,10 +384,23 @@ function formatSkillCard(skill: SkillSearchResult): string[] {
     lines.push(`  ${clipPassage(skill.description)}`);
   if (typeof skill.similarity === 'number' && Number.isFinite(skill.similarity))
     lines.push(`  Similarity: ${skill.similarity}`);
-  if (typeof skill.id === 'string' && skill.id.trim())
-    lines.push(`  Read: firecrawl skills read ${skill.id.trim()}`);
+  const hint = skillReadHint(skill);
+  if (hint) lines.push(`  Read: ${hint}`);
   lines.push('');
   return lines;
+}
+
+/** Official and team skills read by id. Provider cards need the three path flags. */
+export function skillReadHint(skill: SkillSearchResult): string | undefined {
+  if (typeof skill.id !== 'string' || !skill.id.trim()) return undefined;
+  const id = skill.id.trim();
+  const providerId =
+    skill.source === 'provider'
+      ? /^provider:([^/]+)\/([^/]+)\/([^/]+)$/.exec(id)
+      : undefined;
+  if (providerId)
+    return `firecrawl skills read --provider ${providerId[1]} --plugin ${providerId[2]} --skill ${providerId[3]}`;
+  return `firecrawl skills read ${id}`;
 }
 
 /**
