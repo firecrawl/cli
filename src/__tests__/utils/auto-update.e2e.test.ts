@@ -18,7 +18,8 @@ import packageJson from '../../../package.json';
 // Compiles and runs real binaries against a local registry and release server.
 // Run explicitly with pnpm test:update; ordinary tests need neither Bun nor tar.
 describe.skipIf(
-  !process.env.FIRECRAWL_UPDATE_E2E || process.platform === 'win32'
+  process.env.npm_lifecycle_event !== 'test:update' ||
+    process.platform === 'win32'
 )('standalone update end to end', () => {
   const current = packageJson.version;
   const [major, minor, patch] = current.split('.').map(Number);
