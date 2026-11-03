@@ -2997,7 +2997,12 @@ async function main() {
   const args = process.argv.slice(2);
   const isUpdate = getFirstPositionalArg(args) === 'update';
   const channel = detectInstallChannel();
-  if (!isUpdate && (await registerInvocation(channel))) {
+  const registration = isUpdate ? 'run' : await registerInvocation(channel);
+  if (registration === 'busy') {
+    process.exitCode = 1;
+    return;
+  }
+  if (registration === 'relaunch') {
     process.exitCode = await relaunchAfterUpdate();
     return;
   }

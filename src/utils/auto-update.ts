@@ -37,12 +37,10 @@ const IDLE_WAIT_MS = 30 * 60 * 1000;
 const CHECK_RETRY_MS = 60 * 60 * 1000;
 const FAILURE_BACKOFF_MS = 24 * 60 * 60 * 1000;
 const INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
-// Commands wait on package installs, so those get a tighter limit than downloads.
-const PACKAGE_INSTALL_TIMEOUT_MS = 3 * 60 * 1000;
+// Package installs have no time limit, so a command stops waiting on one
+// after this and asks to be run again.
+const INSTALL_WAIT_MS = 5 * 60 * 1000;
 const KILL_GRACE_MS = 5 * 1000;
-// A stopped package manager first waits for its downloads, then restores the
-// previous install. Killing it before that leaves firecrawl uninstalled.
-const STOP_GRACE_MS = 60 * 1000;
 const HEARTBEAT_MS = 60 * 1000;
 const HEARTBEAT_STALE_MS = 10 * 60 * 1000;
 // A lock file exists for a moment before its pid is written.
@@ -376,15 +374,18 @@ export function unregisterInvocation(): void {
 /**
  * Package installs are rewritten in place and commands load modules lazily.
  * Each invocation registers itself so an install waits for it, and waits
- * for an install that is already running before it continues. Resolves true
- * when another release was installed while it waited: this process already
- * loaded the old one, so the caller should relaunch on the new one.
+ * for an install that is already running before it continues. Resolves
+ * 'relaunch' when another release was installed while it waited: this process
+ * already loaded the old one, so the caller should relaunch on the new one.
+ * Resolves 'busy' when the install is still running after waitMs: the command
+ * must not run against a package that is still being rewritten.
  */
 export async function registerInvocation(
   channel: InstallChannel,
-  stderr: Pick<NodeJS.WriteStream, 'write' | 'isTTY'> = process.stderr
-): Promise<boolean> {
-  if (!IN_PLACE.has(channel.kind) || !('packageRoot' in channel)) return false;
+  stderr: Pick<NodeJS.WriteStream, 'write' | 'isTTY'> = process.stderr,
+  waitMs = INSTALL_WAIT_MS
+): Promise<'run' | 'relaunch' | 'busy'> {
+  if (!IN_PLACE.has(channel.kind) || !('packageRoot' in channel)) return 'run';
   const dir = firecrawlDir();
   const file = path.join(runningDir(dir), String(process.pid));
   // Rewriting the entry also recreates it if a pruner removed it.
@@ -393,7 +394,7 @@ export async function registerInvocation(
     fs.mkdirSync(path.dirname(file), { recursive: true });
     touch();
   } catch {
-    return false;
+    return 'run';
   }
   const heartbeat = setInterval(() => {
     try {
@@ -418,21 +419,25 @@ export async function registerInvocation(
   };
 
   const lock = installLockPath(dir);
-  const deadline =
-    Date.now() + PACKAGE_INSTALL_TIMEOUT_MS + STOP_GRACE_MS + 30_000;
+  const deadline = Date.now() + waitMs;
   let waited = false;
-  while (lockHeld(lock) && Date.now() < deadline) {
+  while (lockHeld(lock)) {
+    if (Date.now() >= deadline) {
+      unregisterInvocation();
+      stderr.write(
+        'A firecrawl update is still installing. Run the command again once it finishes.\n'
+      );
+      return 'busy';
+    }
     if (!waited && stderr.isTTY) {
       stderr.write('Waiting for a firecrawl update to finish installing...\n');
     }
     waited = true;
     await sleep(200);
   }
-  return (
-    waited &&
-    !lockHeld(lock) &&
-    installedVersion(channel.packageRoot) !== packageJson.version
-  );
+  return waited && installedVersion(channel.packageRoot) !== packageJson.version
+    ? 'relaunch'
+    : 'run';
 }
 
 /**
@@ -596,13 +601,15 @@ async function reapGroup(pid: number): Promise<boolean> {
 /**
  * Resolves to an error message, or undefined when the command succeeded.
  * Package managers start helpers of their own, so the child gets its own
- * process group: a timeout or an interrupt stops all of it, and this waits for
- * that group to empty. A group that survives the SIGKILL grace is reported as
- * a failure; the caller still releases its lock. Windows skips the group wait.
+ * process group: an interrupt or a timeout reaches all of it, and this waits
+ * for that group to empty. Helpers still running after the command exits are
+ * stopped, and a group that survives SIGKILL is reported as a failure; the
+ * caller still releases its lock. Windows skips the group wait.
  *
- * The first timeout or interrupt only passes the signal on, so the installer
- * can restore what it replaced, and SIGKILL follows if it is still running
- * after graceMs. A second interrupt kills it at once.
+ * An interrupt is only passed on, so a package manager can restore what it
+ * replaced however long that takes. A second interrupt kills it at once. Only
+ * a caller that sets timeoutMs gets a time limit: SIGTERM, then SIGKILL after
+ * KILL_GRACE_MS.
  */
 export function run(
   command: string,
@@ -612,7 +619,6 @@ export function run(
     env?: NodeJS.ProcessEnv;
     cwd?: string;
     timeoutMs?: number;
-    graceMs?: number;
   } = {}
 ): Promise<string | undefined> {
   return new Promise((resolve) => {
@@ -626,7 +632,7 @@ export function run(
       windowsHide: true,
       detached: !windows,
     });
-    const timeoutMs = options.timeoutMs ?? INSTALL_TIMEOUT_MS;
+    const { timeoutMs } = options;
     let stopped: string | undefined;
     let escalate: NodeJS.Timeout | undefined;
     const kill = () => child.pid && signalTree(child.pid, 'SIGKILL');
@@ -638,17 +644,19 @@ export function run(
       stopped = reason;
       clearTimeout(timer);
       if (child.pid) signalTree(child.pid, signal);
-      escalate = setTimeout(kill, options.graceMs ?? STOP_GRACE_MS);
       if (signal === 'SIGINT' && stdio === 'inherit') {
         console.error(
           `Stopping ${command} so it can restore the previous version. Press Ctrl+C again to stop it now, which can leave firecrawl uninstalled.`
         );
       }
     };
-    const timer = setTimeout(
-      () => stop(`timed out after ${Math.round(timeoutMs / 1000)}s`, 'SIGTERM'),
-      timeoutMs
-    );
+    const timer =
+      timeoutMs === undefined
+        ? undefined
+        : setTimeout(() => {
+            stop(`timed out after ${Math.round(timeoutMs / 1000)}s`, 'SIGTERM');
+            escalate = setTimeout(kill, KILL_GRACE_MS);
+          }, timeoutMs);
     // The child no longer shares the terminal's process group, so pass
     // interrupts and hangups on.
     const forwarded = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
@@ -786,6 +794,7 @@ async function replaceBinary(
     fs.writeFileSync(path.join(tmp, archive), tarball);
     const untarError = await run('tar', ['-xzf', archive], 'ignore', {
       cwd: tmp,
+      timeoutMs: INSTALL_TIMEOUT_MS,
     });
     if (untarError) return failed(untarError);
 
@@ -827,7 +836,7 @@ async function installVersion(
   const failed = (message: string): Outcome => ({ status: 'failed', message });
   // A global install must not pick up the project files (package.json,
   // .npmrc, bunfig.toml) of whatever directory the command ran in.
-  const options = { cwd: os.tmpdir(), timeoutMs: PACKAGE_INSTALL_TIMEOUT_MS };
+  const options = { cwd: os.tmpdir() };
   let error: string | undefined;
   switch (channel.kind) {
     case 'npm':

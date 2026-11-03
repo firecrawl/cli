@@ -124,7 +124,7 @@ describe('install coordination', () => {
 
   it('registers a command without waiting when nothing is installing', async () => {
     await expect(registerInvocation(npmChannel, terminal())).resolves.toBe(
-      false
+      'run'
     );
     expect(fs.existsSync(path.join(runningDir(), String(process.pid)))).toBe(
       true
@@ -144,7 +144,7 @@ describe('install coordination', () => {
 
     const started = Date.now();
     await expect(registerInvocation(npmChannel, terminal())).resolves.toBe(
-      true
+      'relaunch'
     );
     expect(Date.now() - started).toBeGreaterThanOrEqual(500);
     expect(write).toHaveBeenCalledTimes(1);
@@ -166,7 +166,7 @@ describe('install coordination', () => {
 
     await expect(
       registerInvocation({ ...npmChannel, packageRoot }, terminal())
-    ).resolves.toBe(false);
+    ).resolves.toBe('run');
     expect(write).toHaveBeenCalledTimes(1);
   });
 
@@ -175,7 +175,7 @@ describe('install coordination', () => {
     fs.writeFileSync(installLock(), '');
     setTimeout(() => fs.rmSync(installLock(), { force: true }), 300);
     await expect(registerInvocation(npmChannel, terminal())).resolves.toBe(
-      true
+      'relaunch'
     );
 
     fs.writeFileSync(installLock(), '');
@@ -183,7 +183,7 @@ describe('install coordination', () => {
     fs.utimesSync(installLock(), at, at);
     const started = Date.now();
     await expect(registerInvocation(npmChannel, terminal())).resolves.toBe(
-      false
+      'run'
     );
     expect(Date.now() - started).toBeLessThan(1000);
   });
@@ -199,7 +199,7 @@ describe('install coordination', () => {
     );
 
     await expect(registerInvocation(npmChannel, terminal())).resolves.toBe(
-      false
+      'run'
     );
     expect(write).not.toHaveBeenCalled();
   });
@@ -209,9 +209,25 @@ describe('install coordination', () => {
     fs.writeFileSync(installLock(), JSON.stringify({ pid: await deadPid() }));
 
     await expect(registerInvocation(npmChannel, terminal())).resolves.toBe(
-      false
+      'run'
     );
     expect(write).not.toHaveBeenCalled();
+  });
+
+  it('gives up on an install that outlasts the wait, without running or touching its lock', async () => {
+    fs.mkdirSync(firecrawlDir(), { recursive: true });
+    fs.writeFileSync(installLock(), JSON.stringify({ pid: liveProcess().pid }));
+
+    await expect(registerInvocation(npmChannel, terminal(), 500)).resolves.toBe(
+      'busy'
+    );
+    expect(write).toHaveBeenLastCalledWith(
+      expect.stringContaining('still installing. Run the command again')
+    );
+    expect(fs.existsSync(path.join(runningDir(), String(process.pid)))).toBe(
+      false
+    );
+    expect(fs.existsSync(installLock())).toBe(true);
   });
 
   it('leaves binary installs alone, since they swap the file atomically', async () => {
@@ -223,7 +239,7 @@ describe('install coordination', () => {
     fs.mkdirSync(firecrawlDir(), { recursive: true });
     fs.writeFileSync(installLock(), JSON.stringify({ pid: liveProcess().pid }));
 
-    await expect(registerInvocation(binary, terminal())).resolves.toBe(false);
+    await expect(registerInvocation(binary, terminal())).resolves.toBe('run');
     expect(fs.existsSync(runningDir())).toBe(false);
   });
 });
@@ -322,12 +338,10 @@ describe.skipIf(process.platform === 'win32')('installer processes', () => {
   /**
    * A stand-in package manager that starts a helper and records its pid.
    * 'stubborn' ignores SIGINT and SIGTERM, as some installers do. 'rollback'
-   * takes longer than the old 5s kill grace to restore the previous install
-   * after either signal, as npm does while its downloads finish.
+   * restores the previous install after either signal only once a release
+   * file appears, as npm does once its downloads finish.
    */
-  function installer(
-    mode: 'hang' | 'exit' | 'stubborn' | 'rollback'
-  ): string[] {
+  function installer(mode: 'exit' | 'stubborn' | 'rollback'): string[] {
     const script = path.join(dir, 'installer.js');
     fs.writeFileSync(
       script,
@@ -335,7 +349,7 @@ describe.skipIf(process.platform === 'win32')('installer processes', () => {
 const fs = require('fs');
 const [, , pidFile, mode] = process.argv;
 if (mode === 'stubborn') for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => {});
-if (mode === 'rollback') for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => setTimeout(() => { fs.writeFileSync(pidFile + '.restored', ''); process.exit(1); }, 6000));
+if (mode === 'rollback') for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => setInterval(() => { if (!fs.existsSync(pidFile + '.release')) return; fs.writeFileSync(pidFile + '.restored', ''); process.exit(1); }, 50));
 const helper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
 fs.writeFileSync(pidFile + '.tmp', String(helper.pid));
 fs.renameSync(pidFile + '.tmp', pidFile);
@@ -362,9 +376,9 @@ setInterval(() => {}, 1000);
   }
 
   /** Starts run() and returns the SIGINT listener it registered. */
-  function runWithInterrupt(args: string[], graceMs?: number) {
+  function runWithInterrupt(args: string[]) {
     const before = new Set(process.listeners('SIGINT'));
-    const pending = run(process.execPath, args, 'ignore', { graceMs });
+    const pending = run(process.execPath, args, 'ignore');
     const interrupt = process
       .listeners('SIGINT')
       .find((listener) => !before.has(listener)) as (signal: string) => void;
@@ -384,9 +398,9 @@ setInterval(() => {}, 1000);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('stops everything the installer started when it times out', async () => {
-    const pending = run(process.execPath, installer('hang'), 'ignore', {
-      timeoutMs: 3000,
+  it('kills everything a command with a time limit started once the limit runs out', async () => {
+    const pending = run(process.execPath, installer('stubborn'), 'ignore', {
+      timeoutMs: 1000,
     });
     const helper = await started();
 
@@ -404,40 +418,36 @@ setInterval(() => {}, 1000);
 
   const restored = () => fs.existsSync(path.join(dir, 'helper.pid.restored'));
 
-  it('lets an interrupted installer restore the previous install', async () => {
-    const { pending, interrupt } = runWithInterrupt(installer('rollback'));
-    await started();
+  /** Runs fn with setTimeout faked, then lets an hour of it pass. */
+  function anHourLater(fn: () => void) {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      fn();
+      vi.advanceTimersByTime(60 * 60 * 1000);
+    } finally {
+      vi.useRealTimers();
+    }
+  }
 
-    const begun = Date.now();
-    interrupt('SIGINT');
-    expect(await pending).toContain('interrupted by SIGINT');
-    expect(Date.now() - begun).toBeGreaterThanOrEqual(6_000);
-    expect(restored()).toBe(true);
-  }, 20_000);
-
-  it('lets an installer that timed out restore the previous install', async () => {
-    const pending = run(process.execPath, installer('rollback'), 'ignore', {
-      timeoutMs: 1000,
+  it('lets an interrupted installer restore the previous install, however long that takes', async () => {
+    let runner: ReturnType<typeof runWithInterrupt> | undefined;
+    anHourLater(() => {
+      runner = runWithInterrupt(installer('rollback'));
     });
+    const { pending, interrupt } = runner!;
+    let settled = false;
+    void pending.then(() => (settled = true));
     await started();
 
-    expect(await pending).toContain('timed out');
+    anHourLater(() => interrupt('SIGINT'));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(settled).toBe(false);
+    expect(restored()).toBe(false);
+
+    fs.writeFileSync(path.join(dir, 'helper.pid.release'), '');
+    expect(await pending).toContain('interrupted by SIGINT');
     expect(restored()).toBe(true);
   }, 20_000);
-
-  it('kills an installer that ignores an interrupt once the grace runs out', async () => {
-    const { pending, interrupt } = runWithInterrupt(
-      installer('stubborn'),
-      1000
-    );
-    const helper = await started();
-
-    const begun = Date.now();
-    interrupt('SIGINT');
-    expect(await pending).toContain('interrupted by SIGINT');
-    expect(Date.now() - begun).toBeLessThan(5_000);
-    expect(alive(helper)).toBe(false);
-  }, 15_000);
 
   it('kills the installer at once on a second interrupt', async () => {
     const { pending, interrupt } = runWithInterrupt(installer('stubborn'));
