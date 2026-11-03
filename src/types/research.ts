@@ -33,11 +33,6 @@ export interface ReadPaperOptions extends ResearchBaseOptions {
   k?: number;
 }
 
-export interface SearchGitHubOptions extends ResearchBaseOptions {
-  query: string;
-  k?: number;
-}
-
 export interface PaperHit {
   paperId?: string;
   primaryId?: string;
@@ -50,16 +45,4 @@ export interface PaperHit {
   updateDate?: string;
   signals?: Record<string, unknown>;
   score?: number;
-}
-
-export interface GitHubItem {
-  repo?: string;
-  url?: string;
-  pageType?: string;
-  number?: number;
-  segmentCount?: number;
-  readmeUrl?: string;
-  title?: string;
-  snippet?: string;
-  contentMd?: string;
 }
