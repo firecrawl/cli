@@ -550,7 +550,7 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
     );
 
     it(
-      'declines a managed release while cleanup holds its deletion marker',
+      'respects cleanup markers and recovers a marker abandoned before reinstall',
       { timeout: caseTimeout },
       async () => {
         expect((await run(['update'])).code).toBe(0);
@@ -562,6 +562,14 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
         expect(fs.readdirSync(path.join(store, next, '.leases'))).toEqual([]);
         fs.rmSync(path.join(store, `.deleting-${next}`));
         expect((await version()).stdout.trim()).toBe(next);
+        // Cleanup deleted an inactive version, then exited before its marker.
+        fs.writeFileSync(path.join(store, `.deleting-${later}`), 'abandoned');
+        latest = later;
+        expect((await run(['update'])).code).toBe(0);
+        expect((await version()).stdout.trim()).toBe(later);
+        expect(fs.existsSync(path.join(store, `.deleting-${later}`))).toBe(
+          false
+        );
       }
     );
 

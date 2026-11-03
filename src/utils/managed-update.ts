@@ -142,6 +142,9 @@ export async function installManagedVersion(
   if (!entry || !verify(entry, version))
     throw new Error('The saved package failed its version check.');
   fs.mkdirSync(path.join(target, '.leases'), { recursive: true });
+  // The update lock excludes cleanup. A prior cleanup may have exited after
+  // deleting this version but before removing its marker.
+  fs.rmSync(path.join(root, `.deleting-${version}`), { force: true });
   writeManagedPointer({
     version,
     installation,
