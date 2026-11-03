@@ -304,6 +304,7 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
     }, 180_000);
 
     beforeEach(async () => {
+      backgroundVersion = undefined;
       home = fs.mkdtempSync(path.join(root, 'home with spaces-'));
       prefix = path.join(home, 'global');
       fs.cpSync(installedTemplate, prefix, {
@@ -318,13 +319,23 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
         npm_config_registry: url,
         NPM_CONFIG_REGISTRY: url,
         npm_config_cache: path.join(home, 'npm-cache'),
+        NPM_CONFIG_CACHE: path.join(home, 'npm-cache'),
         npm_config_prefix: prefix,
+        NPM_CONFIG_PREFIX: prefix,
         FIRECRAWL_NO_UPDATE_CHECK: '0',
         FIRECRAWL_NO_AUTO_UPDATE: '1',
         FIRECRAWL_AUTO_UPDATE_WORKER: '',
       };
       delete env.FIRECRAWL_API_KEY;
-      backgroundVersion = undefined;
+      // Windows can inherit uppercase npm settings from its package runner.
+      // Confirm the per-case cache before asserting exact download counts.
+      fs.mkdirSync(env.npm_config_cache!);
+      const cache = checkNpm(
+        await npm(['config', 'get', 'cache'], prefix, env)
+      ).trim();
+      expect(fs.realpathSync(cache)).toBe(
+        fs.realpathSync(env.npm_config_cache!)
+      );
       latest = next;
       requests = [];
       badIntegrity = unavailable = false;
