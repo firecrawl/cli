@@ -171,21 +171,46 @@ function runningDir(dir: string): string {
 }
 
 /**
- * Whether pid may run a firecrawl command. A stopped or suspended command
- * misses heartbeats but still runs firecrawl, while a reused pid runs
- * something else. Only a command line that was read and names something else
- * rules firecrawl out: a failed or timed out lookup cannot tell, and neither
- * can an empty one outside Linux, since Windows hides the command line of
- * processes it will not show. On Linux an empty /proc command line belongs to
- * a kernel thread or a zombie.
+ * How this process appears in a process listing: the script node runs, or the
+ * binary itself. Entries and locks record it so a reused pid can be told apart.
  */
-function mayRunFirecrawl(pid: number): boolean {
+function commandMarker(): string {
+  return (isCompiledBinary() ? process.execPath : process.argv[1]) ?? '';
+}
+
+const PROBE_TTL_MS = 30 * 1000;
+const probes = new Map<string, { at: number; verdict: boolean }>();
+
+/**
+ * Whether pid may still run the command that recorded marker. A stopped or
+ * suspended command misses heartbeats but still runs it, while a reused pid
+ * runs something else. An entry without a marker falls back to the word
+ * firecrawl. Verdicts are cached briefly, since waiting loops ask every 500ms.
+ */
+function mayRunFirecrawl(pid: number, marker = ''): boolean {
+  const needle = (marker || 'firecrawl').toLowerCase();
+  const key = `${pid}\0${needle}`;
+  const cached = probes.get(key);
+  if (cached && Date.now() - cached.at < PROBE_TTL_MS) return cached.verdict;
+  const verdict = probeCommandLine(pid, needle);
+  probes.set(key, { at: Date.now(), verdict });
+  return verdict;
+}
+
+/**
+ * Only a command line that was read and names something else rules the
+ * command out: a failed or timed out lookup cannot tell, and neither can an
+ * empty one outside Linux, since Windows hides the command line of processes
+ * it will not show. On Linux an empty /proc command line belongs to a kernel
+ * thread or a zombie.
+ */
+function probeCommandLine(pid: number, needle: string): boolean {
   try {
     if (process.platform === 'linux') {
       return fs
         .readFileSync(`/proc/${pid}/cmdline`, 'utf8')
         .toLowerCase()
-        .includes('firecrawl');
+        .includes(needle);
     }
     const [command, args] =
       process.platform === 'win32'
@@ -206,7 +231,7 @@ function mayRunFirecrawl(pid: number): boolean {
     });
     if (result.error || result.status !== 0) return true;
     return (
-      !result.stdout.trim() || result.stdout.toLowerCase().includes('firecrawl')
+      !result.stdout.trim() || result.stdout.toLowerCase().includes(needle)
     );
   } catch {
     return true;
@@ -232,8 +257,10 @@ export function otherInvocations(dir: string): number {
     if (pid === process.pid) continue;
     const file = path.join(runningDir(dir), entry);
     let mtime: number;
+    let marker: string;
     try {
       mtime = fs.statSync(file).mtimeMs;
+      marker = fs.readFileSync(file, 'utf8').trim();
     } catch {
       continue;
     }
@@ -242,7 +269,7 @@ export function otherInvocations(dir: string): number {
       pid > 0 &&
       mtime > bootTime() - BOOT_TOLERANCE_MS &&
       isAlive(pid) &&
-      (Date.now() - mtime < HEARTBEAT_STALE_MS || mayRunFirecrawl(pid));
+      (Date.now() - mtime < HEARTBEAT_STALE_MS || mayRunFirecrawl(pid, marker));
     if (live) count++;
     else fs.rmSync(file, { force: true });
   }
@@ -268,7 +295,8 @@ function bootTime(): number {
 /**
  * A lock is held while the process that took it is alive and keeps it fresh.
  * A pid recorded before the last boot, or in a lock nobody refreshes, may now
- * belong to an unrelated process.
+ * belong to an unrelated process. A holder that was stopped misses heartbeats
+ * but still holds the lock while its pid runs the command that took it.
  */
 function lockHeld(file: string): boolean {
   let age: number;
@@ -277,7 +305,7 @@ function lockHeld(file: string): boolean {
   } catch {
     return false;
   }
-  const { pid, bootedAt } = readJson(file);
+  const { pid, bootedAt, command } = readJson(file);
   if (typeof pid !== 'number') return age < LOCK_WRITE_GRACE_MS;
   if (
     typeof bootedAt === 'number' &&
@@ -285,7 +313,11 @@ function lockHeld(file: string): boolean {
   ) {
     return false;
   }
-  return age < HEARTBEAT_STALE_MS && isAlive(pid);
+  if (!isAlive(pid)) return false;
+  if (age < HEARTBEAT_STALE_MS) return true;
+  return typeof command === 'string' && command !== ''
+    ? mayRunFirecrawl(pid, command)
+    : false;
 }
 
 /**
@@ -329,7 +361,11 @@ function acquireLock(file: string): 'acquired' | 'held' | 'failed' {
   } catch {
     return 'failed';
   }
-  const content = JSON.stringify({ pid: process.pid, bootedAt: bootTime() });
+  const content = JSON.stringify({
+    pid: process.pid,
+    bootedAt: bootTime(),
+    command: commandMarker(),
+  });
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       fs.writeFileSync(file, content, { flag: 'wx' });
@@ -389,7 +425,8 @@ export async function registerInvocation(
   const dir = firecrawlDir();
   const file = path.join(runningDir(dir), String(process.pid));
   // Rewriting the entry also recreates it if a pruner removed it.
-  const touch = () => fs.writeFileSync(file, '');
+  const marker = commandMarker();
+  const touch = () => fs.writeFileSync(file, marker);
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     touch();
@@ -443,7 +480,9 @@ export async function registerInvocation(
 /**
  * Runs this command again in a new process, which loads only the installed
  * release, and resolves to its exit code, or 128 plus the signal number when a
- * signal stopped it. Signals sent to this process are passed on.
+ * signal stopped it. The child shares the terminal's process group, so it
+ * already receives Ctrl-C and hangups; this process only outlives them, and
+ * passes on SIGTERM, which is sent to one pid.
  */
 export function relaunchAfterUpdate(): Promise<number> {
   unregisterInvocation();
@@ -460,11 +499,15 @@ export function relaunchAfterUpdate(): Promise<number> {
       [...process.execArgv, script, ...process.argv.slice(2)],
       { stdio: 'inherit' }
     );
-    const forwarded = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
     const forward = (signal: NodeJS.Signals) => child.kill(signal);
-    for (const signal of forwarded) process.on(signal, forward);
+    const ignore = () => {};
+    process.on('SIGTERM', forward);
+    process.on('SIGINT', ignore);
+    process.on('SIGHUP', ignore);
     const finish = (code: number) => {
-      for (const signal of forwarded) process.off(signal, forward);
+      process.off('SIGTERM', forward);
+      process.off('SIGINT', ignore);
+      process.off('SIGHUP', ignore);
       resolve(code);
     };
     child.on('error', () => finish(1));

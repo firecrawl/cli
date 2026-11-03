@@ -56,10 +56,10 @@ describe('install coordination', () => {
     return child.pid!;
   }
 
-  function entry(pid: number, ageMs = 0): string {
+  function entry(pid: number, ageMs = 0, marker = ''): string {
     fs.mkdirSync(runningDir(), { recursive: true });
     const file = path.join(runningDir(), String(pid));
-    fs.writeFileSync(file, '');
+    fs.writeFileSync(file, marker);
     const at = new Date(Date.now() - ageMs);
     fs.utimesSync(file, at, at);
     return file;
@@ -119,6 +119,76 @@ describe('install coordination', () => {
 
       expect(otherInvocations(firecrawlDir())).toBe(1);
       expect(fs.existsSync(stopped)).toBe(true);
+    }
+  );
+
+  /** A stopped process running script, the way the CLI runs dist/index.js. */
+  async function stoppedScript(script: string): Promise<ChildProcess> {
+    fs.mkdirSync(path.dirname(script), { recursive: true });
+    fs.writeFileSync(
+      script,
+      "process.stdout.write('ready'); setTimeout(() => {}, 60000);"
+    );
+    const child = spawn(process.execPath, [script], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    children.push(child);
+    await new Promise((resolve) => child.stdout!.once('data', resolve));
+    child.kill('SIGSTOP');
+    return child;
+  }
+
+  it.skipIf(process.platform === 'win32')(
+    'prunes a stale entry whose pid now runs another firecrawl program',
+    async () => {
+      const cli = path.join(
+        home,
+        'lib/node_modules/firecrawl-cli/dist/index.js'
+      );
+      // The reused pid runs something else that only mentions firecrawl.
+      const other = await stoppedScript(
+        path.join(home, 'firecrawl-mcp/dist/index.js')
+      );
+      const reused = entry(other.pid!, 11 * 60 * 1000, cli);
+      const command = await stoppedScript(cli);
+      const stopped = entry(command.pid!, 11 * 60 * 1000, cli);
+
+      expect(otherInvocations(firecrawlDir())).toBe(1);
+      expect(fs.existsSync(stopped)).toBe(true);
+      expect(fs.existsSync(reused)).toBe(false);
+    }
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'keeps the install lock of a stopped installer, not of a reused pid',
+    async () => {
+      const cli = path.join(
+        home,
+        'lib/node_modules/firecrawl-cli/dist/index.js'
+      );
+      const lockOf = async (holder: ChildProcess) => {
+        fs.mkdirSync(firecrawlDir(), { recursive: true });
+        fs.writeFileSync(
+          installLock(),
+          JSON.stringify({
+            pid: holder.pid,
+            bootedAt: Date.now() - os.uptime() * 1000,
+            command: cli,
+          })
+        );
+        const at = new Date(Date.now() - 11 * 60 * 1000);
+        fs.utimesSync(installLock(), at, at);
+      };
+
+      await lockOf(await stoppedScript(cli));
+      await expect(
+        registerInvocation(npmChannel, terminal(), 300)
+      ).resolves.toBe('busy');
+
+      await lockOf(await stoppedScript(path.join(home, 'firecrawl-mcp/x.js')));
+      await expect(registerInvocation(npmChannel, terminal())).resolves.toBe(
+        'run'
+      );
     }
   );
 
