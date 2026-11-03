@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import packageJson from '../../package.json';
+import { cleanupManagedVersions } from './managed-lifecycle';
 import {
   installManagedVersion,
   managedRegistry,
@@ -498,8 +499,10 @@ export async function startAutoUpdate(
     fs.mkdirSync(dir, { recursive: true });
     fs.accessSync(dir, fs.constants.W_OK);
     const compiled = isCompiledBinary();
-    if (!compiled && !process.argv[1]) return false;
-    const child = spawn(process.execPath, compiled ? [] : [process.argv[1]], {
+    // The launcher pins the selected package before the worker loads its code.
+    const entry = process.env.FIRECRAWL_LAUNCHER_PATH || process.argv[1];
+    if (!compiled && !entry) return false;
+    const child = spawn(process.execPath, compiled ? [] : [entry], {
       detached: true,
       stdio: 'ignore',
       windowsHide: true,
@@ -538,6 +541,7 @@ export async function runAutoUpdateWorker(): Promise<void> {
     const current = packageJson.version;
     if (autoUpdateBlocker() || !updatesAutomatically(channel)) return;
     if (isPrerelease(current)) return;
+    if (channel.kind !== 'binary') cleanupManagedVersions(current, log);
 
     const latest = await getLatestVersion(
       packageJson.name,
@@ -643,13 +647,19 @@ export function updateHint(channel: InstallChannel): string {
   const commands = {
     npm: 'firecrawl update',
     managed: 'firecrawl update',
-    pnpm: 'firecrawl update',
-    bun: 'firecrawl update',
-    yarn: 'firecrawl update',
+    pnpm: 'pnpm add -g firecrawl-cli@latest',
+    bun: 'bun add -g firecrawl-cli@latest',
+    yarn: 'yarn global add firecrawl-cli@latest',
     brew: 'brew upgrade firecrawl-cli',
     binary: 'firecrawl update',
   };
-  return `Run ${commands[channel.kind]} to update.`;
+  const original = process.env.FIRECRAWL_INSTALL_CHANNEL;
+  const kind =
+    channel.kind === 'managed' &&
+    ['pnpm', 'bun', 'yarn'].includes(original ?? '')
+      ? (original as 'pnpm' | 'bun' | 'yarn')
+      : channel.kind;
+  return `Run ${commands[kind]} to update.`;
 }
 
 function manualUpdateHint(code: UnsupportedCode): string {
@@ -693,6 +703,8 @@ export async function updateNow(): Promise<boolean> {
     );
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
+    if (channel.kind !== 'binary' && channel.kind !== 'npm')
+      console.error(updateHint(channel));
     return false;
   }
   if (latest.unreachable || !latest.version) {
@@ -707,10 +719,6 @@ export async function updateNow(): Promise<boolean> {
     );
     return false;
   }
-  if (compareVersions(current, latest.version) >= 0) {
-    console.log(`firecrawl ${current} is up to date.`);
-    return true;
-  }
   const dir = firecrawlDir();
   const lock = workerLockPath(dir);
   const claim = acquireLock(lock);
@@ -723,6 +731,11 @@ export async function updateNow(): Promise<boolean> {
     return false;
   }
   try {
+    if (channel.kind !== 'binary') cleanupManagedVersions(current);
+    if (compareVersions(current, latest.version) >= 0) {
+      console.log(`firecrawl ${current} is up to date.`);
+      return true;
+    }
     console.log(`Updating firecrawl ${current} -> ${latest.version}...`);
     const outcome = await installUpdate(channel, latest.version, (message) =>
       console.log(message)

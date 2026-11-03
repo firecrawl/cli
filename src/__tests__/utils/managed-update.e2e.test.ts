@@ -25,6 +25,7 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
     const [major, minor, patch] = current.split('.').map(Number);
     const next = `${major}.${minor}.${patch + 1}`;
     const later = `${major}.${minor}.${patch + 2}`;
+    const newest = `${major}.${minor}.${patch + 3}`;
     let root: string;
     let installedTemplate: string;
     let home: string;
@@ -194,7 +195,7 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
           bootstrapEnv
         )
       );
-      for (const version of [current, next, later]) {
+      for (const version of [current, next, later, newest]) {
         const fixture = {
           ...manifest,
           version,
@@ -350,7 +351,7 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
         home,
         '.firecrawl',
         'versions',
-        `node-${process.versions.node}`
+        `node-${process.versions.node.split('.')[0]}`
       );
       requests = [];
       mature(next);
@@ -367,10 +368,11 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
       if (held) {
         const child = held;
         held = undefined;
-        await new Promise((resolve) => {
-          child.once('close', resolve);
-          child.kill('SIGKILL');
-        });
+        if (child.exitCode === null && child.signalCode === null)
+          await new Promise((resolve) => {
+            child.once('close', resolve);
+            child.kill('SIGKILL');
+          });
       }
       await until(
         () => !fs.existsSync(dataFile('auto-update.lock')),
@@ -425,8 +427,8 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
     );
 
     it(
-      'keeps an already running release usable while installing the next release',
-      { timeout: caseTimeout },
+      'keeps a running older release through two updates, then removes it after its process exits',
+      { timeout: caseTimeout * 2 },
       async () => {
         expect((await run(['update'])).code).toBe(0);
         const oldRoot = path.join(store, next, 'node_modules', 'firecrawl-cli');
@@ -434,28 +436,204 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
         const countFile = path.join(home, 'reads');
         fs.writeFileSync(
           reader,
-          `const fs=require('fs'); const pkg=process.argv[2]; let reads=0; function load(){ delete require.cache[require.resolve(pkg+'/dist/utils/url.js')]; require(pkg+'/dist/utils/url.js').normalizeUrl('example.com'); fs.writeFileSync(process.argv[3],String(++reads)); } load(); process.stdout.write('ready'); setInterval(load,10);`
+          `const fs=require('fs'),path=require('path'); let reads=0; setInterval(()=>{ const pkg=path.dirname(path.dirname(process.argv[1])); const file=pkg+'/dist/utils/url.js'; delete require.cache[require.resolve(file)]; require(file).normalizeUrl('example.com'); fs.writeFileSync(process.env.FIRECRAWL_TEST_READS,String(++reads)); },10);`
         );
-        held = spawn(process.execPath, [reader, oldRoot, countFile], {
-          env,
+        held = spawn(process.execPath, [launcher, 'version'], {
+          env: {
+            ...env,
+            NODE_OPTIONS: '--require ' + JSON.stringify(reader),
+            FIRECRAWL_TEST_READS: countFile,
+            FIRECRAWL_NO_UPDATE_CHECK: '1',
+          },
           stdio: ['ignore', 'pipe', 'pipe'],
         });
-        await new Promise((resolve) => held!.stdout!.once('data', resolve));
+        await until(() => fs.existsSync(countFile), 'held CLI did not start');
         const before = Number(fs.readFileSync(countFile, 'utf8'));
         latest = later;
-        mature(later);
-        enableBackground();
-        expect((await run(['--version'])).stdout.trim()).toBe(next);
-        await until(
-          () => state().updated?.to === later,
-          'second managed update did not finish'
-        );
-        expect((await version()).stdout.trim()).toBe(later);
+        expect((await run(['update'])).code).toBe(0);
+        latest = newest;
+        expect((await run(['update'])).code).toBe(0);
+        expect((await version()).stdout.trim()).toBe(newest);
         expect(held.exitCode).toBeNull();
         expect(Number(fs.readFileSync(countFile, 'utf8'))).toBeGreaterThan(
           before + 10
         );
         expect(fs.existsSync(oldRoot)).toBe(true);
+        const child = held;
+        held = undefined;
+        if (child.exitCode === null && child.signalCode === null)
+          await new Promise((resolve) => {
+            child.once('close', resolve);
+            child.kill('SIGKILL');
+          });
+        expect((await run(['update'])).code).toBe(0);
+        expect(fs.existsSync(oldRoot)).toBe(false);
+        expect(
+          fs
+            .readdirSync(store)
+            .filter((name) => /^\d+\.\d+\.\d+$/.test(name))
+            .sort()
+        ).toEqual([later, newest].sort());
+        expect((await run(['update', '--rollback'])).code).toBe(0);
+        expect((await version()).stdout.trim()).toBe(later);
+      }
+    );
+
+    it(
+      'honors an explicit npm reinstall while disabled without reverting merely on disable',
+      { timeout: caseTimeout },
+      async () => {
+        expect((await run(['update'])).code).toBe(0);
+        expect((await run(['update', '--disable-auto'])).code).toBe(0);
+        expect((await version()).stdout.trim()).toBe(next);
+        fs.writeFileSync(
+          path.join(prefix, 'package.tgz'),
+          packages.get(current)!.tarball
+        );
+        checkNpm(
+          await npm(
+            [
+              'install',
+              '-g',
+              '--prefix',
+              '.',
+              'package.tgz',
+              '--ignore-scripts',
+              '--no-audit',
+              '--no-fund',
+            ],
+            prefix,
+            env
+          )
+        );
+        expect((await run(['--version'])).stdout.trim()).toBe(current);
+        expect((await run(['update', '--rollback'])).code).toBe(1);
+        expect((await run(['update'])).code).toBe(0);
+        expect((await version()).stdout.trim()).toBe(next);
+      }
+    );
+
+    it(
+      'reuses a saved release across Node patch changes and checks its engine range',
+      { timeout: caseTimeout },
+      async () => {
+        expect((await run(['update'])).code).toBe(0);
+        const runtime = process.versions.node.split('.').map(Number);
+        const patchVersion = `${runtime[0]}.${runtime[1]}.${runtime[2] + 1}`;
+        const shim = path.join(home, 'runtime.cjs');
+        fs.writeFileSync(
+          shim,
+          `Object.defineProperty(process.versions,'node',{value:${JSON.stringify(patchVersion)}});`
+        );
+        const before = requests.length;
+        expect(
+          (
+            await run(['--version'], {
+              NODE_OPTIONS: '--require ' + JSON.stringify(shim),
+              FIRECRAWL_NO_UPDATE_CHECK: '1',
+            })
+          ).stdout.trim()
+        ).toBe(next);
+        expect(requests).toHaveLength(before);
+        const manifestPath = path.join(
+          store,
+          next,
+          'node_modules/firecrawl-cli/package.json'
+        );
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        fs.writeFileSync(
+          manifestPath,
+          JSON.stringify({ ...manifest, engines: { node: '>=99.0.0' } })
+        );
+        expect((await version()).stdout.trim()).toBe(current);
+      }
+    );
+
+    it(
+      'declines a managed release while cleanup holds its deletion marker',
+      { timeout: caseTimeout },
+      async () => {
+        expect((await run(['update'])).code).toBe(0);
+        fs.writeFileSync(
+          path.join(store, `.deleting-${next}`),
+          'cleanup in progress'
+        );
+        expect((await version()).stdout.trim()).toBe(current);
+        expect(fs.readdirSync(path.join(store, next, '.leases'))).toEqual([]);
+        fs.rmSync(path.join(store, `.deleting-${next}`));
+        expect((await version()).stdout.trim()).toBe(next);
+      }
+    );
+
+    it(
+      'reclaims old abandoned staging but retains live and recent staging',
+      { timeout: caseTimeout },
+      async () => {
+        latest = current;
+        const output = path.join(home, 'stage-path');
+        const script = `const fs=require('fs'); const lifecycle=require(process.argv[1]); const prefix=lifecycle.stagingPrefix(); fs.mkdirSync(require('path').dirname(prefix),{recursive:true}); const dir=fs.mkdtempSync(prefix); fs.writeFileSync(dir+'/partial','unfinished download'); fs.writeFileSync(process.argv[2],dir); setInterval(()=>{},1000);`;
+        held = spawn(
+          process.execPath,
+          [
+            '-e',
+            script,
+            path.join(basePackage, 'dist/utils/managed-lifecycle.js'),
+            output,
+          ],
+          { env, stdio: 'ignore' }
+        );
+        await until(() => fs.existsSync(output), 'staging owner did not start');
+        const staging = fs.readFileSync(output, 'utf8');
+        const old = new Date(Date.now() - 48 * 3600000);
+        fs.utimesSync(staging, old, old);
+        expect((await run(['update'])).code).toBe(0);
+        expect(fs.existsSync(staging)).toBe(true);
+        const child = held;
+        held = undefined;
+        if (child.exitCode === null && child.signalCode === null)
+          await new Promise((resolve) => {
+            child.once('close', resolve);
+            child.kill('SIGKILL');
+          });
+        const recent = staging + '-recent';
+        fs.mkdirSync(recent);
+        expect((await run(['update'])).code).toBe(0);
+        expect(fs.existsSync(staging)).toBe(false);
+        expect(fs.existsSync(recent)).toBe(true);
+      }
+    );
+
+    it(
+      'gives the original package manager command when npm is unavailable',
+      { timeout: caseTimeout },
+      async () => {
+        for (const [kind, location, command] of [
+          [
+            'pnpm',
+            path.join(home, 'pnpm/global/5/node_modules/firecrawl-cli'),
+            'pnpm add -g',
+          ],
+          [
+            'bun',
+            path.join(home, '.bun/install/global/node_modules/firecrawl-cli'),
+            'bun add -g',
+          ],
+          [
+            'yarn',
+            path.join(home, '.config/yarn/global/node_modules/firecrawl-cli'),
+            'yarn global add',
+          ],
+        ]) {
+          fs.cpSync(basePackage, location, { recursive: true });
+          const result = await run(
+            ['update'],
+            { PATH: '' },
+            path.join(location, 'dist/launcher.js')
+          );
+          expect(result.code, kind).toBe(1);
+          expect(result.stderr).toContain('require npm on PATH');
+          expect(result.stderr).toContain(`${command} firecrawl-cli@latest`);
+        }
       }
     );
 

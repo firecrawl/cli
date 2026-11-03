@@ -106,10 +106,21 @@ For global package installs, the installed package is a stable launcher. The
 updater uses npm to install a new release into a separate directory under
 `~/.firecrawl/versions/`, verifies it, then atomically switches the current
 version pointer. It never rewrites the global installation or removes files
-used by running commands. Managed versions are separated by Node runtime
-version, and npm enforces the release's Node requirements. npm must be available
-on PATH for all global package channels. Install scripts are
-disabled. Older managed versions are retained for running commands and rollback.
+used by running commands. Managed versions are shared within a Node major
+version, so a patch upgrade reuses the saved release. The launcher checks the
+release's Node requirements before selecting it. npm must be available on PATH
+for automatic package updates; otherwise use your package manager's manual
+update command. Install scripts are disabled.
+
+Maintenance retains the current and previous release, plus any older release
+still used by a running CLI process. It removes other inactive versions and
+staging directories older than 24 hours whose installer has exited. Files owned
+by another machine on shared storage are retained conservatively.
+
+Reinstalling the global package resets the launcher's selection to that package,
+including an explicit downgrade. Disable automatic updates before reinstalling
+if you want to stay on the selected version. Disabling updates alone keeps the
+currently selected release.
 
 Standalone binaries download their release archive, verify its SHA-256 checksum
 and reported version, then atomically replace the executable. The previous

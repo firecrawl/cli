@@ -1,17 +1,37 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { createHash } from 'crypto';
+import { satisfies } from 'semver';
 
 export interface ManagedPointer {
   version: string;
   previous?: string;
+  installation: string;
+}
+
+export const LAUNCHER_ID_ENV = 'FIRECRAWL_LAUNCHER_ID';
+
+/** Reinstalling even the same package version creates a new installation. */
+export function installationId(packageRoot: string): string {
+  const manifest = fs.realpathSync(path.join(packageRoot, 'package.json'));
+  const stat = fs.statSync(manifest, { bigint: true });
+  return createHash('sha256')
+    .update(`${manifest}:${stat.dev}:${stat.ino}:${stat.ctimeNs}`)
+    .digest('hex');
+}
+
+export function activeInstallationId(): string {
+  const inherited = process.env[LAUNCHER_ID_ENV];
+  return inherited && /^[a-f0-9]{64}$/.test(inherited)
+    ? inherited
+    : installationId(path.resolve(__dirname, '../..'));
 }
 
 export const stableVersion = (version: unknown): version is string =>
   typeof version === 'string' && /^\d+\.\d+\.\d+$/.test(version);
 
-// Separate Node runtimes so an update installed with one runtime is never
-// selected by a launcher running an older, incompatible Node version.
+// Native dependencies stay within their Node major; patch upgrades reuse them.
 export function managedRoot(): string {
   let home = os.homedir();
   try {
@@ -23,7 +43,7 @@ export function managedRoot(): string {
     home,
     '.firecrawl',
     'versions',
-    `node-${process.versions.node}`
+    `node-${process.versions.node.split('.')[0]}`
   );
 }
 
@@ -37,6 +57,11 @@ export function readManagedPointer(): ManagedPointer | undefined {
       fs.readFileSync(path.join(managedRoot(), 'current.json'), 'utf8')
     );
     if (!stableVersion(value?.version)) return undefined;
+    if (
+      typeof value.installation !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(value.installation)
+    )
+      return undefined;
     if (value.previous !== undefined && !stableVersion(value.previous))
       return undefined;
     return value;
@@ -55,6 +80,11 @@ export function managedEntry(version: string): string | undefined {
     );
     const entry = path.join(root, 'dist', 'index.js');
     if (manifest.name !== 'firecrawl-cli' || manifest.version !== version)
+      return undefined;
+    if (
+      manifest.engines?.node &&
+      !satisfies(process.versions.node, manifest.engines.node)
+    )
       return undefined;
     if (
       fs.realpathSync(entry) !==

@@ -8,8 +8,10 @@ import {
   readManagedPointer,
   stableVersion,
   writeManagedPointer,
+  activeInstallationId,
 } from './managed-paths';
 import { compareVersions } from './npm-registry';
+import { cleanupManagedVersions, stagingPrefix } from './managed-lifecycle';
 
 function installerEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
@@ -62,7 +64,9 @@ export async function installManagedVersion(
     throw new Error('Invalid stable release version.');
   const root = managedRoot();
   fs.mkdirSync(root, { recursive: true });
-  const previous = readManagedPointer();
+  const installation = activeInstallationId();
+  const saved = readManagedPointer();
+  const previous = saved?.installation === installation ? saved : undefined;
   if (previous && compareVersions(previous.version, version) > 0) {
     throw new Error(
       'A newer managed release is already active. Run firecrawl again.'
@@ -76,7 +80,7 @@ export async function installManagedVersion(
       throw new Error(
         `The saved ${version} installation is incomplete. Reinstall it manually after stopping commands that use it.`
       );
-    const staging = fs.mkdtempSync(path.join(root, '.install-'));
+    const staging = fs.mkdtempSync(stagingPrefix());
     try {
       fs.writeFileSync(
         path.join(staging, 'package.json'),
@@ -128,6 +132,7 @@ export async function installManagedVersion(
       );
       if (!verify(stagedEntry, version))
         throw new Error('The downloaded package failed its version check.');
+      fs.mkdirSync(path.join(staging, '.leases'));
       fs.renameSync(staging, target);
     } finally {
       fs.rmSync(staging, { recursive: true, force: true });
@@ -136,15 +141,14 @@ export async function installManagedVersion(
   }
   if (!entry || !verify(entry, version))
     throw new Error('The saved package failed its version check.');
+  fs.mkdirSync(path.join(target, '.leases'), { recursive: true });
   writeManagedPointer({
     version,
+    installation,
     previous:
-      previous?.version === version
-        ? previous.previous
-        : previous?.version === currentVersion
-          ? previous.version
-          : undefined,
+      previous?.version === version ? previous.previous : previous?.version,
   });
+  cleanupManagedVersions(currentVersion);
 }
 
 /** Caller holds the update lock; disable automatic updates just before switching. */
@@ -153,14 +157,21 @@ export function rollbackManagedVersion(
   beforeSwitch: () => void
 ): string {
   const pointer = readManagedPointer();
-  if (!pointer || pointer.version !== currentVersion)
+  if (
+    !pointer ||
+    pointer.installation !== activeInstallationId() ||
+    pointer.version !== currentVersion
+  )
     throw new Error('No managed update is active for this installation.');
   if (pointer.previous) {
     const entry = managedEntry(pointer.previous);
     if (!entry || !verify(entry, pointer.previous))
       throw new Error('The previous package failed its version check.');
     beforeSwitch();
-    writeManagedPointer({ version: pointer.previous });
+    writeManagedPointer({
+      version: pointer.previous,
+      installation: pointer.installation,
+    });
     return pointer.previous;
   }
   beforeSwitch();
