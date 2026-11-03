@@ -842,7 +842,7 @@ function buildFindSkillsCommand(name: string): Command {
       .description(FIND_SKILLS_DESCRIPTION)
       .argument(
         '[query...]',
-        "Words that must all appear in a skill's id, name or description; omit to list every skill"
+        'Natural-language goal. Official and provider skills are ranked semantically; team skills still match every word. Omit to list every skill'
       )
       .option('--limit <n>', 'Most skills to return, 1-50 (default 20)')
       .option(

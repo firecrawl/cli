@@ -3,6 +3,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
+  createFindSkillsCommand,
+  createSkillsCommand,
+} from '../../commands/alexandria';
 import { executeSearch, handleSearchCommand } from '../../commands/search';
 import { getClient, keylessRequest } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
@@ -1047,5 +1051,100 @@ describe('executeSearch', () => {
         passage
       );
     });
+  });
+
+  describe('ranked skills', () => {
+    const writtenOutput = () =>
+      vi.mocked(writeOutput).mock.calls.at(-1)?.[0] as string;
+    const skills = [
+      {
+        id: 'firecrawl-deep-research',
+        name: 'Deep research',
+        description: 'Research a question with Alexandria tools.',
+        source: 'official',
+        similarity: 0.91,
+      },
+      {
+        id: 'provider:carbon-arc/carbon-arc-company-intelligence/ca-audience',
+        name: 'Audience',
+        description: 'Audience report',
+        source: 'provider',
+        provider: 'carbon-arc',
+        similarity: 0.74,
+      },
+    ];
+
+    it('prints skills after web results and tools and keeps them in JSON', async () => {
+      mockHttpPost.mockResolvedValue(
+        mockSearchResponse({
+          web: [{ url: 'https://example.com', title: 'GDP report' }],
+          tools: [
+            {
+              provider: 'fred',
+              capability: 'series/observations',
+              description: 'Read an economic series',
+            },
+          ],
+          skills,
+        })
+      );
+
+      await handleSearchCommand({ query: 'GDP growth' });
+      const readable = writtenOutput();
+      const webAt = readable.indexOf('GDP report');
+      const toolsAt = readable.indexOf('=== Alexandria Tools ===');
+      const skillsAt = readable.indexOf('=== Skills ===');
+      expect(webAt).toBeGreaterThanOrEqual(0);
+      expect(webAt).toBeLessThan(toolsAt);
+      expect(toolsAt).toBeLessThan(skillsAt);
+      expect(readable).toContain('Official');
+      expect(readable).toContain('Provider: carbon-arc');
+      expect(readable).toContain('Similarity: 0.91');
+      expect(readable).toContain(
+        'Read: firecrawl skills read firecrawl-deep-research'
+      );
+      expect(readable).toContain(
+        'Read: firecrawl skills read provider:carbon-arc/carbon-arc-company-intelligence/ca-audience'
+      );
+
+      await handleSearchCommand({ query: 'GDP growth', json: true });
+      expect(JSON.parse(writtenOutput()).data.skills).toEqual(skills);
+    });
+
+    it('leaves search output unchanged when skills are absent', async () => {
+      mockHttpPost.mockResolvedValue(
+        mockSearchResponse({
+          web: [{ url: 'https://example.com', title: 'GDP report' }],
+        })
+      );
+
+      const result = await executeSearch({ query: 'GDP growth' });
+      expect(result.data).toEqual({
+        web: [{ url: 'https://example.com', title: 'GDP report' }],
+      });
+      expect(result.data).not.toHaveProperty('skills');
+
+      await handleSearchCommand({ query: 'GDP growth' });
+      expect(writtenOutput()).not.toContain('=== Skills ===');
+      expect(writtenOutput()).not.toContain('firecrawl skills read');
+
+      await handleSearchCommand({ query: 'GDP growth', json: true });
+      expect(JSON.parse(writtenOutput()).data).not.toHaveProperty('skills');
+    });
+  });
+});
+
+describe('skills list query help', () => {
+  it('describes a natural-language goal', () => {
+    const list = createSkillsCommand().commands.find(
+      (command) => command.name() === 'list'
+    );
+    for (const command of [createFindSkillsCommand(), list]) {
+      const text = command!.helpInformation().replace(/\s+/g, ' ');
+      expect(text).not.toContain('words that must all appear');
+      expect(text).toContain(
+        'Natural-language goal. Official and provider skills are ranked semantically; team skills still match every word.'
+      );
+    }
   });
 });

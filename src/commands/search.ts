@@ -11,6 +11,7 @@ import type {
   ImageSearchResult,
   NewsSearchResult,
   DeveloperSearchResult,
+  SkillSearchResult,
 } from '../types/search';
 import type { SearchSource } from '../types/search';
 import { getClient, isKeylessMode, keylessRequest } from '../utils/client';
@@ -163,6 +164,8 @@ export async function executeSearch(
     // results, so the API returns its hits in their own group.
     if (payload.developer)
       data.developer = payload.developer as DeveloperSearchResult[];
+    if (Array.isArray(payload.skills))
+      data.skills = payload.skills as SkillSearchResult[];
 
     return {
       success: true,
@@ -213,7 +216,8 @@ function formatSearchReadable(
     if (
       (options.sources && options.sources.length > 1) ||
       hasDeveloperResults ||
-      !!data.tools?.length
+      !!data.tools?.length ||
+      !!data.skills?.length
     ) {
       lines.push('=== Web Results ===');
       lines.push('');
@@ -348,7 +352,42 @@ function formatSearchReadable(
     );
   }
 
+  if (data.skills?.length) {
+    lines.push('=== Skills ===', '');
+    for (const skill of data.skills) lines.push(...formatSkillCard(skill));
+  }
+
   return lines.join('\n');
+}
+
+function formatSkillCard(skill: SkillSearchResult): string[] {
+  if (!skill || typeof skill !== 'object') return [];
+  const lines: string[] = [];
+  lines.push(String(skill.name || skill.id || 'Skill'));
+  const source =
+    skill.source === 'official'
+      ? 'Official'
+      : skill.source === 'provider'
+        ? 'Provider'
+        : typeof skill.source === 'string' && skill.source.trim()
+          ? skill.source.trim()
+          : undefined;
+  const provider =
+    typeof skill.provider === 'string' && skill.provider.trim()
+      ? skill.provider.trim()
+      : undefined;
+  if (source || provider)
+    lines.push(
+      `  ${[source, provider].filter((part) => part !== undefined).join(': ')}`
+    );
+  if (typeof skill.description === 'string' && skill.description.trim())
+    lines.push(`  ${clipPassage(skill.description)}`);
+  if (typeof skill.similarity === 'number' && Number.isFinite(skill.similarity))
+    lines.push(`  Similarity: ${skill.similarity}`);
+  if (typeof skill.id === 'string' && skill.id.trim())
+    lines.push(`  Read: firecrawl skills read ${skill.id.trim()}`);
+  lines.push('');
+  return lines;
 }
 
 /**
@@ -371,12 +410,17 @@ export async function handleSearchCommand(
   // Check if there are any results
   const hasResults =
     (result.data.tools && result.data.tools.length > 0) ||
+    (result.data.skills && result.data.skills.length > 0) ||
     (result.data.web && result.data.web.length > 0) ||
     (result.data.images && result.data.images.length > 0) ||
     (result.data.news && result.data.news.length > 0) ||
     (result.data.developer && result.data.developer.length > 0);
 
-  if (!hasResults && !(result.data.tools && (options.json || options.pretty))) {
+  if (
+    !hasResults &&
+    !(result.data.tools && (options.json || options.pretty)) &&
+    !(result.data.skills && (options.json || options.pretty))
+  ) {
     console.log('No results found.');
     return;
   }

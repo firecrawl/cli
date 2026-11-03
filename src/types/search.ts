@@ -114,6 +114,18 @@ export interface DeveloperSearchResult {
   category?: string;
 }
 
+/** A short ranked skill card returned by search. */
+export interface SkillSearchResult {
+  id?: string;
+  name?: string;
+  description?: string;
+  /** `official` or `provider`. */
+  source?: string;
+  /** Provider slug. Present for provider skills. */
+  provider?: string;
+  similarity?: number;
+}
+
 export interface SearchResultData {
   tools?: Record<string, unknown>[];
   web?: WebSearchResult[];
@@ -121,6 +133,8 @@ export interface SearchResultData {
   news?: NewsSearchResult[];
   /** Present when the `developer` category is requested. */
   developer?: DeveloperSearchResult[];
+  /** Ranked official and provider skills. Omitted when search does not send it. */
+  skills?: SkillSearchResult[];
 }
 
 export interface SearchResult {

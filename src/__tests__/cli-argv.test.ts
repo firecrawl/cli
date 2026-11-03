@@ -154,7 +154,7 @@ describe('CLI argv parsing', () => {
       expect(result.status).toBe(0);
       const flattened = result.stdout.replace(/\s+/g, ' ');
       expect(flattened).toContain(
-        'Search the web with query-relevant highlights and discover relevant Alexandria tools'
+        'Search the web with query-relevant highlights and discover relevant Alexandria tools and skills'
       );
       expect(flattened).toContain(
         'Return query-relevant page excerpts for web and news results when available (default).'
