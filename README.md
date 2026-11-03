@@ -118,7 +118,7 @@ still used by a running CLI process. It removes other inactive versions and
 staging directories older than 24 hours whose installer has exited. Files owned
 by another machine on shared storage are retained conservatively.
 
-Reinstalling the global package resets the launcher's selection to that package,
+Reinstalling with npm resets the launcher's selection to that package,
 including an explicit downgrade. Disable automatic updates before reinstalling
 if you want to stay on the selected version. Disabling updates alone keeps the
 currently selected release.

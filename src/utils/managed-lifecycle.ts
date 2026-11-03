@@ -107,7 +107,12 @@ export function cleanupManagedVersions(
     }
   } catch (error) {
     // Without a complete snapshot, no release can safely be removed.
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return;
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      log(
+        `Could not scan managed pointers: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return;
+    }
   }
   let entries: fs.Dirent[];
   try {

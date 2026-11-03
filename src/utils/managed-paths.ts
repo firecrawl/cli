@@ -14,7 +14,7 @@ export interface ManagedPointer {
 
 export const LAUNCHER_ID_ENV = 'FIRECRAWL_LAUNCHER_ID';
 
-/** Reinstalling even the same package version creates a new installation. */
+/** Survive hardlink changes and detect npm reinstalls, even at the same version. */
 export function installationId(packageRoot: string): string {
   const manifest = fs.realpathSync(path.join(packageRoot, 'package.json'));
   const stat = fs.statSync(manifest, { bigint: true });
