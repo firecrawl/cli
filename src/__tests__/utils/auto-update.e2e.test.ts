@@ -337,6 +337,32 @@ describe.skipIf(
     expect((await version()).stdout.trim()).toBe(next);
   });
 
+  it('reports a missing backup after an update without changing settings', async () => {
+    expect((await cli(['update'])).code).toBe(0);
+    fs.rmSync(`${executable}.previous`);
+    const result = await cli(['update', '--rollback']);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('No previous version');
+    expect(fs.existsSync(dataFile('auto-update.json'))).toBe(false);
+    expect((await version()).stdout.trim()).toBe(next);
+  });
+
+  it('logs an unwritable observation state and leaves the executable unchanged', async () => {
+    fs.rmSync(dataFile('auto-update-state.json'));
+    fs.mkdirSync(dataFile('auto-update-state.json'));
+    await cli(['--version']);
+    await until(
+      () =>
+        fs.existsSync(dataFile('auto-update.log')) &&
+        fs
+          .readFileSync(dataFile('auto-update.log'), 'utf8')
+          .includes('Could not save update state'),
+      'state write failure was not logged'
+    );
+    expect((await version()).stdout.trim()).toBe(current);
+    expect(requests).toEqual(['/firecrawl-cli/latest']);
+  });
+
   it('reports unavailable rollback without changing the executable', async () => {
     const result = await cli(['update', '--rollback']);
     expect(result.code).toBe(1);

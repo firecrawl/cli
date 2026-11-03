@@ -19,11 +19,14 @@ import packageJson from '../../../package.json';
 describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
   'managed package updates end to end',
   () => {
+    const operationTimeout = process.platform === 'win32' ? 120_000 : 30_000;
+    const caseTimeout = operationTimeout * 2;
     const current = packageJson.version;
     const [major, minor, patch] = current.split('.').map(Number);
     const next = `${major}.${minor}.${patch + 1}`;
     const later = `${major}.${minor}.${patch + 2}`;
     let root: string;
+    let installedTemplate: string;
     let home: string;
     let prefix: string;
     let basePackage: string;
@@ -37,23 +40,46 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
     let badIntegrity: boolean;
     let unavailable: boolean;
     let held: ChildProcess | undefined;
+    let backgroundVersion: string | undefined;
+    function enableBackground(version = latest) {
+      env.FIRECRAWL_NO_AUTO_UPDATE = '0';
+      backgroundVersion = version;
+    }
     const packages = new Map<
       string,
       { manifest: Record<string, unknown>; tarball: Buffer }
     >();
-    const npm = (args: string[], cwd: string, environment = process.env) =>
-      spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', args, {
-        cwd,
-        env: environment,
-        shell: process.platform === 'win32',
-        encoding: 'utf8',
-        timeout: 120_000,
-      });
-    function checkNpm(result: ReturnType<typeof npm>) {
-      if (result.status !== 0)
-        throw new Error(
-          `npm failed: ${result.error?.message ?? result.stderr}`
+    async function npm(
+      args: string[],
+      cwd: string,
+      environment = process.env
+    ): Promise<{ status: number | null; stdout: string; stderr: string }> {
+      return new Promise((resolve, reject) => {
+        const child = spawn(
+          process.platform === 'win32' ? 'npm.cmd' : 'npm',
+          args,
+          {
+            cwd,
+            env: environment,
+            shell: process.platform === 'win32',
+            timeout: 120_000,
+            stdio: ['ignore', 'pipe', 'pipe'],
+          }
         );
+        let stdout = '',
+          stderr = '';
+        child.stdout.on('data', (data) => {
+          stdout += data;
+        });
+        child.stderr.on('data', (data) => {
+          stderr += data;
+        });
+        child.once('error', reject);
+        child.once('close', (status) => resolve({ status, stdout, stderr }));
+      });
+    }
+    function checkNpm(result: Awaited<ReturnType<typeof npm>>) {
+      if (result.status !== 0) throw new Error(`npm failed: ${result.stderr}`);
       return result.stdout;
     }
     const pointer = () => path.join(store, 'current.json');
@@ -68,7 +94,7 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
       }
     }
     async function until(predicate: () => boolean, message: string) {
-      const deadline = Date.now() + 30_000;
+      const deadline = Date.now() + operationTimeout;
       while (!predicate()) {
         if (Date.now() > deadline)
           throw new Error(`${message}: ${JSON.stringify(state())}`);
@@ -98,7 +124,7 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
         child.stderr.on('data', (data) => {
           stderr += data;
         });
-        const timer = setTimeout(() => child.kill('SIGKILL'), 30_000);
+        const timer = setTimeout(() => child.kill('SIGKILL'), operationTimeout);
         child.once('error', (error) => {
           clearTimeout(timer);
           reject(error);
@@ -156,7 +182,7 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
         NPM_CONFIG_REGISTRY: 'https://registry.npmjs.org',
       };
       checkNpm(
-        npm(
+        await npm(
           [
             'install',
             '--ignore-scripts',
@@ -180,7 +206,11 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
         );
         const packed = JSON.parse(
           checkNpm(
-            npm(['pack', '--ignore-scripts', '--json'], source, bootstrapEnv)
+            await npm(
+              ['pack', '--ignore-scripts', '--json'],
+              source,
+              bootstrapEnv
+            )
           )
         )[0];
         expect(packed.bundled.length).toBeGreaterThan(0);
@@ -189,6 +219,29 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
           tarball: fs.readFileSync(path.join(source, packed.filename)),
         });
       }
+      // Install once with real npm, then copy that installation for each case.
+      // This avoids repeating slow package extraction in every Windows setup.
+      installedTemplate = path.join(root, 'global-template');
+      fs.mkdirSync(installedTemplate);
+      fs.writeFileSync(
+        path.join(installedTemplate, 'package.tgz'),
+        packages.get(current)!.tarball
+      );
+      checkNpm(
+        await npm(
+          [
+            'install',
+            '-g',
+            'package.tgz',
+            '--ignore-scripts',
+            '--no-audit',
+            '--no-fund',
+          ],
+          installedTemplate,
+          { ...bootstrapEnv, npm_config_prefix: installedTemplate }
+        )
+      );
+      fs.rmSync(path.join(installedTemplate, 'package.tgz'));
       server = http.createServer((req, res) => {
         requests.push(req.url!);
         if (unavailable) {
@@ -238,14 +291,13 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
       url = `http://127.0.0.1:${(server.address() as import('net').AddressInfo).port}`;
     }, 180_000);
 
-    beforeEach(() => {
+    beforeEach(async () => {
       home = fs.mkdtempSync(path.join(root, 'home with spaces-'));
       prefix = path.join(home, 'global');
-      fs.mkdirSync(prefix);
-      fs.writeFileSync(
-        path.join(prefix, 'package.tgz'),
-        packages.get(current)!.tarball
-      );
+      fs.cpSync(installedTemplate, prefix, {
+        recursive: true,
+        verbatimSymlinks: true,
+      });
       env = {
         ...process.env,
         HOME: home,
@@ -256,27 +308,14 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
         npm_config_cache: path.join(home, 'npm-cache'),
         npm_config_prefix: prefix,
         FIRECRAWL_NO_UPDATE_CHECK: '0',
-        FIRECRAWL_NO_AUTO_UPDATE: '0',
+        FIRECRAWL_NO_AUTO_UPDATE: '1',
         FIRECRAWL_AUTO_UPDATE_WORKER: '',
       };
       delete env.FIRECRAWL_API_KEY;
+      backgroundVersion = undefined;
       latest = next;
       requests = [];
       badIntegrity = unavailable = false;
-      checkNpm(
-        npm(
-          [
-            'install',
-            '-g',
-            'package.tgz',
-            '--ignore-scripts',
-            '--no-audit',
-            '--no-fund',
-          ],
-          prefix,
-          env
-        )
-      );
       basePackage = path.join(
         prefix,
         ...(process.platform === 'win32' ? [] : ['lib']),
@@ -292,8 +331,16 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
       );
       requests = [];
       mature(next);
-    }, 30_000);
+    }, operationTimeout);
     afterEach(async () => {
+      // Background cases must report completion, not just an absent lock:
+      // a detached worker can acquire its lock after its parent has exited.
+      if (backgroundVersion)
+        await until(
+          () =>
+            state().updated?.to === backgroundVersion || !!state().lastError,
+          'background worker did not report completion'
+        );
       if (held) {
         const child = held;
         held = undefined;
@@ -307,7 +354,7 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
         'worker did not finish'
       );
       fs.rmSync(home, { recursive: true, force: true });
-    });
+    }, operationTimeout);
     afterAll(async () => {
       if (server)
         await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -316,8 +363,9 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
 
     it(
       'updates a real global npm installation while preserving the launcher and base package',
-      { timeout: 30_000 },
+      { timeout: caseTimeout },
       async () => {
+        enableBackground();
         const launcherBytes = fs.readFileSync(launcher);
         const baseBytes = fs.readFileSync(
           path.join(basePackage, 'dist', 'index.js')
@@ -355,7 +403,7 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
 
     it(
       'keeps an already running release usable while installing the next release',
-      { timeout: 30_000 },
+      { timeout: caseTimeout },
       async () => {
         expect((await run(['update'])).code).toBe(0);
         const oldRoot = path.join(store, next, 'node_modules', 'firecrawl-cli');
@@ -373,6 +421,7 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
         const before = Number(fs.readFileSync(countFile, 'utf8'));
         latest = later;
         mature(later);
+        enableBackground();
         expect((await run(['--version'])).stdout.trim()).toBe(next);
         await until(
           () => state().updated?.to === later,
@@ -389,8 +438,9 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
 
     it(
       'installs only once when multiple global invocations start together',
-      { timeout: 30_000 },
+      { timeout: caseTimeout },
       async () => {
+        enableBackground();
         const results = await Promise.all(
           Array.from({ length: 5 }, () => run(['--version']))
         );
@@ -408,7 +458,7 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
 
     it(
       'preserves the old installation if npm rejects the release integrity',
-      { timeout: 30_000 },
+      { timeout: caseTimeout },
       async () => {
         badIntegrity = true;
         // Disable npm retry delays while retaining its real integrity validation.
@@ -423,13 +473,32 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
 
     it(
       'rolls back offline to the global installation and does not immediately reinstall',
-      { timeout: 30_000 },
+      { timeout: caseTimeout },
       async () => {
         expect((await run(['update'])).code).toBe(0);
         const before = requests.length;
         unavailable = true;
-        const result = await run(['update', '--rollback']);
+        const skill = path.join(home, '.agents', 'skills', 'firecrawl');
+        fs.mkdirSync(skill, { recursive: true });
+        fs.writeFileSync(path.join(skill, 'SKILL.md'), 'Installed test skill');
+        fs.writeFileSync(
+          path.join(home, '.agents', '.skill-lock.json'),
+          JSON.stringify({
+            skills: { firecrawl: { source: 'firecrawl/skills' } },
+          })
+        );
+        const networkMarker = path.join(home, 'network-attempted');
+        const offline = path.join(home, 'offline-terminal.cjs');
+        fs.writeFileSync(
+          offline,
+          `Object.defineProperty(process.stderr,'isTTY',{value:true}); global.fetch=()=>{require('fs').appendFileSync(process.env.FIRECRAWL_TEST_NETWORK_MARKER,'fetch'); return Promise.reject(new Error('offline'));};`
+        );
+        const result = await run(['update', '--rollback'], {
+          NODE_OPTIONS: '--require ' + JSON.stringify(offline),
+          FIRECRAWL_TEST_NETWORK_MARKER: networkMarker,
+        });
         expect(result.code, result.stderr).toBe(0);
+        expect(fs.existsSync(networkMarker)).toBe(false);
         expect((await run(['--version'])).stdout.trim()).toBe(current);
         expect(requests).toHaveLength(before);
         expect(
@@ -441,7 +510,7 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
 
     it(
       'restores the previous managed release after a second update',
-      { timeout: 30_000 },
+      { timeout: caseTimeout },
       async () => {
         expect((await run(['update'])).code).toBe(0);
         latest = later;
@@ -454,8 +523,9 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
 
     it(
       'honors persistent opt-outs for npm and supports explicit updates while disabled',
-      { timeout: 30_000 },
+      { timeout: caseTimeout },
       async () => {
+        env.FIRECRAWL_NO_AUTO_UPDATE = '0';
         expect((await run(['update', '--disable-auto'])).code).toBe(0);
         await run(['--version']);
         expect(requests).toEqual([]);
@@ -467,7 +537,7 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
 
     it(
       'does not roll back an inactive pointer or change settings on an unavailable rollback',
-      { timeout: 30_000 },
+      { timeout: caseTimeout },
       async () => {
         expect((await run(['update', '--rollback'])).code).toBe(1);
         expect(fs.existsSync(dataFile('auto-update.json'))).toBe(false);
@@ -487,8 +557,41 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
     );
 
     it(
+      'reports the npm prerequisite without modifying the active installation',
+      async () => {
+        const result = await run(['update'], { PATH: '' });
+        expect(result.code).toBe(1);
+        expect(result.stderr).toContain('require npm on PATH');
+        expect(fs.existsSync(pointer())).toBe(false);
+        expect((await version()).stdout.trim()).toBe(current);
+      },
+      operationTimeout
+    );
+
+    it(
+      'restores the opt-out preference when rollback activation fails',
+      async () => {
+        expect((await run(['update'])).code).toBe(0);
+        // Inject an OS failure only when rollback removes the current pointer.
+        const fault = path.join(home, 'rollback-fault.cjs');
+        fs.writeFileSync(
+          fault,
+          `const fs=require('fs'); const original=fs.rmSync; fs.rmSync=function(file,...args){ if(String(file).endsWith('current.json')) throw Object.assign(new Error('injected permission failure'),{code:'EACCES'}); return original.call(this,file,...args); };`
+        );
+        const result = await run(['update', '--rollback'], {
+          NODE_OPTIONS: '--require ' + JSON.stringify(fault),
+        });
+        expect(result.code).toBe(1);
+        expect(result.stderr).toContain('injected permission failure');
+        expect(fs.existsSync(dataFile('auto-update.json'))).toBe(false);
+        expect((await version()).stdout.trim()).toBe(next);
+      },
+      operationTimeout
+    );
+
+    it(
       'ignores invalid current pointers and keeps the base launcher usable',
-      { timeout: 30_000 },
+      { timeout: caseTimeout },
       async () => {
         fs.mkdirSync(store, { recursive: true });
         for (const pointerValue of [
@@ -503,8 +606,8 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
     );
 
     it(
-      'keeps project-local and package-runner installations pinned and rejects auto flags',
-      { timeout: 30_000 },
+      'keeps project-local and package-runner installations pinned, rejects enable, and saves the shared opt-out',
+      { timeout: caseTimeout },
       async () => {
         expect((await run(['update'])).code).toBe(0);
         for (const location of [
@@ -534,6 +637,13 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
             (await run(['update', '--enable-auto'], {}, localLauncher)).code
           ).toBe(1);
           expect(fs.existsSync(dataFile('auto-update.json'))).toBe(false);
+          expect(
+            (await run(['update', '--disable-auto'], {}, localLauncher)).code
+          ).toBe(0);
+          expect(
+            JSON.parse(fs.readFileSync(dataFile('auto-update.json'), 'utf8'))
+              .disabled
+          ).toBe(true);
         }
       }
     );

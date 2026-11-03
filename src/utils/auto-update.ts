@@ -528,6 +528,12 @@ export async function runAutoUpdateWorker(): Promise<void> {
     if (acquireLock(workerLockPath(dir)) !== 'acquired') return;
     const { fd, log } = openLog(dir);
     logFd = fd;
+    const saveState = (patch: AutoUpdateState) => {
+      if (!updateState(dir, patch))
+        throw new Error(
+          'Could not save update state. Check permissions on ~/.firecrawl/auto-update-state.json.'
+        );
+    };
     const channel = detectInstallChannel();
     const current = packageJson.version;
     if (autoUpdateBlocker() || !updatesAutomatically(channel)) return;
@@ -540,7 +546,7 @@ export async function runAutoUpdateWorker(): Promise<void> {
     );
     if (latest.unreachable || !latest.version) {
       log(`Version check failed: ${latest.error ?? 'no version returned'}`);
-      updateState(dir, {
+      saveState({
         retryAt: new Date(Date.now() + CHECK_RETRY_MS).toISOString(),
       });
       return;
@@ -557,7 +563,7 @@ export async function runAutoUpdateWorker(): Promise<void> {
 
     const remembered = readState(dir).candidate;
     if (remembered && remembered.version !== latest.version) {
-      updateState(dir, { candidate: undefined });
+      saveState({ candidate: undefined });
     }
     if (
       isPrerelease(latest.version) ||
@@ -574,7 +580,7 @@ export async function runAutoUpdateWorker(): Promise<void> {
         ? Date.parse(state.candidate.observedAt)
         : NaN;
     if (!Number.isFinite(observedAt) || observedAt > Date.now()) {
-      updateState(dir, {
+      saveState({
         candidate: {
           version: latest.version,
           observedAt: new Date().toISOString(),
@@ -587,7 +593,7 @@ export async function runAutoUpdateWorker(): Promise<void> {
       return;
     }
     if (Date.now() - observedAt < OBSERVATION_DELAY_MS) {
-      updateState(dir, {
+      saveState({
         retryAt: new Date(observedAt + OBSERVATION_DELAY_MS).toISOString(),
       });
       return;
@@ -597,7 +603,7 @@ export async function runAutoUpdateWorker(): Promise<void> {
     const outcome = await installUpdate(channel, latest.version, log);
     if (outcome.status === 'installed') {
       log(`Updated to ${latest.version}`);
-      updateState(dir, {
+      saveState({
         retryAt: undefined,
         lastError: undefined,
         candidate: undefined,
@@ -610,7 +616,7 @@ export async function runAutoUpdateWorker(): Promise<void> {
       return;
     }
     log(outcome.message);
-    updateState(dir, {
+    saveState({
       retryAt: new Date(
         Date.now() +
           (outcome.status === 'pending' ? CHECK_RETRY_MS : FAILURE_BACKOFF_MS)
@@ -678,11 +684,17 @@ export async function updateNow(): Promise<boolean> {
     return true;
   }
 
-  const latest = await getLatestVersion(
-    packageJson.name,
-    10_000,
-    channel.kind === 'binary' ? undefined : managedRegistry()
-  );
+  let latest: Awaited<ReturnType<typeof getLatestVersion>>;
+  try {
+    latest = await getLatestVersion(
+      packageJson.name,
+      10_000,
+      channel.kind === 'binary' ? undefined : managedRegistry()
+    );
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return false;
+  }
   if (latest.unreachable || !latest.version) {
     console.error(
       `Could not check for updates: ${latest.error ?? 'no version returned'}`
@@ -758,14 +770,26 @@ export async function rollbackUpdate(): Promise<boolean> {
     return false;
   }
   let tmp: string | undefined;
+  let restoreSettings: (() => boolean) | undefined;
+  const disableForRollback = () => {
+    const file = path.join(dir, SETTINGS_FILE);
+    const existed = fs.existsSync(file);
+    const original = readJson(file);
+    if (!setAutoUpdateEnabled(false))
+      throw new Error('Could not disable automatic updates before rollback.');
+    restoreSettings = () => {
+      if (existed) return writeJson(file, original);
+      fs.rmSync(file, { force: true });
+      return true;
+    };
+  };
   try {
     if (channel.kind !== 'binary') {
-      const restored = rollbackManagedVersion(packageJson.version, () => {
-        if (!setAutoUpdateEnabled(false))
-          throw new Error(
-            'Could not disable automatic updates before rollback.'
-          );
-      });
+      const restored = rollbackManagedVersion(
+        packageJson.version,
+        disableForRollback
+      );
+      restoreSettings = undefined;
       updateState(dir, {
         updated: undefined,
         candidate: undefined,
@@ -777,10 +801,16 @@ export async function rollbackUpdate(): Promise<boolean> {
     }
     const previous = readState(dir).previous;
     const backup = `${channel.executable}.previous`;
+    let backupIsFile = false;
+    try {
+      backupIsFile = fs.lstatSync(backup).isFile();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
     if (
       !previous ||
       previous.executable !== channel.executable ||
-      !fs.lstatSync(backup).isFile()
+      !backupIsFile
     ) {
       console.error('No previous version is available for this installation.');
       return false;
@@ -802,12 +832,10 @@ export async function rollbackUpdate(): Promise<boolean> {
       );
       return false;
     }
-    if (!setAutoUpdateEnabled(false)) {
-      console.error('Could not disable automatic updates before rollback.');
-      return false;
-    }
     fs.chmodSync(staged, 0o755);
+    disableForRollback();
     fs.renameSync(staged, channel.executable);
+    restoreSettings = undefined;
     updateState(dir, {
       updated: undefined,
       candidate: undefined,
@@ -819,6 +847,12 @@ export async function rollbackUpdate(): Promise<boolean> {
     );
     return true;
   } catch (error) {
+    try {
+      if (restoreSettings && !restoreSettings())
+        console.error('Could not restore the automatic-update preference.');
+    } catch {
+      console.error('Could not restore the automatic-update preference.');
+    }
     console.error(
       `Rollback failed: ${error instanceof Error ? error.message : String(error)}`
     );

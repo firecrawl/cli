@@ -107,7 +107,8 @@ updater uses npm to install a new release into a separate directory under
 `~/.firecrawl/versions/`, verifies it, then atomically switches the current
 version pointer. It never rewrites the global installation or removes files
 used by running commands. Managed versions are separated by Node runtime
-version, and npm enforces the release's Node requirements. Install scripts are
+version, and npm enforces the release's Node requirements. npm must be available
+on PATH for all global package channels. Install scripts are
 disabled. Older managed versions are retained for running commands and rollback.
 
 Standalone binaries download their release archive, verify its SHA-256 checksum
@@ -155,8 +156,9 @@ installation unchanged and back off before retrying. Details are recorded in
 
 Homebrew and other system packages, project-local installs, package runners
 such as npx, and standalone Windows binaries retain their selected release and
-show the appropriate manual update instruction. Enable/disable flags report
-that these installations are externally managed and do not save a setting.
+show the appropriate manual update instruction. Enabling automatic updates on
+these installations reports that they are externally managed. Disabling updates
+saves the shared user preference from any installation.
 Non-writable or differently owned standalone binaries are not replaced.
 
 Package updates use npm's registry configuration. Binary version checks honor

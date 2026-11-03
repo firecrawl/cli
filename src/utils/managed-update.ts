@@ -18,7 +18,7 @@ function installerEnv(): NodeJS.ProcessEnv {
 }
 
 /** Read npm's user configuration only in the updater, never at CLI startup. */
-export function managedRegistry(): string | undefined {
+export function managedRegistry(): string {
   const result = spawnSync(
     process.platform === 'win32' ? 'npm.cmd' : 'npm',
     ['config', 'get', 'registry'],
@@ -32,12 +32,14 @@ export function managedRegistry(): string | undefined {
     }
   );
   const registry = result.stdout?.trim();
-  return !result.error &&
-    result.status === 0 &&
-    registry &&
-    /^https?:\/\//.test(registry)
-    ? registry
-    : undefined;
+  if (result.error || result.status !== 0) {
+    throw new Error(
+      'Package updates require npm on PATH with a readable registry configuration. Install or repair npm, then run firecrawl update.'
+    );
+  }
+  if (!registry || !/^https?:\/\//.test(registry))
+    throw new Error('npm must be configured with an HTTP or HTTPS registry.');
+  return registry;
 }
 
 function verify(entry: string, version: string): boolean {

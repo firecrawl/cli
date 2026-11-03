@@ -32,10 +32,7 @@ export async function handleUpdateCommand(
     if (!(await rollbackUpdate())) process.exitCode = 1;
     return;
   }
-  if (
-    (options.enableAuto || options.disableAuto) &&
-    !updatesAutomatically(detectInstallChannel())
-  ) {
+  if (options.enableAuto && !updatesAutomatically(detectInstallChannel())) {
     console.error(
       `Automatic updates are not supported for this installation. ${updateHint(detectInstallChannel())}`
     );
@@ -56,7 +53,7 @@ export async function handleUpdateCommand(
 
   if (options.disableAuto) {
     console.log(
-      `Automatic updates are off. ${updateHint(detectInstallChannel())}`
+      `Automatic updates are off for this user. ${updateHint(detectInstallChannel())}`
     );
     return;
   }

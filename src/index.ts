@@ -3024,7 +3024,7 @@ async function main() {
     args[0] === 'init' ||
     args[0] === 'setup' ||
     (args.length === 1 && ['-y', '--yes'].includes(args[0]));
-  if (!isSetup) {
+  if (!isSetup && !isUpdate) {
     await maybeShowSkillUpdateNotice();
   }
 
