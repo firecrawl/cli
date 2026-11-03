@@ -171,11 +171,18 @@ function runningDir(dir: string): string {
 }
 
 /**
- * How this process appears in a process listing: the script node runs, or the
- * binary itself. Entries and locks record it so a reused pid can be told apart.
+ * The script path node runs, which appears in this process's listing. Entries
+ * and locks record it so a reused pid can be told apart. A standalone binary
+ * is listed by whatever name started it, so it records nothing and its locks
+ * go stale by age alone; a binary update is one atomic rename either way.
  */
 function commandMarker(): string {
-  return (isCompiledBinary() ? process.execPath : process.argv[1]) ?? '';
+  return isCompiledBinary() ? '' : (process.argv[1] ?? '');
+}
+
+/** Lowercase with one forward slash per separator, since launchers can double them. */
+function normalizeCommandLine(text: string): string {
+  return text.toLowerCase().replace(/[\\/]+/g, '/');
 }
 
 const PROBE_TTL_MS = 30 * 1000;
@@ -188,7 +195,7 @@ const probes = new Map<string, { at: number; verdict: boolean }>();
  * firecrawl. Verdicts are cached briefly, since waiting loops ask every 500ms.
  */
 function mayRunFirecrawl(pid: number, marker = ''): boolean {
-  const needle = (marker || 'firecrawl').toLowerCase();
+  const needle = normalizeCommandLine(marker || 'firecrawl');
   const key = `${pid}\0${needle}`;
   const cached = probes.get(key);
   if (cached && Date.now() - cached.at < PROBE_TTL_MS) return cached.verdict;
@@ -207,10 +214,9 @@ function mayRunFirecrawl(pid: number, marker = ''): boolean {
 function probeCommandLine(pid: number, needle: string): boolean {
   try {
     if (process.platform === 'linux') {
-      return fs
-        .readFileSync(`/proc/${pid}/cmdline`, 'utf8')
-        .toLowerCase()
-        .includes(needle);
+      return normalizeCommandLine(
+        fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8')
+      ).includes(needle);
     }
     const [command, args] =
       process.platform === 'win32'
@@ -231,7 +237,8 @@ function probeCommandLine(pid: number, needle: string): boolean {
     });
     if (result.error || result.status !== 0) return true;
     return (
-      !result.stdout.trim() || result.stdout.toLowerCase().includes(needle)
+      !result.stdout.trim() ||
+      normalizeCommandLine(result.stdout).includes(needle)
     );
   } catch {
     return true;
