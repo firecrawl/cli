@@ -95,6 +95,92 @@ firecrawl setup build
 firecrawl setup workflows
 ```
 
+### CLI updates
+
+Global npm, pnpm, bun, and yarn installations, plus standalone binaries on macOS
+and Linux, check for updates in the background. Commands do not wait for an
+update, and the updater never writes to stdout. The next invocation uses the
+updated release, with a one-time notice on an interactive terminal.
+
+For global package installs, the installed package is a stable launcher. The
+updater uses npm to install a new release into a separate directory under
+`~/.firecrawl/versions/`, verifies it, then atomically switches the current
+version pointer. It never rewrites the global installation or removes files
+used by running commands. Managed versions are shared within a Node major
+version, so a patch upgrade reuses the saved release. The launcher checks the
+release's Node requirements before selecting it. npm must be available on PATH
+for automatic package updates; otherwise use your package manager's manual
+update command. Install scripts are disabled. Dependencies resolve to versions
+published no later than the release itself, so the waiting period covers them
+too.
+
+Each global installation has its own version selection. Maintenance retains
+the current and previous release for each installation, plus any older release
+still used by a running CLI process. It removes other inactive versions and
+staging directories older than 24 hours whose installer has exited. Files owned
+by another machine on shared storage are retained conservatively.
+
+Reinstalling with npm resets the launcher's selection to that package,
+including an explicit downgrade. Disable automatic updates before reinstalling
+if you want to stay on the selected version. Disabling updates alone keeps the
+currently selected release.
+
+Standalone binaries download their release archive, verify its SHA-256 checksum
+and reported version, then atomically replace the executable. The previous
+binary is retained beside it with a `.previous` suffix.
+
+A newly observed release waits at least 24 hours before unattended installation.
+The worker rechecks that it is still the latest release after this delay; a
+changed candidate starts a new waiting period. Version checks normally refresh
+about once a day. Automatic updates never cross a major version or install a
+prerelease. Prerelease installations remain pinned.
+
+To update immediately, bypassing the waiting period, including to a new major
+version:
+
+```bash
+firecrawl update
+```
+
+To restore the previous version without the network:
+
+```bash
+firecrawl update --rollback
+```
+
+For global package installs, the launcher handles rollback without loading the
+active release, so it works even when that release cannot start. Rollback
+disables automatic updates so the same release is not immediately
+installed again. The first managed-package rollback returns to the original
+package-manager installation; later updates can roll back to the previous
+managed version. Moving the registry's latest tag back does not automatically
+downgrade an existing installation.
+
+Control automatic updates with:
+
+```bash
+firecrawl update --disable-auto
+firecrawl update --enable-auto
+export FIRECRAWL_NO_AUTO_UPDATE=1
+```
+
+Automatic updates are also off when `CI` is set, unless it is `0` or `false`.
+`FIRECRAWL_NO_UPDATE_CHECK=1` disables both automatic updates and notices.
+Explicit updates still work with these settings. Failures leave the active
+installation unchanged and back off before retrying. Details are recorded in
+`~/.firecrawl/auto-update.log`.
+
+Homebrew and other system packages, project-local installs, package runners
+such as npx, and standalone Windows binaries retain their selected release and
+show the appropriate manual update instruction. Enabling automatic updates on
+these installations reports that they are externally managed. Disabling updates
+saves the shared user preference from any installation.
+Non-writable or differently owned standalone binaries are not replaced.
+
+Package updates use npm's registry configuration. Binary version checks honor
+`npm_config_registry`; binary downloads use GitHub releases, or the mirror set
+with `FIRECRAWL_RELEASES_URL`.
+
 ### Skill updates
 
 Interactive CLI sessions (except `init`, `setup`, and the `-y`/`--yes` init

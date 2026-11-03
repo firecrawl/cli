@@ -90,6 +90,14 @@ import {
 import { isJobId } from './utils/job';
 import { ensureAuthenticated, printBanner } from './utils/auth';
 import { maybeShowUpdateNotice } from './utils/update-notice';
+import {
+  isAutoUpdateWorker,
+  runAutoUpdateWorker,
+  startAutoUpdate,
+  updateHint,
+} from './utils/auto-update';
+import { detectInstallChannel } from './utils/install-channel';
+import { handleUpdateCommand } from './commands/update';
 import { maybeShowSkillUpdateNotice } from './utils/skill-update-notice';
 import packageJson from '../package.json';
 import type { SearchSource, SearchCategory } from './types/search';
@@ -289,7 +297,7 @@ function parseAgentWebhookOption(
 function getFirstPositionalArg(args: string[]): string | undefined {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (!arg || arg === '--') {
+    if (!arg || arg === '--' || arg === '--status') {
       continue;
     }
 
@@ -2981,6 +2989,19 @@ Exits 1 if any check fails.
   });
 
 program
+  .command('update')
+  .description('Update the Firecrawl CLI to the latest release')
+  .option('--enable-auto', 'Turn automatic background updates on')
+  .option('--disable-auto', 'Turn automatic background updates off')
+  .option(
+    '--rollback',
+    'Restore the previous version and disable automatic updates'
+  )
+  .action(async (options) => {
+    await handleUpdateCommand(options);
+  });
+
+program
   .command('version')
   .description('Display version information')
   .option('--auth-status', 'Also show authentication status', false)
@@ -2992,10 +3013,15 @@ collectTopLevelCommands();
 
 // Handle the main entry point
 async function main() {
+  if (isAutoUpdateWorker()) {
+    await runAutoUpdateWorker();
+    return;
+  }
   // Parse user arguments explicitly instead of letting Commander infer whether
   // argv came from node, eval, electron, or another wrapper.
   const args = process.argv.slice(2);
-
+  const isUpdate = getFirstPositionalArg(args) === 'update';
+  const channel = detectInstallChannel();
   // Handle --version with --auth-status before Commander processes it
   // Commander's built-in --version handler doesn't support additional flags
   const hasVersion = args.includes('--version') || args.includes('-V');
@@ -3014,12 +3040,14 @@ async function main() {
     return;
   }
 
-  await maybeShowUpdateNotice();
+  if (!isUpdate && !(await startAutoUpdate({ channel }))) {
+    await maybeShowUpdateNotice({ hint: updateHint(channel) });
+  }
   const isSetup =
     args[0] === 'init' ||
     args[0] === 'setup' ||
     (args.length === 1 && ['-y', '--yes'].includes(args[0]));
-  if (!isSetup) {
+  if (!isSetup && !isUpdate) {
     await maybeShowSkillUpdateNotice();
   }
 

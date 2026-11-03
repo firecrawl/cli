@@ -16,6 +16,8 @@ import { getConfig } from '../utils/config';
 import { isJobId } from '../utils/job';
 import { detectAgents, type AgentDetection } from '../utils/agents';
 import { compareVersions, getLatestVersion } from '../utils/npm-registry';
+import { updateHint } from '../utils/auto-update';
+import { detectInstallChannel } from '../utils/install-channel';
 import { getAuthSource, type AuthSource } from './status';
 import { integrationHeaders } from '../utils/integration';
 import {
@@ -283,7 +285,7 @@ function checkCliVersion(latest: {
     name: 'CLI Version',
     status: 'warn',
     message: `v${current} (v${latest.version} available)`,
-    fix: 'npm install -g firecrawl-cli',
+    fix: updateHint(detectInstallChannel()),
   };
 }
 

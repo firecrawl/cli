@@ -1,6 +1,7 @@
 /**
- * Lightweight npm registry lookup. Used by `doctor` to compare the running
- * CLI version against the latest published version.
+ * Lightweight npm registry lookup. Used by `doctor` and the updater to compare
+ * the running CLI version against the latest published version. Honors
+ * `npm_config_registry` so mirrors and private registries work.
  */
 
 const REGISTRY_URL = 'https://registry.npmjs.org';
@@ -18,13 +19,20 @@ export interface LatestVersionResult {
  */
 export async function getLatestVersion(
   packageName: string,
-  timeoutMs = 2000
+  timeoutMs = 2000,
+  configuredRegistry?: string
 ): Promise<LatestVersionResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(`${REGISTRY_URL}/${packageName}/latest`, {
+    const registry = (
+      configuredRegistry ||
+      process.env.npm_config_registry ||
+      process.env.NPM_CONFIG_REGISTRY ||
+      REGISTRY_URL
+    ).replace(/\/+$/, '');
+    const response = await fetch(`${registry}/${packageName}/latest`, {
       signal: controller.signal,
       headers: { Accept: 'application/json' },
     });
@@ -36,11 +44,19 @@ export async function getLatestVersion(
       };
     }
 
-    const data = (await response.json()) as { version?: string };
-    if (typeof data.version !== 'string') {
+    const data = (await response.json()) as {
+      version?: string;
+    };
+    if (
+      typeof data.version !== 'string' ||
+      !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(data.version)
+    ) {
       return { unreachable: true, error: 'Invalid registry response' };
     }
-    return { version: data.version, unreachable: false };
+    return {
+      version: data.version,
+      unreachable: false,
+    };
   } catch (error) {
     return {
       unreachable: true,
@@ -49,6 +65,31 @@ export async function getLatestVersion(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/** When the registry says a release was published, or undefined if it does not say. */
+export async function getPublishTime(
+  packageName: string,
+  version: string,
+  registry: string,
+  timeoutMs = 30_000
+): Promise<number | undefined> {
+  const response = await fetch(
+    `${registry.replace(/\/+$/, '')}/${packageName}`,
+    {
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { Accept: 'application/json' },
+    }
+  );
+  if (!response.ok)
+    throw new Error(`Registry request failed: HTTP ${response.status}`);
+  const data = (await response.json()) as { time?: Record<string, unknown> };
+  const published = data.time?.[version];
+  if (published === undefined) return undefined;
+  const time = typeof published === 'string' ? Date.parse(published) : NaN;
+  if (!Number.isFinite(time))
+    throw new Error(`Invalid publish time for ${version}`);
+  return time;
 }
 
 /**
@@ -80,4 +121,8 @@ export function compareVersions(a: string, b: string): number {
     if (ai !== bi) return ai - bi;
   }
   return 0;
+}
+
+export function isPrerelease(version: string): boolean {
+  return /^v?\d+\.\d+\.\d+-/.test(version);
 }
