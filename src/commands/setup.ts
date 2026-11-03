@@ -41,6 +41,7 @@ import {
   CLI_SKILL_SELECTION,
   CLI_SKILLS,
   SKILL_REPOS,
+  VERTICAL_SKILL_SELECTION,
   WORKFLOW_SKILL_SELECTION,
   WORKFLOW_SKILLS,
   type SkillSelection,
@@ -58,6 +59,7 @@ export type SetupSubcommand =
   | 'core'
   | 'build'
   | 'workflows'
+  | 'verticals'
   | 'mcp'
   | 'defaults';
 
@@ -379,6 +381,10 @@ export async function handleSetupCommand(
       await installSkills(options, [WORKFLOW_SKILL_SELECTION]);
       await offerSkillsAuth(options);
       break;
+    case 'verticals':
+      await installSkills(options, [VERTICAL_SKILL_SELECTION]);
+      await offerSkillsAuth(options);
+      break;
     case 'mcp':
       await installMcp(options);
       break;
@@ -404,6 +410,9 @@ export async function handleSetupCommand(
       );
       console.log(
         '  workflows  Install Firecrawl workflow skills into AI coding agents'
+      );
+      console.log(
+        '  verticals  Install the opt-in vertical skills (legal, financial, health, travel, ...); init skips these'
       );
       console.log(
         '  mcp        Install firecrawl MCP server into editors (Cursor, Claude Code, VS Code, etc.)'
@@ -483,13 +492,16 @@ async function resolveCatalogSkill(name: string): Promise<string | undefined> {
   if (ALL_CATALOG_SKILLS.includes(name)) return name;
   const prefixed = `firecrawl-${name}`;
   if (ALL_CATALOG_SKILLS.includes(prefixed)) return prefixed;
-  if (!/^firecrawl(?:-[a-z0-9]+)+$/.test(name)) return undefined;
+  const fullName = /^firecrawl(?:-[a-z0-9]+)+$/.test(name) ? name : prefixed;
+  if (!/^firecrawl(?:-[a-z0-9]+)+$/.test(fullName)) return undefined;
   // Skills published after this release: confirm against the catalog when it is reachable.
   try {
     const catalog = await getCatalogSkills();
-    return catalog.some((skill) => skill.name === name) ? name : undefined;
+    return catalog.some((skill) => skill.name === fullName)
+      ? fullName
+      : undefined;
   } catch {
-    return name;
+    return fullName === name ? name : undefined;
   }
 }
 
@@ -502,7 +514,7 @@ async function handleSetupBundle(options: SetupOptions): Promise<void> {
     integrations = await pickSetupIntegrations();
   } else {
     throw new Error(
-      'Setup subcommand is required in non-interactive mode. Use `firecrawl setup --yes` to install skills and MCP, or choose one of: core, build, workflows, mcp, defaults.'
+      'Setup subcommand is required in non-interactive mode. Use `firecrawl setup --yes` to install skills and MCP, or choose one of: core, build, workflows, verticals, mcp, defaults.'
     );
   }
 

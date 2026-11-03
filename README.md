@@ -26,6 +26,7 @@ If you are using an AI coding agent like Claude Code, you can also install skill
 firecrawl setup core       # scrape/search/crawl/interact primitives + index skills ("skills" is an alias)
 firecrawl setup build      # app-integration skills for the Firecrawl API
 firecrawl setup workflows  # end-to-end recipes (lead gen, deep research, ...)
+firecrawl setup verticals  # opt-in vertical skills (legal, financial, health, travel, ...)
 ```
 
 Or install a single skill by name — the `firecrawl-` prefix is optional:
@@ -33,7 +34,10 @@ Or install a single skill by name — the `firecrawl-` prefix is optional:
 ```bash
 firecrawl setup developer-index
 firecrawl setup seo-audit
+firecrawl setup legal-research
 ```
+
+`firecrawl init` never installs vertical skills. They live in the catalog under `skills/verticals/`, so new ones are available to `firecrawl setup verticals` and `firecrawl setup <name>` without a CLI release.
 
 If no API key is found afterwards, an interactive terminal offers a browser login (pass `--browser` to log in without the prompt); non-interactive runs never block — they print a hint and the skills walk agents through setup on first use.
 
@@ -112,6 +116,10 @@ catalog API discovery falls back to this CLI release's known names with a warnin
 Native installs discover skills directly from the Git repository and require that
 repository to be available. An explicit refresh replaces installed files, including
 local edits; the notice itself never changes them.
+
+Vertical skills are opt-in, so the notice never announces new ones. It lists
+updates only for vertical skills you installed, each with its own
+`firecrawl setup <name>` command.
 
 Checks cover global installations recorded in `~/.agents/.skill-lock.json` with
 files in `~/.agents/skills`. They cache catalog results for 20 hours, repeat the

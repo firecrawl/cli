@@ -268,6 +268,63 @@ describe('handleSetupCommand', () => {
     );
   });
 
+  describe('opt-in vertical skills', () => {
+    const catalogWithVerticals = [
+      { name: 'firecrawl-lead-gen', family: 'workflows' as const, files: {} },
+      {
+        name: 'firecrawl-legal-research',
+        family: 'verticals' as const,
+        files: {},
+      },
+      {
+        name: 'firecrawl-travel-research',
+        family: 'verticals' as const,
+        files: {},
+      },
+    ];
+
+    it('leaves vertical skills out of setup workflows', async () => {
+      vi.mocked(getCatalogSkills).mockResolvedValueOnce(catalogWithVerticals);
+      await handleSetupCommand('workflows', {});
+      expectSkillsInstall(
+        'npx -y skills@1.7.2 add firecrawl/skills --full-depth --global --yes --agent codex --skill firecrawl-lead-gen'
+      );
+    });
+
+    it('installs the whole vertical family with setup verticals', async () => {
+      vi.mocked(getCatalogSkills).mockResolvedValueOnce(catalogWithVerticals);
+      await handleSetupCommand('verticals', {});
+      expectSkillsInstall(
+        'npx -y skills@1.7.2 add firecrawl/skills --full-depth --global --yes --agent codex --skill firecrawl-legal-research firecrawl-travel-research'
+      );
+    });
+
+    it.each(['legal-research', 'firecrawl-legal-research'])(
+      'installs one vertical skill by name: %s',
+      async (name) => {
+        vi.mocked(getCatalogSkills).mockResolvedValueOnce(catalogWithVerticals);
+        await handleSetupCommand(name, {});
+        expectSkillsInstall(
+          'npx -y skills@1.7.2 add firecrawl/skills --full-depth --global --yes --agent codex --skill firecrawl-legal-research'
+        );
+      }
+    );
+
+    it('rejects a bare name the catalog cannot confirm', async () => {
+      const exit = vi.spyOn(process, 'exit').mockImplementation(((
+        code?: number
+      ) => {
+        throw new Error(`process.exit:${code}`);
+      }) as never);
+      vi.mocked(getCatalogSkills).mockRejectedValueOnce(new Error('offline'));
+      await expect(handleSetupCommand('legal-research', {})).rejects.toThrow(
+        'process.exit:1'
+      );
+      expect(execFileSync).not.toHaveBeenCalled();
+      exit.mockRestore();
+    });
+  });
+
   it('rejects a full skill name the catalog does not list', async () => {
     const exit = vi.spyOn(process, 'exit').mockImplementation(((
       code?: number

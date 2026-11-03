@@ -761,6 +761,69 @@ describe('skill update lifecycle', () => {
     expect(requests).toBe(0);
   });
 
+  it('keeps vertical skills out of workflow installs and installs them on request', async () => {
+    skill('verticals', 'firecrawl-legal-research');
+    skill('verticals', 'firecrawl-travel-research');
+    publish();
+    const installed = path.join(home, '.agents/skills');
+    const setup = (name: string) =>
+      handleSetupCommand(name, {
+        nativeSkills: true,
+        agent: 'claude-code',
+        quiet: true,
+        skipAuthOffer: true,
+      });
+
+    await setup('workflows');
+    expect(fs.readdirSync(installed).sort()).toEqual([
+      'firecrawl-lead-research',
+      'firecrawl-workflows',
+    ]);
+    await maybeShowSkillUpdateNotice({ now, stderr });
+    skill('verticals', 'firecrawl-health-research');
+    publish();
+    await maybeShowSkillUpdateNotice({
+      now: new Date(now.getTime() + 21 * 60 * 60 * 1000),
+      stderr,
+    });
+    expect(stderr.write).not.toHaveBeenCalled();
+
+    await setup('legal-research');
+    expect(
+      fs.existsSync(
+        path.join(home, '.claude/skills/firecrawl-legal-research/SKILL.md')
+      )
+    ).toBe(true);
+    expect(
+      fs.existsSync(path.join(installed, 'firecrawl-travel-research'))
+    ).toBe(false);
+
+    write(
+      'skills/verticals/firecrawl-legal-research/SKILL.md',
+      '---\nname: firecrawl-legal-research\ndescription: Updated\n---\nRun it.\n'
+    );
+    publish();
+    await maybeShowSkillUpdateNotice({
+      now: new Date(now.getTime() + 42 * 60 * 60 * 1000),
+      stderr,
+    });
+    const notice = stripVTControlCharacters(
+      String(stderr.write.mock.calls[0][0])
+    );
+    expect(notice).toContain('Run firecrawl setup firecrawl-legal-research');
+    expect(notice).not.toContain('Run firecrawl setup verticals');
+    expect(notice).not.toContain('firecrawl-health-research');
+
+    await setup('verticals');
+    expect(
+      [
+        'firecrawl-health-research',
+        'firecrawl-legal-research',
+        'firecrawl-travel-research',
+      ].every((name) => fs.existsSync(path.join(installed, name, 'SKILL.md')))
+    ).toBe(true);
+  });
+
   it('ignores truncated responses and malformed local state without failing commands', async () => {
     await install();
     response = { ...(response as object), truncated: true };
