@@ -393,7 +393,8 @@ firecrawl search "AI data tools"
 | `--ignore-invalid-urls`      | Exclude URLs invalid for other Firecrawl endpoints                                                                                                                                                                |
 | `--scrape`                   | Enable scraping of search results                                                                                                                                                                                 |
 | `--scrape-formats <formats>` | Scrape formats when `--scrape` enabled (default: markdown)                                                                                                                                                        |
-| `--only-main-content`        | Include only main content when scraping (default: true)                                                                                                                                                           |
+| `--only-main-content`        | Include only the main content when scraping (the API default)                                                                                                                                                     |
+| `--full-page`                | Keep the whole page when scraping, including navs and footers                                                                                                                                                     |
 | `-o, --output <path>`        | Save to file                                                                                                                                                                                                      |
 | `--json`                     | Output as compact JSON                                                                                                                                                                                            |
 
@@ -674,27 +675,27 @@ firecrawl crawl https://example.com --limit 100 --max-depth 3
 
 #### Crawl Options
 
-| Option                         | Description                              |
-| ------------------------------ | ---------------------------------------- |
-| `--wait`                       | Wait for crawl to complete               |
-| `--progress`                   | Show progress while waiting              |
-| `--limit <n>`                  | Maximum pages to crawl                   |
-| `--max-depth <n>`              | Maximum crawl depth                      |
-| `--include-paths <paths>`      | Only crawl matching paths                |
-| `--exclude-paths <paths>`      | Skip matching paths                      |
-| `--sitemap <mode>`             | `include`, `skip`, or `only`             |
-| `--allow-subdomains`           | Include subdomains                       |
-| `--allow-external-links`       | Follow external links                    |
-| `--crawl-entire-domain`        | Crawl entire domain                      |
-| `--ignore-query-parameters`    | Treat URLs with different params as same |
-| `--delay <ms>`                 | Delay between requests                   |
-| `--max-concurrency <n>`        | Max concurrent requests                  |
-| `--scrape-options <json>`      | JSON scrape options passed to each page  |
-| `--scrape-options-file <path>` | Path to scrape options JSON file         |
-| `--webhook <url-or-json>`      | Webhook URL or configuration             |
-| `--cancel`                     | Cancel an active crawl job by job ID     |
-| `--timeout <seconds>`          | Timeout when waiting                     |
-| `--poll-interval <seconds>`    | Status check interval                    |
+| Option                         | Description                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------- |
+| `--wait`                       | Wait for crawl to complete                                                      |
+| `--progress`                   | Show progress while waiting                                                     |
+| `--limit <n>`                  | Maximum pages to crawl                                                          |
+| `--max-depth <n>`              | Maximum crawl depth                                                             |
+| `--include-paths <paths>`      | Only crawl matching paths                                                       |
+| `--exclude-paths <paths>`      | Skip matching paths                                                             |
+| `--sitemap <mode>`             | `include`, `skip`, or `only`                                                    |
+| `--allow-subdomains`           | Include subdomains                                                              |
+| `--allow-external-links`       | Follow external links                                                           |
+| `--crawl-entire-domain`        | Crawl entire domain                                                             |
+| `--ignore-query-parameters`    | Treat URLs with different params as same                                        |
+| `--delay <ms>`                 | Delay between requests in milliseconds, 1 to 60000 (sent to the API in seconds) |
+| `--max-concurrency <n>`        | Max concurrent requests                                                         |
+| `--scrape-options <json>`      | JSON scrape options passed to each page                                         |
+| `--scrape-options-file <path>` | Path to scrape options JSON file                                                |
+| `--webhook <url-or-json>`      | Webhook URL or configuration                                                    |
+| `--cancel`                     | Cancel an active crawl job by job ID                                            |
+| `--timeout <seconds>`          | Timeout when waiting                                                            |
+| `--poll-interval <seconds>`    | Status check interval                                                           |
 
 #### Examples
 

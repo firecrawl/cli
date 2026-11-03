@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  parseCrawlDelay,
   parseFormats,
   parseMaxPages,
   parseScrapeOptions,
@@ -473,6 +474,20 @@ describe('PDF page cap options', () => {
     (value) => {
       expect(() => parseMaxPages(value)).toThrow(
         'must be an integer between 1 and 10000'
+      );
+    }
+  );
+});
+
+describe('crawl delay option', () => {
+  it.each(['1', '1500', '60000'])('accepts %s milliseconds', (value) => {
+    expect(parseCrawlDelay(value)).toBe(Number(value));
+  });
+  it.each(['0', '-1', '60001', '1.5', '1e3', 'abc', ''])(
+    'rejects %s',
+    (value) => {
+      expect(() => parseCrawlDelay(value)).toThrow(
+        'must be between 1 and 60000 milliseconds'
       );
     }
   );

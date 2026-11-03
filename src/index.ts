@@ -84,6 +84,7 @@ import { isUrl, normalizeUrl } from './utils/url';
 import { resolveScrapeTarget } from './utils/scrape-target';
 import {
   onlyMainContentFlag,
+  parseCrawlDelay,
   parseMaxPages,
   parseScrapeOptions,
 } from './utils/options';
@@ -725,8 +726,8 @@ function createCrawlCommand(): Command {
     .option('--allow-subdomains', 'Allow subdomains', false)
     .option(
       '--delay <ms>',
-      'Delay between requests in milliseconds (sent to the API in seconds)',
-      parseInt
+      'Delay between requests in milliseconds, 1 to 60000 (sent to the API in seconds)',
+      parseCrawlDelay
     )
     .option(
       '--max-concurrency <number>',
@@ -1202,8 +1203,11 @@ function createSearchCommand(): Command {
     )
     .option(
       '--only-main-content',
-      'Include only main content when scraping',
-      true
+      'Include only the main content when scraping (the API default)'
+    )
+    .option(
+      '--full-page',
+      'Keep the whole page when scraping, including navigation, headers and footers'
     )
     .option(
       '-k, --api-key <key>',
@@ -1300,7 +1304,7 @@ function createSearchCommand(): Command {
         highlights: options.highlights,
         scrape: options.scrape,
         scrapeFormats,
-        onlyMainContent: options.onlyMainContent,
+        onlyMainContent: onlyMainContentFlag(options),
         apiKey: options.apiKey,
         apiUrl: options.apiUrl,
         output: options.output,

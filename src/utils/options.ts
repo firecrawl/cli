@@ -80,6 +80,16 @@ export function parseMaxPages(value: string): number {
   return pages;
 }
 
+export function parseCrawlDelay(value: string): number {
+  const ms = Number(value);
+  if (!/^\d+$/.test(value) || ms < 1 || ms > 60000) {
+    throw new InvalidArgumentError(
+      'must be between 1 and 60000 milliseconds (the API allows at most 60 seconds)'
+    );
+  }
+  return ms;
+}
+
 /**
  * Convert commander options to ScrapeOptions
  */
