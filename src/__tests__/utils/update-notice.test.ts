@@ -220,6 +220,40 @@ describe('update notice', () => {
     expect(write).not.toHaveBeenCalled();
   });
 
+  it('keeps the 12 hour cooldown per update line, for installs sharing the cache', async () => {
+    const shown = (lastShownHint: string) =>
+      fs.writeFileSync(
+        path.join(tmpDir, 'update-check.json'),
+        JSON.stringify({
+          latestVersion: '99.99.99',
+          checkedAt: new Date('2026-06-04T12:00:00.000Z').toISOString(),
+          lastShownVersion: '99.99.99',
+          lastShownAt: new Date('2026-06-04T12:30:00.000Z').toISOString(),
+          lastShownHint,
+        })
+      );
+    const notice = () =>
+      maybeShowUpdateNotice({
+        cacheDir: tmpDir,
+        command: 'firecrawl update',
+        now: new Date('2026-06-04T13:00:00.000Z'),
+        stderr: stderr(),
+      });
+
+    // Another install sharing ~/.firecrawl showed its own line half an hour ago.
+    shown('Run brew upgrade firecrawl-cli to update.');
+    await notice();
+    // The command is colorized on a TTY, so assert on the version line.
+    expect(write).toHaveBeenCalledWith(
+      expect.stringContaining(`${packageJson.version} -> 99.99.99`)
+    );
+
+    write.mockClear();
+    shown('Run firecrawl update to update.');
+    await notice();
+    expect(write).not.toHaveBeenCalled();
+  });
+
   it('prints the same update again after 12 hours', async () => {
     fs.writeFileSync(
       path.join(tmpDir, 'update-check.json'),

@@ -22,6 +22,8 @@ interface UpdateCache {
   checkedAt: string;
   lastShownVersion?: string;
   lastShownAt?: string;
+  /** The update line last shown; installs sharing this cache can need different ones. */
+  lastShownHint?: string;
 }
 
 export interface UpdateNoticeOptions {
@@ -71,6 +73,7 @@ export async function readCachedLatest(
   stale: boolean;
   lastShownVersion?: string;
   lastShownAt?: string;
+  lastShownHint?: string;
 }> {
   try {
     const raw = await fs.readFile(cachePath, 'utf-8');
@@ -91,6 +94,7 @@ export async function readCachedLatest(
       stale,
       lastShownVersion: parsed.lastShownVersion,
       lastShownAt: parsed.lastShownAt,
+      lastShownHint: parsed.lastShownHint,
     };
   } catch {
     return { stale: true };
@@ -139,11 +143,17 @@ function noticeWasRecentlyShown(
   cache: {
     lastShownVersion?: string;
     lastShownAt?: string;
+    lastShownHint?: string;
   },
   latestVersion: string,
+  hint: string,
   now: Date
 ): boolean {
   if (cache.lastShownVersion !== latestVersion || !cache.lastShownAt) {
+    return false;
+  }
+  // A cache written before hints were recorded keeps its cooldown.
+  if (cache.lastShownHint !== undefined && cache.lastShownHint !== hint) {
     return false;
   }
 
@@ -181,14 +191,16 @@ export async function maybeShowUpdateNotice(
         checkedAt,
         lastShownVersion: cached.lastShownVersion,
         lastShownAt: cached.lastShownAt,
+        lastShownHint: cached.lastShownHint,
       });
     }
   }
 
   if (!shouldShowNotice(latestVersion) || latestVersion === undefined) return;
-  if (noticeWasRecentlyShown(cached, latestVersion, now)) return;
-
   const command = options.command ?? updateCommand(options.installPaths);
+  const hint = options.hint ?? `Run ${command} to update.`;
+  if (noticeWasRecentlyShown(cached, latestVersion, hint, now)) return;
+
   stderr.write(
     `${colorizeUpdateNotice(
       formatUpdateNotice(latestVersion, command, options.hint),
@@ -205,5 +217,6 @@ export async function maybeShowUpdateNotice(
     checkedAt: checkedAt ?? now.toISOString(),
     lastShownVersion: latestVersion,
     lastShownAt: now.toISOString(),
+    lastShownHint: hint,
   });
 }

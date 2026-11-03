@@ -1022,6 +1022,7 @@ export async function runAutoUpdateWorker(): Promise<void> {
       checkedAt: new Date().toISOString(),
       lastShownVersion: cached.lastShownVersion,
       lastShownAt: cached.lastShownAt,
+      lastShownHint: cached.lastShownHint,
     });
 
     if (compareVersions(current, latest.version) >= 0) return;
