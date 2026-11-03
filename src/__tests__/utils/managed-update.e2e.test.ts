@@ -14,6 +14,7 @@ import http from 'http';
 import os from 'os';
 import path from 'path';
 import packageJson from '../../../package.json';
+import { installationId } from '../../utils/managed-paths';
 
 // Real npm packages, a global launcher, a local registry, and real child processes.
 describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
@@ -83,7 +84,8 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
       if (result.status !== 0) throw new Error(`npm failed: ${result.stderr}`);
       return result.stdout;
     }
-    const pointer = () => path.join(store, 'current.json');
+    const pointer = () =>
+      path.join(store, 'pointers', installationId(basePackage), 'current.json');
     const dataFile = (name: string) => path.join(home, '.firecrawl', name);
     function state() {
       try {
@@ -514,6 +516,78 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
     );
 
     it(
+      'preserves selection when another hardlink changes package metadata',
+      { timeout: caseTimeout },
+      async () => {
+        expect((await run(['update'])).code).toBe(0);
+        const link = path.join(home, 'shared-manifest.json');
+        fs.linkSync(path.join(basePackage, 'package.json'), link);
+        expect((await version()).stdout.trim()).toBe(next);
+        fs.rmSync(link);
+        expect((await version()).stdout.trim()).toBe(next);
+      }
+    );
+
+    it(
+      'keeps separate global selections and rollback releases while reclaiming removed installs',
+      { timeout: caseTimeout * 2 },
+      async () => {
+        expect((await run(['update'])).code).toBe(0);
+        latest = later;
+        expect((await run(['update'])).code).toBe(0);
+        const second = path.join(
+          home,
+          'second',
+          ...(process.platform === 'win32' ? [] : ['lib']),
+          'node_modules',
+          'firecrawl-cli'
+        );
+        fs.cpSync(installedTemplate, path.join(home, 'second'), {
+          recursive: true,
+          verbatimSymlinks: true,
+        });
+        const secondLauncher = path.join(second, 'dist/launcher.js');
+        latest = newest;
+        const result = await run(['update'], {}, secondLauncher);
+        expect(result.code, result.stdout + result.stderr).toBe(0);
+        expect((await version()).stdout.trim()).toBe(later);
+        expect(
+          (await run(['--version'], {}, secondLauncher)).stdout.trim()
+        ).toBe(newest);
+        expect(fs.existsSync(path.join(store, next))).toBe(true);
+        expect((await run(['update', '--rollback'])).code).toBe(0);
+        expect((await version()).stdout.trim()).toBe(next);
+        expect(
+          (await run(['--version'], {}, secondLauncher)).stdout.trim()
+        ).toBe(newest);
+        const removedPointer = pointer();
+        fs.rmSync(basePackage, { recursive: true });
+        expect((await run(['update'], {}, secondLauncher)).code).toBe(0);
+        expect(fs.existsSync(removedPointer)).toBe(false);
+        expect(fs.existsSync(path.join(store, next))).toBe(false);
+        expect(fs.existsSync(path.join(store, later))).toBe(false);
+      }
+    );
+
+    it(
+      'reports an already current installation even while another updater holds the lock',
+      { timeout: caseTimeout },
+      async () => {
+        latest = current;
+        const lock = dataFile('auto-update.lock');
+        fs.writeFileSync(lock, JSON.stringify({ pid: process.pid }));
+        try {
+          const result = await run(['update']);
+          expect(result.code).toBe(0);
+          expect(result.stdout).toContain('is up to date');
+          expect(fs.existsSync(lock)).toBe(true);
+        } finally {
+          fs.rmSync(lock, { force: true });
+        }
+      }
+    );
+
+    it(
       'reuses a saved release across Node patch changes and checks its engine range',
       { timeout: caseTimeout },
       async () => {
@@ -808,6 +882,7 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
           { version: next },
           { version: 42 },
         ]) {
+          fs.mkdirSync(path.dirname(pointer()), { recursive: true });
           fs.writeFileSync(pointer(), JSON.stringify(pointerValue));
           expect((await version()).stdout.trim()).toBe(current);
         }

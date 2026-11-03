@@ -5,6 +5,7 @@ import path from 'path';
 import {
   managedEntry,
   managedRoot,
+  managedPointerFile,
   readManagedPointer,
   stableVersion,
   writeManagedPointer,
@@ -178,6 +179,6 @@ export function rollbackManagedVersion(
     return pointer.previous;
   }
   beforeSwitch();
-  fs.rmSync(path.join(managedRoot(), 'current.json'));
+  fs.rmSync(managedPointerFile());
   return 'the package-manager installation';
 }

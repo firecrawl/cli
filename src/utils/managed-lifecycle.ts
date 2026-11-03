@@ -1,17 +1,15 @@
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
-import { createHash, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import {
   managedRoot,
   readManagedPointer,
   stableVersion,
+  installationId,
+  hostIdentity,
 } from './managed-paths';
 
-const HOST = createHash('sha256')
-  .update(os.hostname())
-  .digest('hex')
-  .slice(0, 16);
+const HOST = hostIdentity();
 const STAGING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 function alive(pid: number): boolean {
@@ -82,8 +80,35 @@ export function cleanupManagedVersions(
   log: (message: string) => void = () => {}
 ): void {
   const root = managedRoot();
-  const pointer = readManagedPointer();
-  const keep = new Set([runningVersion, pointer?.version, pointer?.previous]);
+  const keep = new Set<string | undefined>([runningVersion]);
+  const pointers = path.join(root, 'pointers');
+  try {
+    for (const identity of fs.readdirSync(pointers)) {
+      if (!/^[a-f0-9]{64}$/.test(identity)) continue;
+      const pointer = readManagedPointer(identity);
+      if (!pointer) continue;
+      let obsolete = false;
+      if (pointer.host === HOST) {
+        try {
+          obsolete = installationId(pointer.packageRoot) !== identity;
+        } catch (error) {
+          obsolete = (error as NodeJS.ErrnoException).code === 'ENOENT';
+        }
+      }
+      if (obsolete) {
+        fs.rmSync(path.join(pointers, identity), {
+          recursive: true,
+          force: true,
+        });
+        continue;
+      }
+      keep.add(pointer.version);
+      keep.add(pointer.previous);
+    }
+  } catch (error) {
+    // Without a complete snapshot, no release can safely be removed.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return;
+  }
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(root, { withFileTypes: true });

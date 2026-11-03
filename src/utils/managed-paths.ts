@@ -8,6 +8,8 @@ export interface ManagedPointer {
   version: string;
   previous?: string;
   installation: string;
+  packageRoot: string;
+  host: string;
 }
 
 export const LAUNCHER_ID_ENV = 'FIRECRAWL_LAUNCHER_ID';
@@ -17,15 +19,29 @@ export function installationId(packageRoot: string): string {
   const manifest = fs.realpathSync(path.join(packageRoot, 'package.json'));
   const stat = fs.statSync(manifest, { bigint: true });
   return createHash('sha256')
-    .update(`${manifest}:${stat.dev}:${stat.ino}:${stat.ctimeNs}`)
+    .update(`${manifest}:${stat.dev}:${stat.ino}:${stat.birthtimeNs}`)
     .digest('hex');
+}
+
+export function hostIdentity(): string {
+  return createHash('sha256').update(os.hostname()).digest('hex').slice(0, 16);
+}
+
+function launcherPackageRoot(): string {
+  return process.env.FIRECRAWL_LAUNCHER_PATH
+    ? path.resolve(path.dirname(process.env.FIRECRAWL_LAUNCHER_PATH), '..')
+    : path.resolve(__dirname, '../..');
+}
+
+export function managedPointerFile(identity = activeInstallationId()): string {
+  return path.join(managedRoot(), 'pointers', identity, 'current.json');
 }
 
 export function activeInstallationId(): string {
   const inherited = process.env[LAUNCHER_ID_ENV];
   return inherited && /^[a-f0-9]{64}$/.test(inherited)
     ? inherited
-    : installationId(path.resolve(__dirname, '../..'));
+    : installationId(launcherPackageRoot());
 }
 
 export const stableVersion = (version: unknown): version is string =>
@@ -51,15 +67,21 @@ export function managedPackage(version: string): string {
   return path.join(managedRoot(), version, 'node_modules', 'firecrawl-cli');
 }
 
-export function readManagedPointer(): ManagedPointer | undefined {
+export function readManagedPointer(
+  identity = activeInstallationId()
+): ManagedPointer | undefined {
   try {
     const value = JSON.parse(
-      fs.readFileSync(path.join(managedRoot(), 'current.json'), 'utf8')
+      fs.readFileSync(managedPointerFile(identity), 'utf8')
     );
     if (!stableVersion(value?.version)) return undefined;
     if (
       typeof value.installation !== 'string' ||
-      !/^[a-f0-9]{64}$/.test(value.installation)
+      value.installation !== identity ||
+      typeof value.packageRoot !== 'string' ||
+      !path.isAbsolute(value.packageRoot) ||
+      typeof value.host !== 'string' ||
+      !/^[a-f0-9]{16}$/.test(value.host)
     )
       return undefined;
     if (value.previous !== undefined && !stableVersion(value.previous))
@@ -105,13 +127,23 @@ export function managedEntry(version: string): string | undefined {
   }
 }
 
-export function writeManagedPointer(pointer: ManagedPointer): void {
-  const root = managedRoot();
+export function writeManagedPointer(
+  pointer: Pick<ManagedPointer, 'version' | 'previous' | 'installation'>
+): void {
+  const file = managedPointerFile(pointer.installation);
+  const root = path.dirname(file);
   fs.mkdirSync(root, { recursive: true });
   const staged = path.join(root, `current.${process.pid}.tmp`);
   try {
-    fs.writeFileSync(staged, JSON.stringify(pointer) + '\n');
-    fs.renameSync(staged, path.join(root, 'current.json'));
+    fs.writeFileSync(
+      staged,
+      JSON.stringify({
+        ...pointer,
+        packageRoot: launcherPackageRoot(),
+        host: hostIdentity(),
+      }) + '\n'
+    );
+    fs.renameSync(staged, file);
   } finally {
     fs.rmSync(staged, { force: true });
   }

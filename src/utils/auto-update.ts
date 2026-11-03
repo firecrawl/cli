@@ -719,10 +719,15 @@ export async function updateNow(): Promise<boolean> {
     );
     return false;
   }
+  const upToDate = compareVersions(current, latest.version) >= 0;
   const dir = firecrawlDir();
   const lock = workerLockPath(dir);
   const claim = acquireLock(lock);
   if (claim !== 'acquired') {
+    if (upToDate) {
+      console.log(`firecrawl ${current} is up to date.`);
+      return true;
+    }
     console.error(
       claim === 'held'
         ? 'Another firecrawl update is running. Try again when it finishes.'
@@ -732,7 +737,7 @@ export async function updateNow(): Promise<boolean> {
   }
   try {
     if (channel.kind !== 'binary') cleanupManagedVersions(current);
-    if (compareVersions(current, latest.version) >= 0) {
+    if (upToDate) {
       console.log(`firecrawl ${current} is up to date.`);
       return true;
     }
