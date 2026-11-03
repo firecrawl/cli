@@ -652,9 +652,16 @@ export async function handleAllScrapeCommand(
               const filepath = path.join(dir, 'screenshot.png');
               fs.writeFileSync(filepath, buffer);
               savedFiles.push(filepath);
+            } else {
+              process.stderr.write(
+                `Warning: could not download screenshot for ${url} (HTTP ${response.status})\n`
+              );
             }
-          } catch {
-            // Silently skip failed screenshot downloads
+          } catch (error) {
+            // Skip the screenshot but tell the user it is missing
+            process.stderr.write(
+              `Warning: could not download screenshot for ${url} (${error instanceof Error ? error.message : String(error)})\n`
+            );
           }
         }
       } else if (fmt === 'markdown') {
