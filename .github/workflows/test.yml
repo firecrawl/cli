@@ -87,6 +87,10 @@ jobs:
           ./${{ matrix.binary }} --version
           ./${{ matrix.binary }} --help
 
+      - name: Verify standalone updates end to end (Unix)
+        if: runner.os != 'Windows'
+        run: bun run test:update
+
       - name: Verify binary runs (Windows)
         if: runner.os == 'Windows'
         run: |

@@ -22,6 +22,7 @@
     "type-check": "tsc --noEmit",
     "test:watch": "vitest",
     "test": "vitest run",
+    "test:update": "FIRECRAWL_UPDATE_E2E=1 vitest run src/__tests__/utils/auto-update.e2e.test.ts",
     "publish-beta": "npm publish --tag beta",
     "publish-prod": "npm publish --access public",
     "build:binary": "bash scripts/build-binaries.sh",

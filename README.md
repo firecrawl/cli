@@ -109,59 +109,35 @@ to `~/.firecrawl/auto-update.log`. A failed install waits 24 hours before trying
 again and a failed version check waits one hour; meanwhile the usual update
 notice appears when a newer version is available.
 
-Every other install shows the update notice instead of updating itself:
+Package-managed installs show an update notice with the appropriate command:
+`npm install -g firecrawl-cli@latest`, `pnpm add -g firecrawl-cli@latest`,
+`bun add -g firecrawl-cli@latest`, `yarn global add firecrawl-cli@latest`, or
+`brew upgrade firecrawl-cli`. The CLI never runs these package managers itself.
+Project-local installs, package runners, system packages, non-writable installs,
+binaries owned by another user, and standalone Windows binaries must be updated
+the way they were installed.
 
-- npm, pnpm, bun, and yarn global installs: run `firecrawl update`, which
-  updates with the package manager that installed the CLI. The package manager
-  rewrites files that a running command may still load, so `firecrawl update`
-  first waits until no other firecrawl command is running, and a command that
-  starts during the install waits for it, then runs again on the new version.
-  The install has no time limit, since the package manager handles its own
-  network timeouts. A command that is still waiting after five minutes exits
-  and asks you to run it again, and the install carries on. Pressing Ctrl+C
-  during the install lets the package manager put the previous version back,
-  however long that takes (npm first finishes the downloads it started);
-  pressing it again stops the package manager at once and can leave firecrawl
-  uninstalled until you reinstall it. The package manager also moves the
-  `firecrawl` launcher aside while it downloads and installs (npm does so
-  before its downloads start), so a command launched during the install can
-  fail with "command not found" or a missing module error before it gets the
-  chance to wait; run it again.
-- Homebrew installs: run `brew upgrade firecrawl-cli`.
-- npx and other package runners, a project's local `node_modules`, system
-  packages (deb, rpm, apk, pacman), install locations that are not writable
-  without sudo, standalone binaries run by a user other than their owner (for
-  example with sudo), and standalone Windows binaries: update the way you
-  installed.
-
-A new major version always arrives as a notice, standalone binaries included.
-`firecrawl update` does not install a release that needs a newer Node.js than
-the one running. Prerelease builds stay on the version you installed and show no
-notice.
-
-Turn automatic updates off with either of:
-
-```bash
-firecrawl update --disable-auto    # persistent, undo with --enable-auto
-export FIRECRAWL_NO_AUTO_UPDATE=1  # per environment
-```
-
-They are also off when `CI` is set, unless it is set to `0` or `false`.
-`FIRECRAWL_NO_UPDATE_CHECK=1` turns off both automatic updates and update
-notices. These settings stop only the background check and install:
-`firecrawl update` still works, and a command that starts while a package
-install is running still waits for it.
-
-To update right away, including to a new major version:
+Automatic updates never cross a major version or install a prerelease.
+Prerelease builds stay on the installed version and show no update notice.
+To update a standalone binary immediately, including to a new major version:
 
 ```bash
 firecrawl update
 ```
 
-Version checks honor `npm_config_registry`, and `firecrawl update` on an npm or
-pnpm install also reads the registry from that package manager's configuration.
-Standalone binaries download from
-GitHub releases; set `FIRECRAWL_RELEASES_URL` to a mirror with the same layout.
+Turn automatic updates off with either of:
+
+```bash
+firecrawl update --disable-auto   # persistent, undo with --enable-auto
+export FIRECRAWL_NO_AUTO_UPDATE=1 # per environment
+```
+
+They are also off when `CI` is set, unless it is `0` or `false`.
+`FIRECRAWL_NO_UPDATE_CHECK=1` turns off both automatic updates and notices.
+These settings do not prevent an explicit `firecrawl update`.
+
+Version checks honor `npm_config_registry`. Binary downloads use GitHub
+releases; set `FIRECRAWL_RELEASES_URL` to a mirror with the same layout.
 
 ### Skill updates
 

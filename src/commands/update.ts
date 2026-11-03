@@ -34,7 +34,7 @@ export async function handleUpdateCommand(
 
   if (options.disableAuto) {
     console.log(
-      'Automatic updates are off. Run firecrawl update to update manually.'
+      `Automatic updates are off. ${updateHint(detectInstallChannel())}`
     );
     return;
   }

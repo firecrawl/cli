@@ -88,8 +88,6 @@ import { ensureAuthenticated, printBanner } from './utils/auth';
 import { maybeShowUpdateNotice } from './utils/update-notice';
 import {
   isAutoUpdateWorker,
-  registerInvocation,
-  relaunchAfterUpdate,
   runAutoUpdateWorker,
   startAutoUpdate,
   updateHint,
@@ -2997,16 +2995,6 @@ async function main() {
   const args = process.argv.slice(2);
   const isUpdate = getFirstPositionalArg(args) === 'update';
   const channel = detectInstallChannel();
-  const registration = isUpdate ? 'run' : await registerInvocation(channel);
-  if (registration === 'busy') {
-    process.exitCode = 1;
-    return;
-  }
-  if (registration === 'relaunch') {
-    process.exitCode = await relaunchAfterUpdate();
-    return;
-  }
-
   // Handle --version with --auth-status before Commander processes it
   // Commander's built-in --version handler doesn't support additional flags
   const hasVersion = args.includes('--version') || args.includes('-V');
@@ -3026,11 +3014,7 @@ async function main() {
   }
 
   if (!isUpdate && !(await startAutoUpdate({ channel }))) {
-    await maybeShowUpdateNotice(
-      channel.kind === 'unsupported'
-        ? { hint: updateHint(channel) }
-        : { command: channel.kind === 'brew' ? undefined : 'firecrawl update' }
-    );
+    await maybeShowUpdateNotice({ hint: updateHint(channel) });
   }
   const isSetup =
     args[0] === 'init' ||

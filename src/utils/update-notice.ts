@@ -135,6 +135,7 @@ export function formatUpdateNotice(
 function shouldShowNotice(latestVersion: string | undefined): boolean {
   return (
     typeof latestVersion === 'string' &&
+    !isPrerelease(latestVersion) &&
     compareVersions(packageJson.version, latestVersion) < 0
   );
 }
