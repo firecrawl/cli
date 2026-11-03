@@ -110,7 +110,9 @@ used by running commands. Managed versions are shared within a Node major
 version, so a patch upgrade reuses the saved release. The launcher checks the
 release's Node requirements before selecting it. npm must be available on PATH
 for automatic package updates; otherwise use your package manager's manual
-update command. Install scripts are disabled.
+update command. Install scripts are disabled. Dependencies resolve to versions
+published no later than the release itself, so the waiting period covers them
+too.
 
 Each global installation has its own version selection. Maintenance retains
 the current and previous release for each installation, plus any older release

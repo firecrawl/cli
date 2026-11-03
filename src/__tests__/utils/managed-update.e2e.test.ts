@@ -27,6 +27,16 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
     const next = `${major}.${minor}.${patch + 1}`;
     const later = `${major}.${minor}.${patch + 2}`;
     const newest = `${major}.${minor}.${patch + 3}`;
+    const dependent = `${major}.${minor}.${patch + 4}`;
+    const fixtureDependency = 'firecrawl-fixture-dependency';
+    const published = Date.now() - 48 * 3_600_000;
+    // 1.0.1 appears after every release, so only an unbounded install selects it.
+    const dependencyTimes: Record<string, number> = {
+      '1.0.0': published - 24 * 3_600_000,
+      '1.0.1': published + 3_600_000,
+    };
+    const dependencyTarballs = new Map<string, Buffer>();
+    let omitPublishTime: boolean;
     let root: string;
     let installedTemplate: string;
     let home: string;
@@ -197,11 +207,17 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
           bootstrapEnv
         )
       );
-      for (const version of [current, next, later, newest]) {
+      for (const version of [current, next, later, newest, dependent]) {
         const fixture = {
           ...manifest,
           version,
           bundleDependencies: Object.keys(packageJson.dependencies),
+          ...(version === dependent && {
+            dependencies: {
+              ...packageJson.dependencies,
+              [fixtureDependency]: '^1.0.0',
+            },
+          }),
         };
         fs.writeFileSync(
           path.join(source, 'package.json'),
@@ -221,6 +237,27 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
           manifest: fixture,
           tarball: fs.readFileSync(path.join(source, packed.filename)),
         });
+      }
+      const dependencySource = path.join(root, 'dependency');
+      fs.mkdirSync(dependencySource);
+      for (const version of Object.keys(dependencyTimes)) {
+        fs.writeFileSync(
+          path.join(dependencySource, 'package.json'),
+          JSON.stringify({ name: fixtureDependency, version })
+        );
+        const packed = JSON.parse(
+          checkNpm(
+            await npm(
+              ['pack', '--ignore-scripts', '--json'],
+              dependencySource,
+              bootstrapEnv
+            )
+          )
+        )[0];
+        dependencyTarballs.set(
+          version,
+          fs.readFileSync(path.join(dependencySource, packed.filename))
+        );
       }
       // Install once with real npm, then copy that installation for each case.
       // This avoids repeating slow package extraction in every Windows setup.
@@ -287,8 +324,54 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
               versions: Object.fromEntries(
                 [...packages.keys()].map((v) => [v, metadata(v)])
               ),
+              ...(!omitPublishTime && {
+                time: Object.fromEntries(
+                  [...packages.keys()].map((v) => [
+                    v,
+                    new Date(published).toISOString(),
+                  ])
+                ),
+              }),
             })
           );
+          return;
+        }
+        if (req.url === `/${fixtureDependency}`) {
+          const tarball = (version: string) =>
+            `${url}/${fixtureDependency}/-/${fixtureDependency}-${version}.tgz`;
+          res.end(
+            JSON.stringify({
+              name: fixtureDependency,
+              'dist-tags': { latest: '1.0.1' },
+              versions: Object.fromEntries(
+                [...dependencyTarballs].map(([version, bytes]) => [
+                  version,
+                  {
+                    name: fixtureDependency,
+                    version,
+                    dist: {
+                      tarball: tarball(version),
+                      integrity: `sha512-${createHash('sha512').update(bytes).digest('base64')}`,
+                    },
+                  },
+                ])
+              ),
+              time: Object.fromEntries(
+                Object.entries(dependencyTimes).map(([version, time]) => [
+                  version,
+                  new Date(time).toISOString(),
+                ])
+              ),
+            })
+          );
+          return;
+        }
+        const dependencyVersion = new RegExp(
+          `^/${fixtureDependency}/-/${fixtureDependency}-(.+)\\.tgz$`
+        ).exec(req.url!)?.[1];
+        if (dependencyVersion && dependencyTarballs.has(dependencyVersion)) {
+          res.setHeader('Content-Type', 'application/octet-stream');
+          res.end(dependencyTarballs.get(dependencyVersion));
           return;
         }
         const version = /^\/firecrawl-cli\/-\/(.+)\.tgz$/.exec(req.url!)?.[1];
@@ -341,7 +424,7 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
       );
       latest = next;
       requests = [];
-      badIntegrity = unavailable = false;
+      badIntegrity = unavailable = omitPublishTime = false;
       basePackage = path.join(
         prefix,
         ...(process.platform === 'win32' ? [] : ['lib']),
@@ -788,6 +871,37 @@ describe.skipIf(process.env.npm_lifecycle_event !== 'test:update')(
           JSON.parse(fs.readFileSync(dataFile('auto-update.json'), 'utf8'))
             .disabled
         ).toBe(true);
+      }
+    );
+
+    it(
+      'resolves dependencies as the registry stood when the release was published',
+      { timeout: caseTimeout },
+      async () => {
+        latest = dependent;
+        omitPublishTime = true;
+        const unbounded = await run(['update']);
+        expect(unbounded.code).toBe(1);
+        expect(unbounded.stderr).toContain('did not report when');
+        expect(fs.existsSync(pointer())).toBe(false);
+        omitPublishTime = false;
+        const result = await run(['update']);
+        expect(result.code, result.stderr).toBe(0);
+        expect((await version()).stdout.trim()).toBe(dependent);
+        expect(
+          JSON.parse(
+            fs.readFileSync(
+              path.join(
+                store,
+                dependent,
+                'node_modules',
+                fixtureDependency,
+                'package.json'
+              ),
+              'utf8'
+            )
+          ).version
+        ).toBe('1.0.0');
       }
     );
 

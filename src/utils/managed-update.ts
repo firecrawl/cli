@@ -11,7 +11,7 @@ import {
   writeManagedPointer,
   activeInstallationId,
 } from './managed-paths';
-import { compareVersions } from './npm-registry';
+import { compareVersions, getPublishTime } from './npm-registry';
 import { cleanupManagedVersions, stagingPrefix } from './managed-lifecycle';
 
 function installerEnv(): NodeJS.ProcessEnv {
@@ -81,6 +81,17 @@ export async function installManagedVersion(
       throw new Error(
         `The saved ${version} installation is incomplete. Reinstall it manually after stopping commands that use it.`
       );
+    // Resolve dependencies as the registry stood when this release was
+    // published, so they are at least as old as the release itself.
+    const published = await getPublishTime(
+      'firecrawl-cli',
+      version,
+      managedRegistry()
+    );
+    if (published === undefined)
+      throw new Error(
+        `The registry did not report when ${version} was published. The current installation is unchanged.`
+      );
     const staging = fs.mkdtempSync(stagingPrefix());
     try {
       fs.writeFileSync(
@@ -101,6 +112,7 @@ export async function installManagedVersion(
             '--no-audit',
             '--no-fund',
             '--engine-strict',
+            `--before=${new Date(published).toISOString()}`,
             `firecrawl-cli@${version}`,
           ],
           {

@@ -67,6 +67,31 @@ export async function getLatestVersion(
   }
 }
 
+/** When the registry says a release was published, or undefined if it does not say. */
+export async function getPublishTime(
+  packageName: string,
+  version: string,
+  registry: string,
+  timeoutMs = 30_000
+): Promise<number | undefined> {
+  try {
+    const response = await fetch(
+      `${registry.replace(/\/+$/, '')}/${packageName}`,
+      {
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: { Accept: 'application/json' },
+      }
+    );
+    if (!response.ok) return undefined;
+    const data = (await response.json()) as { time?: Record<string, unknown> };
+    const published = data.time?.[version];
+    const time = typeof published === 'string' ? Date.parse(published) : NaN;
+    return Number.isFinite(time) ? time : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Compare two semver-like version strings. Returns:
  *  - negative if a < b
