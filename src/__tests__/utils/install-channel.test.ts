@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { updatesAutomatically } from '../../utils/auto-update';
-import { classifyInstall } from '../../utils/install-channel';
+import {
+  classifyInstall,
+  detectInstallChannel,
+} from '../../utils/install-channel';
 
 const linux = {
   platform: 'linux' as const,
@@ -160,5 +166,35 @@ describe('classifyInstall', () => {
         execPath: 'C:\\Users\\u\\AppData\\Local\\firecrawl\\bin\\firecrawl.exe',
       })
     ).toMatchObject({ kind: 'unsupported', code: 'windows-binary' });
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('detectInstallChannel', () => {
+  it('updates a standalone binary only for the user who owns it', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'firecrawl-owner-'));
+    const executable = path.join(dir, 'firecrawl');
+    fs.writeFileSync(executable, '', { mode: 0o755 });
+    const paths = { ...linux, moduleDir: '/$bunfs/root', execPath: executable };
+    try {
+      expect(detectInstallChannel(paths)).toMatchObject({
+        kind: 'binary',
+        executable,
+      });
+
+      const uid = vi
+        .spyOn(process, 'getuid')
+        .mockReturnValue(fs.statSync(executable).uid + 1);
+      try {
+        expect(detectInstallChannel(paths)).toEqual({
+          kind: 'unsupported',
+          code: 'not-writable',
+          reason: 'the binary belongs to another user',
+        });
+      } finally {
+        uid.mockRestore();
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
