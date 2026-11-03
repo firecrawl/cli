@@ -163,6 +163,7 @@ describe('CLI argv parsing', () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('The github category was removed');
+    expect(result.stderr).toContain('--categories developer');
     expect(result.stderr).toContain('firecrawl developer');
   });
 
