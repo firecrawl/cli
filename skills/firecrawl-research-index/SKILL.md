@@ -57,7 +57,7 @@ There is **no fixed recipe**. Read the query, decide what kind it is, and choose
 - **Enumeration / method-family** ("papers that do X", "alternatives to Adam", "benchmarks for Y") → the answer is a _set_, and this is where `related_papers` earns its keep: expand several strong anchors with `mode=similar`, re-seed from new strong hits. One search is never enough here.
 - **Exhibiting** ("papers that _use_ / exhibit property P") → the relevant papers apply P but their abstracts may not describe it. Go from P's defining paper outward via `citers`/`references`, and use `read_paper` to confirm a candidate actually uses P.
 - **Superlative / leaderboard** ("best on benchmark X", "largest", "most popular") → the ranking lives on **leaderboards / the web**, not in any single abstract. Use `firecrawl_search` / `firecrawl_scrape` to find the benchmark's leaderboard or rankings, read off the top models/papers, then `search_papers` each to get its paper. As a fallback, search the benchmark and `read_paper` candidates for reported numbers. The hardest kind — cast wide.
-- **Org / author filtered** ("from \<org\>", "by \<author\>") → topical match isn't enough; verify the affiliation/authorship (metadata or `read_paper`) before keeping a paper.
+- **Org / author filtered** ("from \<org\>", "by \<author\>") → topical match isn't enough; verify authorship from the listed authors and affiliation with `read_paper` (search results list author names but not affiliations) before keeping a paper.
 - **Compare-against** ("what does paper X benchmark against / build on") → the answer is _inside_ paper X: `read_paper(X, ...)` or `related_papers([X], ..., mode="references")`.
 
 ## Principles
