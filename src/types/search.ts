@@ -4,12 +4,7 @@
 
 import type { ScrapeFormat } from './scrape';
 
-export type SearchSource =
-  | 'web'
-  | 'images'
-  | 'news'
-  | 'alexandria'
-  | 'alexandria-skills';
+export type SearchSource = 'web' | 'images' | 'news' | 'alexandria' | 'skills';
 export type SearchCategory = 'research' | 'pdf' | 'developer' | 'gov';
 
 export interface SearchOptions {
@@ -23,7 +18,7 @@ export interface SearchOptions {
   apiUrl?: string;
   /** Maximum number of results (default: 5, max: 100) */
   limit?: number;
-  /** Sources to search. With an API key and no list, web, alexandria, and alexandria-skills. An explicit list is sent as given, and alexandria is still added when a key is set. */
+  /** Sources to search. With an API key and no list, web, alexandria, and skills. An explicit list is sent as given, and alexandria is still added when a key is set. */
   sources?: SearchSource[];
   /** Categories to filter results: research, pdf, developer, gov */
   categories?: SearchCategory[];

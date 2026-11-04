@@ -458,10 +458,11 @@ it('documents the default discovery flow and adds alexandria to explicit sources
   const help = await cli(['--help']);
   expect(help.stdout).toContain('find-tools');
   const searchHelp = await cli(['search', '--help']);
-  expect(searchHelp.stdout.replace(/\s+/g, ' ')).toContain(
-    'the default is web, alexandria, and alexandria-skills'
+  const searchHelpText = searchHelp.stdout.replace(/\s+/g, ' ');
+  expect(searchHelpText).toContain('web, images, news, alexandria, skills');
+  expect(searchHelpText).toContain(
+    'the default is web, alexandria, and skills'
   );
-  expect(searchHelp.stdout).toContain('alexandria-skills');
   expect(searchHelp.stdout).toContain('--no-domain-tools');
   const scrapeHelp = await cli(['scrape', '--help']);
   expect(scrapeHelp.stdout).toContain('--alexandria');
@@ -503,12 +504,12 @@ it('documents the default discovery flow and adds alexandria to explicit sources
     'search',
     'pizza hut',
     '--sources',
-    'alexandria-skills',
+    'skills',
     '--json',
   ]);
   expect(skillsOnly.code).toBe(0);
   expect(requests.at(-1)?.body).toMatchObject({
-    sources: [{ type: 'alexandria-skills' }, { type: 'alexandria' }],
+    sources: [{ type: 'skills' }, { type: 'alexandria' }],
     domainTools: false,
   });
 });
@@ -530,11 +531,7 @@ it('preserves mixed search results, tools and billing metadata', async () => {
     url: '/v2/search',
     headers: { authorization: 'Bearer fc-test' },
     body: {
-      sources: [
-        { type: 'web' },
-        { type: 'alexandria' },
-        { type: 'alexandria-skills' },
-      ],
+      sources: [{ type: 'web' }, { type: 'alexandria' }, { type: 'skills' }],
       domainTools: true,
     },
   });
@@ -1463,11 +1460,7 @@ it('keeps natural query text and disables only domain matching when requested', 
     body: {
       query,
       domainTools: false,
-      sources: [
-        { type: 'web' },
-        { type: 'alexandria' },
-        { type: 'alexandria-skills' },
-      ],
+      sources: [{ type: 'web' }, { type: 'alexandria' }, { type: 'skills' }],
     },
   });
 });

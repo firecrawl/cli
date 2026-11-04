@@ -110,11 +110,7 @@ describe('executeSearch', () => {
         limit: 5,
         integration: 'cli',
         toolDetail: 'compact',
-        sources: [
-          { type: 'web' },
-          { type: 'alexandria' },
-          { type: 'alexandria-skills' },
-        ],
+        sources: [{ type: 'web' }, { type: 'alexandria' }, { type: 'skills' }],
         domainTools: true,
       });
       const body = mockHttpPost.mock.calls[0][1];
@@ -249,11 +245,7 @@ describe('executeSearch', () => {
     it.each([
       [
         undefined,
-        [
-          { type: 'web' },
-          { type: 'alexandria' },
-          { type: 'alexandria-skills' },
-        ],
+        [{ type: 'web' }, { type: 'alexandria' }, { type: 'skills' }],
         true,
       ],
       [['web'], [{ type: 'web' }, { type: 'alexandria' }], true],
@@ -389,7 +381,7 @@ describe('executeSearch', () => {
       expect(mockHttpPost.mock.calls[0][1].sources).toEqual([
         { type: 'web' },
         { type: 'alexandria' },
-        { type: 'alexandria-skills' },
+        { type: 'skills' },
       ]);
       expect(mockHttpPost.mock.calls[1][1]).toMatchObject({
         sources: [{ type: 'web' }],
@@ -406,12 +398,12 @@ describe('executeSearch', () => {
       });
       const result = await executeSearch({
         query: 'records',
-        sources: ['alexandria-skills'],
+        sources: ['skills'],
       });
       expect(result.success).toBe(false);
       expect(mockHttpPost).toHaveBeenCalledTimes(1);
       expect(mockHttpPost.mock.calls[0][1].sources).toEqual([
-        { type: 'alexandria-skills' },
+        { type: 'skills' },
         { type: 'alexandria' },
       ]);
     });

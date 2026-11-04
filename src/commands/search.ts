@@ -38,7 +38,7 @@ export async function executeSearch(
     if (
       options.domainTools ||
       options.sources?.includes('alexandria') ||
-      options.sources?.includes('alexandria-skills')
+      options.sources?.includes('skills')
     )
       requireAlexandriaKey(options.apiKey);
     // Build search options for the SDK
@@ -57,26 +57,24 @@ export async function executeSearch(
     const hasKey = !!getApiKey(options.apiKey);
     const sources: SearchSource[] = [...requestedSources];
     // Retry only when every discovery source in the request was added here.
-    // An explicit alexandria or alexandria-skills source stays, so a refusal
+    // An explicit alexandria or skills source stays, so a refusal
     // of that source is not retried.
     const requestedDiscovery =
       requestedSources.includes('alexandria') ||
-      requestedSources.includes('alexandria-skills');
+      requestedSources.includes('skills');
     let addedDiscovery = false;
     if (hasKey && !sources.includes('alexandria')) {
       sources.push('alexandria');
       if (!requestedDiscovery) addedDiscovery = true;
     }
-    if (hasKey && !explicitSources && !sources.includes('alexandria-skills')) {
-      sources.push('alexandria-skills');
+    if (hasKey && !explicitSources && !sources.includes('skills')) {
+      sources.push('skills');
       if (!requestedDiscovery) addedDiscovery = true;
     }
     searchParams.sources = sources.map((source) => ({ type: source }));
     const pairsWithWeb =
       sources.includes('alexandria') &&
-      sources.some(
-        (source) => source !== 'alexandria' && source !== 'alexandria-skills'
-      );
+      sources.some((source) => source !== 'alexandria' && source !== 'skills');
     searchParams.domainTools = options.domainTools ?? pairsWithWeb;
 
     if (options.highlights !== undefined) {
@@ -200,7 +198,7 @@ export async function executeSearch(
       error:
         options.domainTools ||
         options.sources?.includes('alexandria') ||
-        options.sources?.includes('alexandria-skills')
+        options.sources?.includes('skills')
           ? JSON.stringify(apiFailure(error))
           : error instanceof Error
             ? error.message
