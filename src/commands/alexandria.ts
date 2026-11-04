@@ -326,7 +326,15 @@ export function createFindToolsCommand(): Command {
           );
         call = parseFindToolsRequest(options.request);
       } else if (urls.length) {
-        const notUrl = urls.find((url) => /\s/.test(url) || !url.includes('.'));
+        const notUrl = urls.find((url) => {
+          if (!/^https?:\/\//i.test(url))
+            return /\s/.test(url) || !/^(localhost\b|[^/]*\.)/i.test(url);
+          try {
+            return !new URL(url).hostname;
+          } catch {
+            return true;
+          }
+        });
         if (notUrl !== undefined)
           throw new Error(
             [

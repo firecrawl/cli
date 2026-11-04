@@ -1216,6 +1216,20 @@ it('rejects provider execution and mixed arguments through the find-tools shortc
   expect(requests).toHaveLength(0);
 });
 
+it('points non-URL find-tools arguments at search alexandria and keeps URLs', async () => {
+  const words = await cli(['find-tools', 'weather forecast']);
+  expect(words.code).toBe(1);
+  expect(words.stderr).toContain(
+    "firecrawl search alexandria 'weather forecast'"
+  );
+  expect(requests).toHaveLength(0);
+  for (const url of ['https://example.com', 'http://localhost:3000']) {
+    requests.length = 0;
+    await cli(['find-tools', url, '--json']);
+    expect(requests[0].body.alexandria[0].options.urls).toEqual([url]);
+  }
+});
+
 it('retains empty discovery results and reports nested meta-tool errors as failures', async () => {
   response.data = {
     alexandria: [

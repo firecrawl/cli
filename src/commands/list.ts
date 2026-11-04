@@ -323,12 +323,11 @@ export async function handleList(
     if (options.category && !path.length)
       throw new Error('Provide a category or provider ID.');
     if (options.category && SEARCH_WORDS.includes(path[0].toLowerCase()))
-      throw new Error(
-        [
-          `${JSON.stringify(path[0])} is not an Alexandria category; firecrawl alexandria <category> only browses categories by ID.`,
-          ...catalogueGuidance(path),
-        ].join('\n')
-      );
+      throw new DiscoveryFailure({
+        success: false,
+        error: `${JSON.stringify(path[0])} is not an Alexandria category; firecrawl alexandria <category> only browses categories by ID.`,
+        guidance: catalogueGuidance(path).join('\n'),
+      });
     if (options.providers && (path.length || options.category))
       throw new Error(
         '--providers lists all providers; omit the path and other selectors.'
@@ -478,16 +477,22 @@ export async function handleList(
     process.exitCode = 1;
     const failure =
       error instanceof DiscoveryFailure ? error.envelope : apiFailure(error);
-    if (path.length && unknownIdKind(error))
+    const unknownId = path.length > 0 && unknownIdKind(error) !== undefined;
+    if (unknownId)
       failure.guidance = [
         `No Alexandria category, provider or capability matches ${JSON.stringify(path.join(' '))}; catalogue IDs must match exactly.`,
         ...catalogueGuidance(path),
       ].join('\n');
-    const message =
-      failure.guidance ??
-      failure.error ??
-      failure.data?.alexandria?.[0]?.error?.message ??
-      'Tool discovery failed.';
+    const message = [
+      unknownId
+        ? undefined
+        : (failure.error ??
+          failure.data?.alexandria?.[0]?.error?.message ??
+          'Tool discovery failed.'),
+      failure.guidance,
+    ]
+      .filter(Boolean)
+      .join('\n');
     writeOutput(
       asJson
         ? JSON.stringify(
