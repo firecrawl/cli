@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.27.0
+## 1.28.1
 
 - `find-tools` retries once on HTTP 503 `query_embed_unavailable`. The wait follows `Retry-After` and is capped at 3 seconds. The same request id is reused. A second failure is retryable.
 - Alexandria skills are four operations: `skills list`, `skills read`, `skills create`, and `skills update`. `find-skills`, `read-skill`, `create-skill`, and `update-skill` are the same commands.
