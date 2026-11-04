@@ -5,8 +5,10 @@ import { randomUUID } from 'node:crypto';
 import {
   apiFailure,
   parseFindToolsRequest,
+  quote,
   requestAlexandria,
   requireAlexandriaKey,
+  searchToolsCommand,
   type AlexandriaOptions,
 } from './alexandria';
 import { writeOutput } from '../utils/output';
@@ -76,10 +78,27 @@ class DiscoveryFailure extends Error {
   }
 }
 
-function quote(value: string): string {
-  return /^[a-zA-Z0-9_./:-]+$/.test(value)
-    ? value
-    : `'${value.replaceAll("'", "'\\''")}'`;
+const SEARCH_WORDS = ['search', 'find', 'query', 'lookup', 'discover'];
+
+function unknownIdKind(error: unknown): string | undefined {
+  if (!(error instanceof DiscoveryFailure)) return undefined;
+  const failure = error.envelope.data?.alexandria?.[0]?.error ?? error.envelope;
+  if (failure?.code === 'unknown_provider') return 'providers';
+  const message = failure?.message ?? failure?.error;
+  return typeof message === 'string'
+    ? /^Unknown or unavailable (providers|categories)\./.exec(message)?.[1]
+    : undefined;
+}
+
+function catalogueGuidance(path: string[]): string[] {
+  const words = SEARCH_WORDS.includes(path[0]?.toLowerCase())
+    ? path.slice(1)
+    : path;
+  return [
+    `Search Alexandria tools by what you need: ${searchToolsCommand(words.join(' '))}`,
+    'Browse categories: firecrawl alexandria',
+    'List every provider: firecrawl alexandria list --providers',
+  ];
 }
 
 async function requestCategories(
@@ -303,6 +322,13 @@ export async function handleList(
       throw new Error('Use non-empty catalogue IDs of at most 200 characters.');
     if (options.category && !path.length)
       throw new Error('Provide a category or provider ID.');
+    if (options.category && SEARCH_WORDS.includes(path[0].toLowerCase()))
+      throw new Error(
+        [
+          `${JSON.stringify(path[0])} is not an Alexandria category; firecrawl alexandria <category> only browses categories by ID.`,
+          ...catalogueGuidance(path),
+        ].join('\n')
+      );
     if (options.providers && (path.length || options.category))
       throw new Error(
         '--providers lists all providers; omit the path and other selectors.'
@@ -404,19 +430,8 @@ export async function handleList(
             limit,
           });
         } catch (error) {
-          const envelope =
-            error instanceof DiscoveryFailure ? error.envelope : undefined;
-          const failure = envelope?.data?.alexandria?.[0]?.error ?? envelope;
-          const message = failure?.message ?? failure?.error;
           // An unknown provider can still be a category; other failures must surface.
-          if (
-            failure?.code !== 'unknown_provider' &&
-            !(
-              typeof message === 'string' &&
-              message.startsWith('Unknown or unavailable providers.')
-            )
-          )
-            throw error;
+          if (unknownIdKind(error) !== 'providers') throw error;
         }
       }
       if (!result?.page.total) {
@@ -463,7 +478,13 @@ export async function handleList(
     process.exitCode = 1;
     const failure =
       error instanceof DiscoveryFailure ? error.envelope : apiFailure(error);
+    if (path.length && unknownIdKind(error))
+      failure.guidance = [
+        `No Alexandria category, provider or capability matches ${JSON.stringify(path.join(' '))}; catalogue IDs must match exactly.`,
+        ...catalogueGuidance(path),
+      ].join('\n');
     const message =
+      failure.guidance ??
       failure.error ??
       failure.data?.alexandria?.[0]?.error?.message ??
       'Tool discovery failed.';
