@@ -18,8 +18,8 @@ For structured datasets, first check for a suitable workflow or data provider us
 # Basic markdown extraction
 firecrawl scrape "<url>" -o .firecrawl/page.md
 
-# Main content only, no nav/footer
-firecrawl scrape "<url>" --only-main-content -o .firecrawl/page.md
+# Keep the whole page, including nav/footer (main content only is the default)
+firecrawl scrape "<url>" --full-page -o .firecrawl/page.md
 
 # Wait for JS to render, then scrape
 firecrawl scrape "<url>" --wait-for 3000 -o .firecrawl/page.md
