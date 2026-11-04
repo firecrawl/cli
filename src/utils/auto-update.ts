@@ -689,7 +689,8 @@ export async function updateNow(): Promise<boolean> {
   }
   // The launcher runs update from the installed package, not the release it selects.
   const current =
-    (channel.kind !== 'binary' &&
+    (!isPrerelease(packageJson.version) &&
+      channel.kind !== 'binary' &&
       selectedManagedVersion(packageJson.version)) ||
     packageJson.version;
   if (isPrerelease(current)) {
