@@ -15,9 +15,10 @@ There is **no fixed recipe**. Read the query, decide what kind it is, and choose
 
 ## The tools, and what each is uniquely good at
 
-- MCP: **`firecrawl_research_search_papers(query, k?)`**
-  CLI: **`firecrawl research search-papers <query> [--k <number>]`**
+- MCP: **`firecrawl_research_search_papers(query, k?, sort?, from?, to?)`**
+  CLI: **`firecrawl research search-papers <query> [--k <number>] [--sort <relevance|date_desc>] [--from <YYYY-MM-DD>] [--to <YYYY-MM-DD>]`**
   Semantic (HyDE) search over **abstracts**. The natural first move for almost any query.
+  Use `date_desc` for the newest of the most relevant matches; it does not list every paper in a date range, so add `from` (and `to`) to bound the dates.
   If results look thin or all-alike, re-run with a different framing (sibling domain, rival method, dataset/benchmark name) rather than giving up.
 
 - MCP: **`firecrawl_research_related_papers(seed_ids, intent, mode?, k?)`**

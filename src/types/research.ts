@@ -13,6 +13,7 @@ export interface SearchPapersOptions extends ResearchBaseOptions {
   categories?: string[];
   from?: string;
   to?: string;
+  sort?: 'relevance' | 'date_desc';
 }
 
 export interface InspectPaperOptions extends ResearchBaseOptions {
@@ -39,7 +40,7 @@ export interface PaperHit {
   ids?: Record<string, string[]>;
   title?: string;
   abstract?: string;
-  authors?: string | { name: string; affiliation?: string }[];
+  authors?: string | string[];
   categories?: string[];
   createdDate?: string;
   updateDate?: string;

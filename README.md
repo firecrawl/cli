@@ -632,6 +632,7 @@ Paper ids accept `pmid:`, `pmcid:`, `doi:`, and `arxiv:` forms, plus canonical `
 | `--categories <categories>` | arXiv-style taxonomy labels (e.g. `cs.LG,cs.IR`). Biomedical records do not use these. |
 | `--from <date>`             | Inclusive lower bound on created/updated date (YYYY-MM-DD)                             |
 | `--to <date>`               | Inclusive upper bound on created/updated date (YYYY-MM-DD)                             |
+| `--sort <order>`            | `relevance` (default) or `date_desc` (newest of the most relevant matches)             |
 | `-o, --output <path>`       | Save to file                                                                           |
 | `--json`                    | Output as compact JSON                                                                 |
 | `--pretty`                  | Pretty print JSON output                                                               |

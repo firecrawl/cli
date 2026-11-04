@@ -1537,6 +1537,12 @@ Examples:
       '--to <date>',
       'Inclusive upper bound on created/updated date (YYYY-MM-DD)'
     )
+    .addOption(
+      new Option(
+        '--sort <order>',
+        'relevance (default) or date_desc, which returns the newest of the most relevant matches'
+      ).choices(['relevance', 'date_desc'])
+    )
     .option(
       '-k, --api-key <key>',
       'Firecrawl API key (overrides global --api-key)'
@@ -1553,6 +1559,7 @@ Examples:
         categories: parseCommaList(options.categories),
         from: options.from,
         to: options.to,
+        sort: options.sort,
         apiKey: options.apiKey,
         apiUrl: options.apiUrl,
         output: options.output,
