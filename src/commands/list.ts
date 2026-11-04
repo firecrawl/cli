@@ -15,7 +15,7 @@ import { integrationHeaders } from '../utils/integration';
 
 type Selectors = Record<string, unknown>;
 type ListOptions = AlexandriaOptions & {
-  browse?: boolean;
+  browseCommands?: string[];
   category?: boolean;
   contracts?: boolean;
   limit?: number;
@@ -469,11 +469,11 @@ export async function handleList(
       failure.data?.alexandria?.[0]?.error?.message ??
       'Tool discovery failed.';
     if (
-      options.browse &&
+      options.browseCommands &&
       message.startsWith('Unknown or unavailable categories.')
     )
       failure.error =
-        message = `unknown command or category '${path[0]}'. Commands: list, terms, feedback. Run firecrawl alexandria to list categories.`;
+        message = `unknown command or category '${path[0]}'. Commands: ${options.browseCommands.join(', ')}. Run firecrawl alexandria to list categories.`;
     writeOutput(
       asJson
         ? JSON.stringify(
@@ -534,12 +534,18 @@ export function createListCommand(name = 'list'): Command {
 
 export function createAlexandriaCommand(): Command {
   const browse = createListCommand('browse').action(
-    (path: string[], options: ListOptions) =>
-      handleList(path, {
+    (path: string[], options: ListOptions) => {
+      const alexandria = browse.parent!;
+      return handleList(path, {
         ...options,
-        browse: true,
+        browseCommands: alexandria
+          .createHelp()
+          .visibleCommands(alexandria)
+          .map((command) => command.name())
+          .filter((name) => name !== 'help'),
         category: path.length > 0,
-      })
+      });
+    }
   );
   return new Command('alexandria')
     .description(
