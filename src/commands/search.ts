@@ -416,6 +416,13 @@ function formatSkillCard(skill: SkillSearchResult): string[] {
   return lines;
 }
 
+/** Leave a shell-safe token bare. Quote anything else so a copied hint stays one argument. */
+function shellWord(value: string): string {
+  return /^[A-Za-z0-9_./:-]+$/.test(value)
+    ? value
+    : `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 /** Official and team skills read by id. Provider cards need the three path flags. */
 export function skillReadHint(skill: SkillSearchResult): string | undefined {
   if (typeof skill.id !== 'string' || !skill.id.trim()) return undefined;
@@ -425,8 +432,8 @@ export function skillReadHint(skill: SkillSearchResult): string | undefined {
       ? /^provider:([^/]+)\/([^/]+)\/([^/]+)$/.exec(id)
       : undefined;
   if (providerId)
-    return `firecrawl skills read --provider ${providerId[1]} --plugin ${providerId[2]} --skill ${providerId[3]}`;
-  return `firecrawl skills read ${id}`;
+    return `firecrawl skills read --provider ${shellWord(providerId[1])} --plugin ${shellWord(providerId[2])} --skill ${shellWord(providerId[3])}`;
+  return `firecrawl skills read ${shellWord(id)}`;
 }
 
 /**

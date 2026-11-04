@@ -7,7 +7,11 @@ import {
   createFindSkillsCommand,
   createSkillsCommand,
 } from '../../commands/alexandria';
-import { executeSearch, handleSearchCommand } from '../../commands/search';
+import {
+  executeSearch,
+  handleSearchCommand,
+  skillReadHint,
+} from '../../commands/search';
 import { getClient, keylessRequest } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { writeOutput } from '../../utils/output';
@@ -1184,6 +1188,33 @@ describe('executeSearch', () => {
       await handleSearchCommand({ query: 'GDP growth', json: true });
       expect(JSON.parse(writtenOutput()).data).not.toHaveProperty('skills');
     });
+  });
+});
+
+describe('skill read hints', () => {
+  it('quotes provider and skill arguments that are not shell-safe', () => {
+    expect(
+      skillReadHint({
+        id: 'provider:acme/research/brief',
+        source: 'provider',
+      })
+    ).toBe(
+      'firecrawl skills read --provider acme --plugin research --skill brief'
+    );
+    expect(
+      skillReadHint({
+        id: "provider:acme/my plugin/o'brien;rm",
+        source: 'provider',
+      })
+    ).toBe(
+      "firecrawl skills read --provider acme --plugin 'my plugin' --skill 'o'\\''brien;rm'"
+    );
+    expect(
+      skillReadHint({ id: 'team:weekly-digest', source: 'official' })
+    ).toBe('firecrawl skills read team:weekly-digest');
+    expect(
+      skillReadHint({ id: 'team:weekly digest', source: 'official' })
+    ).toBe("firecrawl skills read 'team:weekly digest'");
   });
 });
 
