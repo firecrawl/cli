@@ -302,6 +302,10 @@ export async function handleList(
       );
     if (path.some((part) => !part.trim() || part.length > 200))
       throw new Error('Use non-empty catalogue IDs of at most 200 characters.');
+    if (options.browseCommands && path[0] === 'search')
+      throw new Error(
+        `unknown command 'search'. Did you mean firecrawl search alexandria ${quote(path.slice(1).join(' ') || '<query>')}?`
+      );
     if (options.category && !path.length)
       throw new Error('Provide a category or provider ID.');
     if (options.providers && (path.length || options.category))
@@ -535,13 +539,6 @@ export function createListCommand(name = 'list'): Command {
 export function createAlexandriaCommand(): Command {
   const browse = createListCommand('browse').action(
     (path: string[], options: ListOptions) => {
-      if (path[0] === 'search') {
-        console.error(
-          `error: unknown command 'search'\n(Did you mean firecrawl search alexandria ${JSON.stringify(path.slice(1).join(' ') || '<query>')}?)`
-        );
-        process.exitCode = 1;
-        return;
-      }
       const alexandria = browse.parent!;
       return handleList(path, {
         ...options,
