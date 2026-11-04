@@ -29,16 +29,6 @@ export function requireAlexandriaKey(apiKey?: string): void {
     );
 }
 
-export function quote(value: string): string {
-  return /^[a-zA-Z0-9_./:-]+$/.test(value)
-    ? value
-    : `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-export function searchToolsCommand(query: string): string {
-  return `firecrawl search alexandria ${quote(query.trim() || '<what you need>')}`;
-}
-
 export function parseToolOptions(raw = '{}'): Record<string, unknown> {
   const value = JSON.parse(raw);
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -325,26 +315,7 @@ export function createFindToolsCommand(): Command {
             '--request cannot be combined with URLs or --options.'
           );
         call = parseFindToolsRequest(options.request);
-      } else if (urls.length) {
-        const notUrl = urls.find((url) => {
-          if (!/^https?:\/\//i.test(url))
-            return /\s/.test(url) || !/^(localhost\b|[^/]*\.)/i.test(url);
-          try {
-            return !new URL(url).hostname;
-          } catch {
-            return true;
-          }
-        });
-        if (notUrl !== undefined)
-          throw new Error(
-            [
-              `find-tools takes URLs or hostnames, and ${JSON.stringify(notUrl)} is neither.`,
-              `Search Alexandria tools by what you need: ${searchToolsCommand(urls.join(' '))}`,
-              `Or query find-tools directly: firecrawl find-tools --options ${quote(JSON.stringify({ query: urls.join(' ') }))}`,
-            ].join('\n')
-          );
-        call.options.urls = urls;
-      }
+      } else if (urls.length) call.options.urls = urls;
       await handleAlexandria([call], options);
     });
 }
