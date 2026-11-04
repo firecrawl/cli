@@ -192,5 +192,5 @@ export function rollbackManagedVersion(
   }
   beforeSwitch();
   fs.rmSync(managedPointerFile());
-  return 'the package-manager installation';
+  return currentVersion;
 }

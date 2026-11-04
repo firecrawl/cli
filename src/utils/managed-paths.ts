@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { createHash } from 'crypto';
-import { satisfies } from 'semver';
+import { gt, satisfies } from 'semver';
 
 export interface ManagedPointer {
   version: string;
@@ -125,6 +125,18 @@ export function managedEntry(version: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** The managed release the launcher runs instead of this installation's own version, if any. */
+export function selectedManagedVersion(
+  installedVersion: string
+): string | undefined {
+  const pointer = readManagedPointer();
+  return pointer &&
+    gt(pointer.version, installedVersion) &&
+    managedEntry(pointer.version)
+    ? pointer.version
+    : undefined;
 }
 
 export function writeManagedPointer(
