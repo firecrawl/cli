@@ -1123,6 +1123,39 @@ it('lists one provider skills and reads one with provider, plugin, and skill', a
   expect(surface.stdout).toContain('update');
 });
 
+it('traces provider skill requests and rejects a 2xx error envelope', async () => {
+  response = { success: false, error: 'Exchange rejected the catalogue.' };
+  const listed = await cli(['skills', 'list', '--provider', 'acme', '--json']);
+  expect(listed.code).toBe(1);
+  const listedBody = JSON.parse(listed.stdout);
+  expect(listedBody).toMatchObject({
+    success: false,
+    error: 'Exchange rejected the catalogue.',
+  });
+  expect(requests[0].headers['x-request-id']).toBe(listedBody.requestId);
+  expect(listed.stderr).toContain(listedBody.requestId);
+
+  response = { success: false, error: 'Exchange rejected the skill.' };
+  const read = await cli([
+    'skills',
+    'read',
+    '--provider',
+    'acme',
+    '--plugin',
+    'research',
+    '--skill',
+    'brief',
+    '--json',
+  ]);
+  expect(read.code).toBe(1);
+  const readBody = JSON.parse(read.stdout);
+  expect(readBody).toMatchObject({
+    success: false,
+    error: 'Exchange rejected the skill.',
+  });
+  expect(requests.at(-1)?.headers['x-request-id']).toBe(readBody.requestId);
+});
+
 it('fails a provider skill read when the skill file is unavailable', async () => {
   statusFor = (request) => (request.url?.endsWith('/file') ? 404 : 200);
   responseFor = () => ({ success: false, error: 'Missing skill file.' });

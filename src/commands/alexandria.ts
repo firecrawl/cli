@@ -531,6 +531,28 @@ function collectSkillRecords(
   return into;
 }
 
+/** Identity for one provider skill. Records with no slug or id stay distinct. */
+export function providerSkillKey(provider: string, skill: any): string {
+  const plugin = pluginIdOf(skill?.plugin) ?? '';
+  const slug = skillSlugOf(skill);
+  const id =
+    typeof skill?.id === 'string' && skill.id.trim()
+      ? skill.id.trim()
+      : undefined;
+  if (slug || id) return `${provider}/${plugin}/${slug ?? id}`;
+  const name =
+    typeof skill?.name === 'string' && skill.name.trim()
+      ? skill.name.trim()
+      : '';
+  let record = name;
+  try {
+    record = JSON.stringify(skill);
+  } catch {
+    record = name;
+  }
+  return `${provider}/${plugin}/${name}:${record}`;
+}
+
 /**
  * Skills from one provider-skills page. Matches `provider.slug` and
  * `plugin.id`, including skills nested under a provider or plugin group.
@@ -544,9 +566,7 @@ export function listedProviderSkills(
   const seen = new Set<string>();
   const skills = collectSkillRecords(body).filter((skill) => {
     if (providerSlugOf(skill?.provider) !== options.provider) return false;
-    const plugin = pluginIdOf(skill?.plugin);
-    const slug = skillSlugOf(skill);
-    const key = `${options.provider}/${plugin ?? ''}/${slug ?? skill?.id ?? ''}`;
+    const key = providerSkillKey(options.provider, skill);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -562,9 +582,55 @@ function apiBase(options: AlexandriaOptions): string {
   ).replace(/\/$/, '');
 }
 
+function clientRequestId(options: AlexandriaOptions): string {
+  const requestId = options.requestId ?? randomUUID();
+  if (!/^[A-Za-z0-9._:-]{1,128}$/.test(requestId))
+    throw new Error('Invalid --request-id.');
+  return requestId;
+}
+
+function exchangeFailed(result: { status: number; body: any }): boolean {
+  return (
+    result.status < 200 ||
+    result.status >= 300 ||
+    (!!result.body &&
+      typeof result.body === 'object' &&
+      !Array.isArray(result.body) &&
+      result.body.success === false)
+  );
+}
+
+function exchangeFailure(
+  result: { status: number; body: any },
+  requestId: string
+): Record<string, any> {
+  const body =
+    result.body &&
+    typeof result.body === 'object' &&
+    !Array.isArray(result.body)
+      ? result.body
+      : {};
+  return {
+    ...apiFailure({
+      response: {
+        status: result.status,
+        data: {
+          ...body,
+          error:
+            typeof body.error === 'string'
+              ? body.error
+              : `Provider skills request failed (HTTP ${result.status}).`,
+        },
+      },
+    }),
+    requestId,
+  };
+}
+
 async function exchangeJson(
   path: string,
-  options: AlexandriaOptions
+  options: AlexandriaOptions,
+  requestId: string
 ): Promise<{ status: number; body: any }> {
   requireAlexandriaKey(options.apiKey);
   const response = await fetch(`${apiBase(options)}${path}`, {
@@ -572,6 +638,7 @@ async function exchangeJson(
     headers: {
       Authorization: `Bearer ${getApiKey(options.apiKey)}`,
       Accept: 'application/json',
+      'X-Request-ID': requestId,
       ...integrationHeaders(),
     },
     redirect: 'error',
@@ -607,7 +674,7 @@ async function handleProviderSkillList(
   options: AlexandriaOptions
 ): Promise<void> {
   const provider = skillPathSegment(selection.provider, '--provider');
-  const requestId = options.requestId ?? randomUUID();
+  const requestId = clientRequestId(options);
   if (options.showReceipt !== false) console.error(`Request ID: ${requestId}`);
   const want = selection.limit ?? 20;
   try {
@@ -624,24 +691,17 @@ async function handleProviderSkillList(
       if (selection.query) params.set('q', selection.query);
       const listed = await exchangeJson(
         `/exchange/provider-skills?${params}`,
-        options
+        options,
+        requestId
       );
-      if (listed.status < 200 || listed.status >= 300) {
-        emitAlexandria(
-          {
-            ...apiFailure({
-              response: { status: listed.status, data: listed.body },
-            }),
-            requestId,
-          },
-          options
-        );
+      if (exchangeFailed(listed)) {
+        emitAlexandria(exchangeFailure(listed, requestId), options);
         return;
       }
       const batch = listedProviderSkills(listed.body, { provider }).skills;
       const before = skills.length;
       for (const skill of batch) {
-        const key = `${pluginIdOf(skill.plugin) ?? ''}/${skillSlugOf(skill) ?? skill.id ?? ''}`;
+        const key = providerSkillKey(provider, skill);
         if (seen.has(key)) continue;
         seen.add(key);
         skills.push(skill);
@@ -683,23 +743,15 @@ async function handleProviderSkillRead(
   file: boolean,
   options: AlexandriaOptions
 ): Promise<void> {
-  const requestId = options.requestId ?? randomUUID();
+  const requestId = clientRequestId(options);
   if (options.showReceipt !== false) console.error(`Request ID: ${requestId}`);
   const segments = [parts.provider, parts.plugin, parts.skill];
   if (file) segments.push('file');
   const path = `/exchange/provider-skills/${segments.map(encodeURIComponent).join('/')}`;
   try {
-    const skill = await exchangeJson(path, options);
-    if (skill.status < 200 || skill.status >= 300) {
-      emitAlexandria(
-        {
-          ...apiFailure({
-            response: { status: skill.status, data: skill.body },
-          }),
-          requestId,
-        },
-        options
-      );
+    const skill = await exchangeJson(path, options, requestId);
+    if (exchangeFailed(skill)) {
+      emitAlexandria(exchangeFailure(skill, requestId), options);
       return;
     }
     emitAlexandria(

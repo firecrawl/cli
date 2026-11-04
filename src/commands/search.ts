@@ -385,7 +385,13 @@ function formatSearchReadable(
 function formatSkillCard(skill: SkillSearchResult): string[] {
   if (!skill || typeof skill !== 'object') return [];
   const lines: string[] = [];
-  lines.push(String(skill.name || skill.id || 'Skill'));
+  lines.push(
+    typeof skill.name === 'string' && skill.name.trim()
+      ? skill.name.trim()
+      : 'Skill'
+  );
+  if (typeof skill.id === 'string' && skill.id.trim())
+    lines.push(`  ID: ${skill.id.trim()}`);
   const source =
     skill.source === 'official'
       ? 'Official'

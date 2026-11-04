@@ -196,6 +196,47 @@ describe('provider skills', () => {
         plugin: { id: 'research' },
       },
     ]);
+    const unnamed = listedProviderSkills(
+      {
+        skills: [
+          {
+            name: 'One',
+            description: 'first',
+            provider: { slug: 'acme' },
+            plugin: { id: 'research' },
+          },
+          {
+            name: 'Two',
+            description: 'second',
+            provider: { slug: 'acme' },
+            plugin: { id: 'research' },
+          },
+          {
+            description: 'alpha',
+            provider: { slug: 'acme' },
+            plugin: { id: 'research' },
+          },
+          {
+            description: 'beta',
+            provider: { slug: 'acme' },
+            plugin: { id: 'research' },
+          },
+          {
+            name: 'One',
+            description: 'first',
+            provider: { slug: 'acme' },
+            plugin: { id: 'research' },
+          },
+        ],
+      },
+      { provider: 'acme' }
+    );
+    expect(unnamed.skills.map((skill) => skill.description)).toEqual([
+      'first',
+      'second',
+      'alpha',
+      'beta',
+    ]);
   });
 
   it('builds the app skill page from the slug and ignores sharePath', () => {

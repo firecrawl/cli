@@ -1152,6 +1152,12 @@ describe('executeSearch', () => {
       expect(webAt).toBeGreaterThanOrEqual(0);
       expect(webAt).toBeLessThan(toolsAt);
       expect(toolsAt).toBeLessThan(skillsAt);
+      expect(readable).toContain('Deep research');
+      expect(readable).toContain('  ID: firecrawl-deep-research');
+      expect(readable).toContain('Audience');
+      expect(readable).toContain(
+        '  ID: provider:carbon-arc/carbon-arc-company-intelligence/ca-audience'
+      );
       expect(readable).toContain('Official');
       expect(readable).toContain('Provider: carbon-arc');
       expect(readable).toContain('Similarity: 0.91');
