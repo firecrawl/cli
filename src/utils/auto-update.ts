@@ -10,6 +10,7 @@ import {
   managedRegistry,
   rollbackManagedVersion,
 } from './managed-update';
+import { selectedManagedVersion } from './managed-paths';
 import {
   detectInstallChannel,
   isCompiledBinary,
@@ -679,7 +680,6 @@ function manualUpdateHint(code: UnsupportedCode): string {
 
 /** Foreground update for `firecrawl update`. Resolves false on failure. */
 export async function updateNow(): Promise<boolean> {
-  const current = packageJson.version;
   const channel = detectInstallChannel();
   if (!updatesAutomatically(channel)) {
     console.error(
@@ -687,6 +687,11 @@ export async function updateNow(): Promise<boolean> {
     );
     return false;
   }
+  // The launcher runs update from the installed package, not the release it selects.
+  const current =
+    (channel.kind !== 'binary' &&
+      selectedManagedVersion(packageJson.version)) ||
+    packageJson.version;
   if (isPrerelease(current)) {
     console.log(
       `firecrawl ${current} is a prerelease build, so it is not moved to the latest release. Rerun the installer to switch to a stable release.`

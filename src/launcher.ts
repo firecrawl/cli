@@ -43,10 +43,8 @@ while (commandIndex < args.length) {
     commandIndex += 1;
   } else break;
 }
-// Rollback runs from this package so a broken release cannot block recovery.
-const recovering =
-  args[commandIndex] === 'update' &&
-  args.slice(commandIndex + 1).includes('--rollback');
+// Updates run from this package so a broken release cannot block recovery.
+const recovering = args[commandIndex] === 'update';
 // Package runners, local dependencies, and system package managers retain
 // their selected release. A global launcher stays untouched by self-updates.
 if (
