@@ -10,11 +10,16 @@ import packageJson from '../../package.json';
 const exec = promisify(execFile);
 const requests: { url?: string; headers: Record<string, any>; body: any }[] =
   [];
+const requestTimes: number[] = [];
 let server: Server;
 let baseUrl: string;
 let status = 200;
 let response: Record<string, any>;
 let responseFor: ((body: any) => Record<string, any>) | undefined;
+let statusFor:
+  | ((request: { url?: string; body: any }, index: number) => number)
+  | undefined;
+let responseHeaders: Record<string, string> = {};
 const home = mkdtempSync(join(tmpdir(), 'alexandria-cli-'));
 
 beforeAll(async () => {
@@ -26,8 +31,14 @@ beforeAll(async () => {
       headers: req.headers,
       body: raw ? JSON.parse(raw) : undefined,
     });
-    res.writeHead(status, { 'content-type': 'application/json' });
-    res.end(JSON.stringify(responseFor?.(requests.at(-1)?.body) ?? response));
+    requestTimes.push(Date.now());
+    const current = requests.at(-1)!;
+    const code = statusFor?.(current, requests.length - 1) ?? status;
+    res.writeHead(code, {
+      'content-type': 'application/json',
+      ...responseHeaders,
+    });
+    res.end(JSON.stringify(responseFor?.(current.body) ?? response));
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
@@ -40,8 +51,11 @@ afterAll(async () => {
 });
 beforeEach(() => {
   requests.length = 0;
+  requestTimes.length = 0;
   status = 200;
   responseFor = undefined;
+  statusFor = undefined;
+  responseHeaders = {};
   response = {
     success: true,
     scrape_id: 'scrape-1',
@@ -444,8 +458,10 @@ it('documents the default discovery flow and adds alexandria to explicit sources
   const help = await cli(['--help']);
   expect(help.stdout).toContain('find-tools');
   const searchHelp = await cli(['search', '--help']);
-  expect(searchHelp.stdout.replace(/\s+/g, ' ')).toContain(
-    'with an API key, alexandria is always added'
+  const searchHelpText = searchHelp.stdout.replace(/\s+/g, ' ');
+  expect(searchHelpText).toContain('web, images, news, alexandria, skills');
+  expect(searchHelpText).toContain(
+    'the default is web, alexandria, and skills'
   );
   expect(searchHelp.stdout).toContain('--no-domain-tools');
   const scrapeHelp = await cli(['scrape', '--help']);
@@ -484,6 +500,18 @@ it('documents the default discovery flow and adds alexandria to explicit sources
     sources: [{ type: 'news' }],
     domainTools: false,
   });
+  const skillsOnly = await cli([
+    'search',
+    'pizza hut',
+    '--sources',
+    'skills',
+    '--json',
+  ]);
+  expect(skillsOnly.code).toBe(0);
+  expect(requests.at(-1)?.body).toMatchObject({
+    sources: [{ type: 'skills' }, { type: 'alexandria' }],
+    domainTools: false,
+  });
 });
 
 it('preserves mixed search results, tools and billing metadata', async () => {
@@ -503,7 +531,7 @@ it('preserves mixed search results, tools and billing metadata', async () => {
     url: '/v2/search',
     headers: { authorization: 'Bearer fc-test' },
     body: {
-      sources: [{ type: 'web' }, { type: 'alexandria' }],
+      sources: [{ type: 'web' }, { type: 'alexandria' }, { type: 'skills' }],
       domainTools: true,
     },
   });
@@ -690,7 +718,11 @@ it('finds and reads skills through the same API and refuses keyless access', asy
     },
   });
   expect((await cli(['find-skills'])).code).toBe(0);
-  expect(requests[1].body.alexandria[0].options).toEqual({});
+  const scrapes = requests.filter((request) => request.url === '/v2/scrape');
+  expect(scrapes[1].body.alexandria[0].options).toEqual({});
+  expect(
+    requests.filter((request) => request.url === '/exchange/provider-skills')
+  ).toHaveLength(0);
   const read = await cli([
     'read-skill',
     'team:weekly-digest',
@@ -701,7 +733,10 @@ it('finds and reads skills through the same API and refuses keyless access', asy
   ]);
   expect(read.code).toBe(0);
   expect(read.stdout).not.toMatch(/^\d+\.\d+\.\d+\s*$/);
-  expect(requests[2].body.alexandria[0]).toEqual({
+  expect(
+    requests.filter((request) => request.url === '/v2/scrape').at(-1)?.body
+      .alexandria[0]
+  ).toEqual({
     provider: 'firecrawl',
     capability: 'read-skill',
     options: {
@@ -841,6 +876,522 @@ it('refuses invalid skill writes before calling the API', async () => {
     (await cli(['create-skill', '--body', 'x', '--body-file', 'x.md'])).code
   ).toBe(1);
   expect(requests).toHaveLength(0);
+  expect(
+    (await cli(['create-skill', '--name', 'Digest', '--shared', 'true'])).code
+  ).toBe(1);
+  expect(
+    (
+      await cli([
+        'update-skill',
+        'team:digest',
+        '--base-version',
+        '1',
+        '--shared',
+        'true',
+      ])
+    ).code
+  ).toBe(1);
+  expect(requests).toHaveLength(0);
+});
+
+it('turns a team skill off with enabled and discoverable', async () => {
+  const updated = await cli([
+    'update-skill',
+    'team:digest',
+    '--base-version',
+    '2',
+    '--enabled',
+    'false',
+    '--discoverable',
+    'false',
+  ]);
+  expect(updated.code).toBe(0);
+  expect(requests[0].body.alexandria[0].options).toEqual({
+    id: 'team:digest',
+    baseVersion: 2,
+    enabled: false,
+    discoverable: false,
+  });
+  expect(requests[0].body.alexandria[0].options).not.toHaveProperty('shared');
+  const created = await cli([
+    'create-skill',
+    '--name',
+    'Research',
+    '--description',
+    'Notes.',
+    '--body',
+    'Do the research.',
+    '--slug',
+    'research',
+  ]);
+  expect(created.code).toBe(0);
+  expect(requests.at(-1)?.body.alexandria[0].options).toEqual({
+    name: 'Research',
+    description: 'Notes.',
+    body: 'Do the research.',
+    slug: 'research',
+  });
+  const help = await cli(['update-skill', '--help']);
+  expect(help.stdout).toContain('--enabled');
+  expect(help.stdout).toContain('--discoverable');
+  expect(help.stdout).not.toContain('--shared');
+  expect((await cli(['create-skill', '--help'])).stdout).not.toContain(
+    '--shared'
+  );
+});
+
+it('prints the app skill link after create and update', async () => {
+  const skill = {
+    slug: 'weekly-digest',
+    skillId: 'team:weekly-digest',
+    shared: false,
+    publicId: '55a529aa8f8e4659ab2cdc80808e0ab2',
+    sharePath: '/skills/s/55a529aa8f8e4659ab2cdc80808e0ab2',
+  };
+  const page = 'https://www.firecrawl.dev/app/alexandria/skills/weekly-digest';
+  responseFor = (body) => ({
+    success: true,
+    scrape_id: 'skill-save',
+    data: {
+      creditsCost: 0,
+      alexandria: [
+        {
+          provider: 'firecrawl',
+          capability: body?.alexandria?.[0]?.capability,
+          creditsCost: 0,
+          data: { id: 'team:weekly-digest', skill },
+        },
+      ],
+    },
+  });
+  const created = await cli([
+    'skills',
+    'create',
+    '--name',
+    'Digest',
+    '--description',
+    'Weekly.',
+    '--body',
+    'Summarise.',
+    '--slug',
+    'weekly-digest',
+    '--json',
+  ]);
+  expect(created.code).toBe(0);
+  expect(JSON.parse(created.stdout).url).toBe(page);
+  expect(created.stderr).toContain(page);
+  expect(created.stderr).not.toContain('/skills/s/');
+  expect(created.stderr).not.toContain(skill.publicId);
+  const updated = await cli([
+    'update-skill',
+    'team:weekly-digest',
+    '--base-version',
+    '1',
+    '--name',
+    'Weekly digest',
+    '--json',
+  ]);
+  expect(updated.code).toBe(0);
+  expect(JSON.parse(updated.stdout).url).toBe(page);
+  expect(updated.stderr).toContain(page);
+  responseFor = () => ({
+    success: true,
+    data: {
+      alexandria: [
+        {
+          capability: 'update-skill',
+          error: { code: 'conflict', message: 'Stale version.' },
+        },
+      ],
+      creditsCost: 0,
+    },
+  });
+  const conflict = await cli([
+    'skills',
+    'update',
+    'team:weekly-digest',
+    '--base-version',
+    '1',
+    '--json',
+  ]);
+  expect(conflict.code).toBe(1);
+  expect(JSON.parse(conflict.stdout)).not.toHaveProperty('url');
+  expect(conflict.stderr).not.toContain(page);
+});
+
+it('lists one provider skills and reads one with provider, plugin, and skill', async () => {
+  const catalogue = {
+    provider: { slug: 'carbon-arc', name: 'Carbon Arc' },
+    plugins: [
+      {
+        id: 'carbon-arc-company-intelligence',
+        displayName: 'Carbon Arc Company Intelligence',
+        visibility: 'execution-only',
+      },
+    ],
+    skills: [
+      {
+        id: 'provider:carbon-arc/carbon-arc-company-intelligence/ca-audience',
+        name: 'ca-audience',
+        description: 'Audience report',
+        visibility: 'execution-only',
+        provider: { slug: 'carbon-arc', name: 'Carbon Arc' },
+        plugin: {
+          id: 'carbon-arc-company-intelligence',
+          displayName: 'Carbon Arc Company Intelligence',
+        },
+      },
+      {
+        id: 'provider:other/research/brief',
+        name: 'brief',
+        description: 'Audience report for someone else',
+        provider: { slug: 'other', name: 'Other' },
+        plugin: { id: 'research', displayName: 'Research' },
+      },
+    ],
+    page: 1,
+    limit: 20,
+    total: 1,
+  };
+  responseFor = () => {
+    const url = requests.at(-1)?.url ?? '';
+    if (url.endsWith('/file')) {
+      return {
+        path: 'SKILL.md',
+        content: '# Audience\nRead the provider record.',
+      };
+    }
+    if (url.startsWith('/exchange/provider-skills')) return catalogue;
+    return {
+      success: true,
+      scrape_id: 'skills-1',
+      data: { alexandria: [], creditsCost: 0 },
+    };
+  };
+  const listed = await cli([
+    'skills',
+    'list',
+    'audience',
+    '--provider',
+    'carbon-arc',
+    '--json',
+  ]);
+  expect(listed.code).toBe(0);
+  const listUrl = new URL(requests[0].url ?? '', 'http://127.0.0.1');
+  expect(listUrl.pathname).toBe('/exchange/provider-skills');
+  expect(listUrl.searchParams.get('provider')).toBe('carbon-arc');
+  expect(listUrl.searchParams.get('q')).toBe('audience');
+  expect(listUrl.searchParams.get('page')).toBe('1');
+  const page = JSON.parse(listed.stdout).data;
+  expect(page.provider).toBe('carbon-arc');
+  expect(page.skills).toHaveLength(1);
+  expect(page.skills[0].provider.slug).toBe('carbon-arc');
+  expect(page.skills[0].plugin.id).toBe('carbon-arc-company-intelligence');
+  expect(page.skills[0].id).toBe(
+    'provider:carbon-arc/carbon-arc-company-intelligence/ca-audience'
+  );
+  const read = await cli([
+    'skills',
+    'read',
+    '--provider',
+    'carbon-arc',
+    '--plugin',
+    'carbon-arc-company-intelligence',
+    '--skill',
+    'ca-audience',
+    '--file',
+    '--json',
+  ]);
+  expect(read.code).toBe(0);
+  expect(requests.at(-1)?.url).toBe(
+    '/exchange/provider-skills/carbon-arc/carbon-arc-company-intelligence/ca-audience/file'
+  );
+  expect(JSON.parse(read.stdout).data).toMatchObject({
+    provider: 'carbon-arc',
+    plugin: 'carbon-arc-company-intelligence',
+    skill: 'ca-audience',
+    file: true,
+    content: '# Audience\nRead the provider record.',
+  });
+  const help = await cli(['skills', 'list', '--help']);
+  expect(help.stdout).toContain('--provider');
+  const surface = await cli(['skills', '--help']);
+  expect(surface.stdout).toContain('create');
+  expect(surface.stdout).toContain('update');
+});
+
+it('traces provider skill requests and rejects a 2xx error envelope', async () => {
+  response = { success: false, error: 'Exchange rejected the catalogue.' };
+  const listed = await cli(['skills', 'list', '--provider', 'acme', '--json']);
+  expect(listed.code).toBe(1);
+  const listedBody = JSON.parse(listed.stdout);
+  expect(listedBody).toMatchObject({
+    success: false,
+    error: 'Exchange rejected the catalogue.',
+  });
+  expect(requests[0].headers['x-request-id']).toBe(listedBody.requestId);
+  expect(listed.stderr).toContain(listedBody.requestId);
+
+  response = { success: false, error: 'Exchange rejected the skill.' };
+  const read = await cli([
+    'skills',
+    'read',
+    '--provider',
+    'acme',
+    '--plugin',
+    'research',
+    '--skill',
+    'brief',
+    '--json',
+  ]);
+  expect(read.code).toBe(1);
+  const readBody = JSON.parse(read.stdout);
+  expect(readBody).toMatchObject({
+    success: false,
+    error: 'Exchange rejected the skill.',
+  });
+  expect(requests.at(-1)?.headers['x-request-id']).toBe(readBody.requestId);
+});
+
+it('fails a provider skill read when the skill file is unavailable', async () => {
+  statusFor = (request) => (request.url?.endsWith('/file') ? 404 : 200);
+  responseFor = () => ({ success: false, error: 'Missing skill file.' });
+  const read = await cli([
+    'read-skill',
+    '--provider',
+    'acme',
+    '--plugin',
+    'research',
+    '--skill',
+    'brief',
+    '--file',
+    '--json',
+  ]);
+  expect(read.code).toBe(1);
+  expect(JSON.parse(read.stdout)).toMatchObject({
+    success: false,
+    error: 'Missing skill file.',
+    status: 404,
+  });
+  expect(requests.at(-1)?.url).toBe(
+    '/exchange/provider-skills/acme/research/brief/file'
+  );
+  expect(
+    (
+      await cli([
+        'read-skill',
+        'team:digest',
+        '--provider',
+        'acme',
+        '--plugin',
+        'research',
+        '--skill',
+        'brief',
+      ])
+    ).code
+  ).toBe(1);
+  expect(requests).toHaveLength(1);
+});
+
+it('pages through a provider skill catalogue', async () => {
+  const skills = Array.from({ length: 25 }, (_, index) => ({
+    id: `provider:acme/research/note-${index}`,
+    name: `note-${index}`,
+    description: 'A provider skill',
+    visibility: 'execution-only',
+    provider: { slug: 'acme', name: 'Acme' },
+    plugin: { id: 'research', displayName: 'Research' },
+  }));
+  responseFor = () => {
+    const url = new URL(requests.at(-1)?.url ?? '', 'http://127.0.0.1');
+    const page = Number(url.searchParams.get('page') ?? '1');
+    return {
+      provider: { slug: 'acme', name: 'Acme' },
+      plugins: [{ id: 'research', displayName: 'Research' }],
+      skills: skills.slice((page - 1) * 20, page * 20),
+      page,
+      limit: 20,
+      total: skills.length,
+    };
+  };
+  const listed = await cli([
+    'find-skills',
+    '--provider',
+    'acme',
+    '--limit',
+    '25',
+    '--json',
+  ]);
+  expect(listed.code).toBe(0);
+  const page = JSON.parse(listed.stdout).data;
+  expect(page.skills).toHaveLength(25);
+  expect(page.total).toBe(25);
+  expect(page.skills[0].provider.slug).toBe('acme');
+  expect(page.skills[0].plugin.id).toBe('research');
+  expect(requests.map((request) => request.url)).toEqual([
+    '/exchange/provider-skills?provider=acme&page=1&limit=20',
+    '/exchange/provider-skills?provider=acme&page=2&limit=20',
+  ]);
+});
+
+it('keeps paging a provider catalogue that omits total', async () => {
+  const skills = Array.from({ length: 25 }, (_, index) => ({
+    id: `provider:acme/research/note-${index}`,
+    name: `note-${index}`,
+    description: 'A provider skill',
+    provider: { slug: 'acme', name: 'Acme' },
+    plugin: { id: 'research', displayName: 'Research' },
+  }));
+  responseFor = () => {
+    const url = new URL(requests.at(-1)?.url ?? '', 'http://127.0.0.1');
+    const page = Number(url.searchParams.get('page') ?? '1');
+    return {
+      provider: { slug: 'acme', name: 'Acme' },
+      skills: skills.slice((page - 1) * 20, page * 20),
+      page,
+      limit: 20,
+    };
+  };
+  const listed = await cli([
+    'find-skills',
+    '--provider',
+    'acme',
+    '--limit',
+    '25',
+    '--json',
+  ]);
+  expect(listed.code).toBe(0);
+  expect(JSON.parse(listed.stdout).data.skills).toHaveLength(25);
+  expect(requests.map((request) => request.url)).toEqual([
+    '/exchange/provider-skills?provider=acme&page=1&limit=20',
+    '/exchange/provider-skills?provider=acme&page=2&limit=20',
+  ]);
+});
+
+it('fills a missing discovery price from the merged catalog when costs are requested', async () => {
+  response = catalogue('tools', [
+    {
+      id: 'carbon-arc/query',
+      provider: 'carbon-arc',
+      capability: 'query',
+      name: 'Query',
+    },
+  ]);
+  const hidden = await cli([
+    'find-tools',
+    '--options',
+    '{"providers":["carbon-arc"]}',
+    '--json',
+  ]);
+  expect(
+    JSON.parse(hidden.stdout).data.alexandria[0].data.items[0]
+  ).not.toHaveProperty('creditsCost');
+  const shown = await cli([
+    'find-tools',
+    '--options',
+    '{"providers":["carbon-arc"]}',
+    '--include-costs',
+    '--json',
+  ]);
+  expect(
+    JSON.parse(shown.stdout).data.alexandria[0].data.items[0].creditsCost
+  ).toBe(1000);
+});
+
+it('retries find-tools once after query_embed_unavailable and then reports it as retryable', async () => {
+  responseHeaders = { 'retry-after': '0' };
+  statusFor = (request) => {
+    if (request.url !== '/v2/scrape') return 200;
+    return requests.filter((item) => item.url === '/v2/scrape').length <= 1
+      ? 503
+      : 200;
+  };
+  responseFor = () => {
+    const scrapes = requests.filter((item) => item.url === '/v2/scrape').length;
+    if (scrapes <= 1) {
+      return {
+        success: false,
+        error: 'Query embedding is unavailable.',
+        code: 'query_embed_unavailable',
+      };
+    }
+    return {
+      success: true,
+      scrape_id: 'discovery-retry',
+      data: {
+        creditsCost: 0,
+        alexandria: [
+          {
+            provider: 'firecrawl',
+            capability: 'find-tools',
+            creditsCost: 0,
+            data: { level: 'tools', items: [], total: 0 },
+          },
+        ],
+      },
+    };
+  };
+  const recovered = await cli([
+    'find-tools',
+    '--options',
+    '{"query":"company filings"}',
+    '--json',
+  ]);
+  expect(recovered.code).toBe(0);
+  expect(recovered.stderr).toContain('Retrying once.');
+  expect(requests.filter((item) => item.url === '/v2/scrape')).toHaveLength(2);
+  expect(requests[0].headers['x-request-id']).toBe(
+    requests[1].headers['x-request-id']
+  );
+  expect(JSON.parse(recovered.stdout).success).toBe(true);
+
+  requests.length = 0;
+  requestTimes.length = 0;
+  statusFor = (request) => (request.url === '/v2/scrape' ? 503 : 200);
+  responseFor = () => ({
+    success: false,
+    error: 'Query embedding is unavailable.',
+    code: 'query_embed_unavailable',
+  });
+  responseHeaders = { 'retry-after': '30' };
+  const failed = await cli([
+    'find-tools',
+    '--options',
+    '{"query":"company filings"}',
+    '--json',
+  ]);
+  expect(failed.code).toBe(1);
+  const scrapeTimes = requests.flatMap((item, index) =>
+    item.url === '/v2/scrape' ? [requestTimes[index]] : []
+  );
+  expect(scrapeTimes).toHaveLength(2);
+  // The gap is the capped wait. An uncapped 30s delay hits the child timeout.
+  expect(scrapeTimes[1] - scrapeTimes[0]).toBeGreaterThanOrEqual(2500);
+  expect(JSON.parse(failed.stdout)).toMatchObject({
+    success: false,
+    code: 'query_embed_unavailable',
+    status: 503,
+    retryable: true,
+    error:
+      'Find Tools query embedding is temporarily unavailable (query_embed_unavailable). Retry this command.',
+  });
+
+  requests.length = 0;
+  responseHeaders = {};
+  statusFor = () => 503;
+  responseFor = () => ({
+    success: false,
+    error: 'Provider unavailable',
+    code: 'PROVIDER_ERROR',
+  });
+  const other = await cli([
+    'find-tools',
+    '--options',
+    '{"query":"company filings"}',
+  ]);
+  expect(other.code).toBe(1);
+  expect(requests).toHaveLength(1);
+  expect(other.stderr).not.toContain('Retrying once.');
 });
 
 it('preserves charged SDK failures', async () => {
@@ -909,7 +1460,7 @@ it('keeps natural query text and disables only domain matching when requested', 
     body: {
       query,
       domainTools: false,
-      sources: [{ type: 'web' }, { type: 'alexandria' }],
+      sources: [{ type: 'web' }, { type: 'alexandria' }, { type: 'skills' }],
     },
   });
 });

@@ -11,6 +11,7 @@ import type {
   ImageSearchResult,
   NewsSearchResult,
   DeveloperSearchResult,
+  SkillSearchResult,
 } from '../types/search';
 import type { SearchSource } from '../types/search';
 import { getClient, isKeylessMode, keylessRequest } from '../utils/client';
@@ -34,7 +35,11 @@ export async function executeSearch(
   options: SearchOptions
 ): Promise<SearchResult> {
   try {
-    if (options.domainTools || options.sources?.includes('alexandria'))
+    if (
+      options.domainTools ||
+      options.sources?.includes('alexandria') ||
+      options.sources?.includes('skills')
+    )
       requireAlexandriaKey(options.apiKey);
     // Build search options for the SDK
     const searchParams: Record<string, any> = {
@@ -43,20 +48,34 @@ export async function executeSearch(
     };
     searchParams.toolDetail = options.toolDetail ?? 'compact';
 
-    // Authenticated searches always include Alexandria, keeping the requested sources.
-    const requestedSources: SearchSource[] = options.sources?.length
+    // An explicit --sources list is kept. Alexandria is still added for a key.
+    // Skill cards are included only in the default, and only with a key.
+    const explicitSources = !!options.sources?.length;
+    const requestedSources: SearchSource[] = explicitSources
       ? [...new Set(options.sources)]
       : ['web'];
-    const addsAlexandria =
-      !!getApiKey(options.apiKey) && !requestedSources.includes('alexandria');
-    const sources: SearchSource[] = addsAlexandria
-      ? [...requestedSources, 'alexandria']
-      : requestedSources;
+    const hasKey = !!getApiKey(options.apiKey);
+    const sources: SearchSource[] = [...requestedSources];
+    // Retry only when every discovery source in the request was added here.
+    // An explicit alexandria or skills source stays, so a refusal
+    // of that source is not retried.
+    const requestedDiscovery =
+      requestedSources.includes('alexandria') ||
+      requestedSources.includes('skills');
+    let addedDiscovery = false;
+    if (hasKey && !sources.includes('alexandria')) {
+      sources.push('alexandria');
+      if (!requestedDiscovery) addedDiscovery = true;
+    }
+    if (hasKey && !explicitSources && !sources.includes('skills')) {
+      sources.push('skills');
+      if (!requestedDiscovery) addedDiscovery = true;
+    }
     searchParams.sources = sources.map((source) => ({ type: source }));
-    searchParams.domainTools =
-      options.domainTools ??
-      (sources.includes('alexandria') &&
-        sources.some((source) => source !== 'alexandria'));
+    const pairsWithWeb =
+      sources.includes('alexandria') &&
+      sources.some((source) => source !== 'alexandria' && source !== 'skills');
+    searchParams.domainTools = options.domainTools ?? pairsWithWeb;
 
     if (options.highlights !== undefined) {
       searchParams.highlights = options.highlights;
@@ -142,7 +161,7 @@ export async function executeSearch(
         const refused =
           response?.status === 403 &&
           DISCOVERY_REFUSALS.includes(response?.data?.error);
-        if (!addsAlexandria || options.domainTools === true || !refused)
+        if (!addedDiscovery || options.domainTools === true || !refused)
           throw error;
         return post({
           ...searchBody,
@@ -163,6 +182,8 @@ export async function executeSearch(
     // results, so the API returns its hits in their own group.
     if (payload.developer)
       data.developer = payload.developer as DeveloperSearchResult[];
+    if (Array.isArray(payload.skills))
+      data.skills = payload.skills as SkillSearchResult[];
 
     return {
       success: true,
@@ -175,7 +196,9 @@ export async function executeSearch(
     return {
       success: false,
       error:
-        options.domainTools || options.sources?.includes('alexandria')
+        options.domainTools ||
+        options.sources?.includes('alexandria') ||
+        options.sources?.includes('skills')
           ? JSON.stringify(apiFailure(error))
           : error instanceof Error
             ? error.message
@@ -213,7 +236,8 @@ function formatSearchReadable(
     if (
       (options.sources && options.sources.length > 1) ||
       hasDeveloperResults ||
-      !!data.tools?.length
+      !!data.tools?.length ||
+      !!data.skills?.length
     ) {
       lines.push('=== Web Results ===');
       lines.push('');
@@ -348,7 +372,68 @@ function formatSearchReadable(
     );
   }
 
+  if (data.skills?.length) {
+    lines.push('=== Skills ===', '');
+    for (const skill of data.skills) lines.push(...formatSkillCard(skill));
+  }
+
   return lines.join('\n');
+}
+
+function formatSkillCard(skill: SkillSearchResult): string[] {
+  if (!skill || typeof skill !== 'object') return [];
+  const lines: string[] = [];
+  lines.push(
+    typeof skill.name === 'string' && skill.name.trim()
+      ? skill.name.trim()
+      : 'Skill'
+  );
+  if (typeof skill.id === 'string' && skill.id.trim())
+    lines.push(`  ID: ${skill.id.trim()}`);
+  const source =
+    skill.source === 'official'
+      ? 'Official'
+      : skill.source === 'provider'
+        ? 'Provider'
+        : typeof skill.source === 'string' && skill.source.trim()
+          ? skill.source.trim()
+          : undefined;
+  const provider =
+    typeof skill.provider === 'string' && skill.provider.trim()
+      ? skill.provider.trim()
+      : undefined;
+  if (source || provider)
+    lines.push(
+      `  ${[source, provider].filter((part) => part !== undefined).join(': ')}`
+    );
+  if (typeof skill.description === 'string' && skill.description.trim())
+    lines.push(`  ${clipPassage(skill.description)}`);
+  if (typeof skill.similarity === 'number' && Number.isFinite(skill.similarity))
+    lines.push(`  Similarity: ${skill.similarity}`);
+  const hint = skillReadHint(skill);
+  if (hint) lines.push(`  Read: ${hint}`);
+  lines.push('');
+  return lines;
+}
+
+/** Leave a shell-safe token bare. Quote anything else so a copied hint stays one argument. */
+function shellWord(value: string): string {
+  return /^[A-Za-z0-9_./:-]+$/.test(value)
+    ? value
+    : `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+/** Official and team skills read by id. Provider cards need the three path flags. */
+export function skillReadHint(skill: SkillSearchResult): string | undefined {
+  if (typeof skill.id !== 'string' || !skill.id.trim()) return undefined;
+  const id = skill.id.trim();
+  const providerId =
+    skill.source === 'provider'
+      ? /^provider:([^/]+)\/([^/]+)\/([^/]+)$/.exec(id)
+      : undefined;
+  if (providerId)
+    return `firecrawl skills read --provider ${shellWord(providerId[1])} --plugin ${shellWord(providerId[2])} --skill ${shellWord(providerId[3])}`;
+  return `firecrawl skills read ${shellWord(id)}`;
 }
 
 /**
@@ -371,12 +456,17 @@ export async function handleSearchCommand(
   // Check if there are any results
   const hasResults =
     (result.data.tools && result.data.tools.length > 0) ||
+    (result.data.skills && result.data.skills.length > 0) ||
     (result.data.web && result.data.web.length > 0) ||
     (result.data.images && result.data.images.length > 0) ||
     (result.data.news && result.data.news.length > 0) ||
     (result.data.developer && result.data.developer.length > 0);
 
-  if (!hasResults && !(result.data.tools && (options.json || options.pretty))) {
+  if (
+    !hasResults &&
+    !(result.data.tools && (options.json || options.pretty)) &&
+    !(result.data.skills && (options.json || options.pretty))
+  ) {
     console.log('No results found.');
     return;
   }

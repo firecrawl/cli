@@ -465,24 +465,24 @@ firecrawl search "AI data tools"
 
 #### Search Options
 
-| Option                       | Description                                                                                                                                                                                                       |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--limit <n>`                | Maximum results (default: 5, max: 100)                                                                                                                                                                            |
-| `--sources <sources>`        | Comma-separated: `web`, `images`, `news`, `alexandria` (default: web). With an API key, `alexandria` is always added with domain matching; `--no-domain-tools` turns domain matching off                          |
-| `--categories <categories>`  | Comma-separated: `research` (research-affiliated websites -- for papers use [`research search-papers`](#research---search-research-papers)), `pdf`, `developer`, `gov` (cannot be combined with other categories) |
-| `--tbs <value>`              | Time filter: `qdr:h` (hour), `qdr:d` (day), `qdr:w` (week), `qdr:m` (month), `qdr:y` (year)                                                                                                                       |
-| `--location <location>`      | Geo-targeting (e.g., "Germany", "San Francisco,California,United States")                                                                                                                                         |
-| `--country <code>`           | ISO country code (default: US)                                                                                                                                                                                    |
-| `--timeout <ms>`             | Timeout in milliseconds (default: 60000)                                                                                                                                                                          |
-| `--highlights`               | Query-relevant highlights for web and news when available (default)                                                                                                                                               |
-| `--no-highlights`            | Keep the original search snippets                                                                                                                                                                                 |
-| `--ignore-invalid-urls`      | Exclude URLs invalid for other Firecrawl endpoints                                                                                                                                                                |
-| `--scrape`                   | Enable scraping of search results                                                                                                                                                                                 |
-| `--scrape-formats <formats>` | Scrape formats when `--scrape` enabled (default: markdown)                                                                                                                                                        |
-| `--only-main-content`        | Include only the main content when scraping (the API default)                                                                                                                                                     |
-| `--full-page`                | Keep the whole page when scraping, including navs and footers                                                                                                                                                     |
-| `-o, --output <path>`        | Save to file                                                                                                                                                                                                      |
-| `--json`                     | Output as compact JSON                                                                                                                                                                                            |
+| Option                       | Description                                                                                                                                                                                                                                                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--limit <n>`                | Maximum results (default: 5, max: 100)                                                                                                                                                                                                                                                                              |
+| `--sources <sources>`        | Comma-separated: `web`, `images`, `news`, `alexandria`, `skills`. With an API key and no `--sources`, the default is web, alexandria, and skills. Without a key, the default is web. An explicit list is used as given; with an API key, `alexandria` is still added. `--no-domain-tools` turns domain matching off |
+| `--categories <categories>`  | Comma-separated: `research` (research-affiliated websites -- for papers use [`research search-papers`](#research---search-research-papers)), `pdf`, `developer`, `gov` (cannot be combined with other categories)                                                                                                   |
+| `--tbs <value>`              | Time filter: `qdr:h` (hour), `qdr:d` (day), `qdr:w` (week), `qdr:m` (month), `qdr:y` (year)                                                                                                                                                                                                                         |
+| `--location <location>`      | Geo-targeting (e.g., "Germany", "San Francisco,California,United States")                                                                                                                                                                                                                                           |
+| `--country <code>`           | ISO country code (default: US)                                                                                                                                                                                                                                                                                      |
+| `--timeout <ms>`             | Timeout in milliseconds (default: 60000)                                                                                                                                                                                                                                                                            |
+| `--highlights`               | Query-relevant highlights for web and news when available (default)                                                                                                                                                                                                                                                 |
+| `--no-highlights`            | Keep the original search snippets                                                                                                                                                                                                                                                                                   |
+| `--ignore-invalid-urls`      | Exclude URLs invalid for other Firecrawl endpoints                                                                                                                                                                                                                                                                  |
+| `--scrape`                   | Enable scraping of search results                                                                                                                                                                                                                                                                                   |
+| `--scrape-formats <formats>` | Scrape formats when `--scrape` enabled (default: markdown)                                                                                                                                                                                                                                                          |
+| `--only-main-content`        | Include only the main content when scraping (the API default)                                                                                                                                                                                                                                                       |
+| `--full-page`                | Keep the whole page when scraping, including navs and footers                                                                                                                                                                                                                                                       |
+| `-o, --output <path>`        | Save to file                                                                                                                                                                                                                                                                                                        |
+| `--json`                     | Output as compact JSON                                                                                                                                                                                                                                                                                              |
 
 #### Examples
 
@@ -1306,6 +1306,33 @@ Agents must give the user the dashboard link and must not retry the provider unt
 terms are accepted. Reading terms does not accept them, and a failed lookup is never
 consent. After an admin accepts them, rerun the original provider command; its normal
 credits apply.
+
+### Alexandria skills
+
+Alexandria skills are four operations: list, read, create, and update. `skills list`, `skills read`, `skills create`, and `skills update` are the same commands as `find-skills`, `read-skill`, `create-skill`, and `update-skill`.
+
+`skills list` lists Firecrawl's skills and your team's skills (`team:<slug>`, first) without their contents. The query is a natural-language goal: official and provider skills are ranked semantically, and team skills still match when every word appears. `--provider <provider>` asks Exchange for that provider's published skills (`provider` and `q` are sent to the server, and later pages are followed). The unfiltered catalogue leaves out execution-only skills; naming a provider returns the skills Exchange includes for it. `skills read` returns one skill. Pass an id for a Firecrawl or team skill. Pass `--provider`, `--plugin`, and `--skill` for a provider skill, and `--file` to read its file. Reading a skill does not run it.
+
+With an API key, `search` requests `skills` unless `--sources` is set. It prints a Skills section after web results and tools when the response includes `data.skills`. Each card shows its name, its id when one is present, description, source (`official` or `provider`), provider slug when present, and similarity. A card with an id prints a read hint: `firecrawl skills read <id>` for an official or team skill, and `firecrawl skills read --provider <provider> --plugin <plugin> --skill <skill>` for a provider skill. A card without an id does not print a read hint. `--json` includes the same cards. A response without `data.skills` is unchanged.
+
+`skills create` supports `--from`, `--name`, `--description`, `--body` or `--body-file`, and `--slug`. `skills update` supports an id, `--base-version`, `--name`, `--description`, `--body` or `--body-file`, `--enabled`, and `--discoverable`. Both accept `--request-id` for retry-safe saves. There is no delete: turn a skill off with `--enabled false` or hide it with `--discoverable false`. A team admin deletes one in the dashboard. A successful create or update prints `https://www.firecrawl.dev/app/alexandria/skills/<slug>`, using the slug without the `team:` prefix, and includes that link as `url` in `--json` output.
+
+```bash
+firecrawl skills list weekly digest --limit 5
+firecrawl skills list --provider acme
+firecrawl skills read --provider acme --plugin research --skill brief --file
+firecrawl skills update team:digest --base-version 2 --enabled false --discoverable false
+```
+
+### Alexandria execution prices
+
+Discovery is free. These merged execution prices are what a call costs; People Data Labs misses are free. People Data Labs async enrichment is execution-only and has no CLI flag.
+
+- Carbon Arc: 1000 credits per call.
+- Influencers.club: 165 per connected-socials call; 45 per creator returned by search (56 with `return_filter_values`); 50 per similar creator; 330 per audience-overlap or full enrich call; 150 per profile enrich; 264 per analytics enrich; 17 per email enrich; 10 per raw enrich, posts call, or post details call (20 for a TikTok transcript); dictionary lookups are free.
+- People Data Labs: `person/enrich` and `person/identify` are 60 per successful call; `person/search`, `person/bulk`, `company/search`, and `company/bulk` are 50 per returned or matched record; `company/enrich` is 50 per successful call; preview, IP enrich, and jobs endpoints are 1; cleaners and autocomplete are free.
+
+`list` and `find-tools` hide per-capability prices unless you pass `--include-costs`. When that flag is set and a discovered tool has no price of its own, the CLI fills the merged price from this list. `search` always omits tool prices.
 
 ### Alexandria receipts and retries
 

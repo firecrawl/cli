@@ -4,7 +4,7 @@
 
 import type { ScrapeFormat } from './scrape';
 
-export type SearchSource = 'web' | 'images' | 'news' | 'alexandria';
+export type SearchSource = 'web' | 'images' | 'news' | 'alexandria' | 'skills';
 export type SearchCategory = 'research' | 'pdf' | 'developer' | 'gov';
 
 export interface SearchOptions {
@@ -18,7 +18,7 @@ export interface SearchOptions {
   apiUrl?: string;
   /** Maximum number of results (default: 5, max: 100) */
   limit?: number;
-  /** Sources to search: web, images, news, alexandria (default: web; alexandria is added when an API key is set) */
+  /** Sources to search. With an API key and no list, web, alexandria, and skills. An explicit list is sent as given, and alexandria is still added when a key is set. */
   sources?: SearchSource[];
   /** Categories to filter results: research, pdf, developer, gov */
   categories?: SearchCategory[];
@@ -114,6 +114,18 @@ export interface DeveloperSearchResult {
   category?: string;
 }
 
+/** A short ranked skill card returned by search. */
+export interface SkillSearchResult {
+  id?: string;
+  name?: string;
+  description?: string;
+  /** `official` or `provider`. */
+  source?: string;
+  /** Provider slug. Present for provider skills. */
+  provider?: string;
+  similarity?: number;
+}
+
 export interface SearchResultData {
   tools?: Record<string, unknown>[];
   web?: WebSearchResult[];
@@ -121,6 +133,8 @@ export interface SearchResultData {
   news?: NewsSearchResult[];
   /** Present when the `developer` category is requested. */
   developer?: DeveloperSearchResult[];
+  /** Ranked official and provider skills. Omitted when search does not send it. */
+  skills?: SkillSearchResult[];
 }
 
 export interface SearchResult {

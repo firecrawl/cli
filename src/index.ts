@@ -15,6 +15,7 @@ import {
   createReadSkillCommand,
   createCreateSkillCommand,
   createUpdateSkillCommand,
+  createSkillsCommand,
   handleAlexandria,
 } from './commands/alexandria';
 import { readFileSync } from 'fs';
@@ -1154,7 +1155,7 @@ Max upload size: 50 MB
 function createSearchCommand(): Command {
   const searchCmd = new Command('search')
     .description(
-      'Search the web with query-relevant highlights and discover relevant Alexandria tools'
+      'Search the web with query-relevant highlights and discover relevant Alexandria tools and skills'
     )
     .argument('<query>', 'Search query, or alexandria for semantic tool search')
     .argument('[tool-query]', 'Query for search alexandria')
@@ -1167,7 +1168,7 @@ function createSearchCommand(): Command {
     )
     .option(
       '--sources <sources>',
-      'Comma-separated sources: web, images, news, alexandria (default: web; with an API key, alexandria is always added)'
+      'Comma-separated sources: web, images, news, alexandria, skills. With an API key and no --sources, the default is web, alexandria, and skills. Without a key, the default is web. An explicit list is used as given; alexandria is still added when a key is set'
     )
     .option(
       '--categories <categories>',
@@ -1258,7 +1259,7 @@ function createSearchCommand(): Command {
           .map((s: string) => s.trim().toLowerCase()) as SearchSource[];
 
         // Validate sources
-        const validSources = ['web', 'images', 'news', 'alexandria'];
+        const validSources = ['web', 'images', 'news', 'alexandria', 'skills'];
         for (const source of sources) {
           if (!validSources.includes(source)) {
             console.error(
@@ -2671,6 +2672,7 @@ program.addCommand(createParseCommand());
 program.addCommand(createMonitorCommand());
 program.addCommand(createSearchCommand());
 program.addCommand(createFindToolsCommand());
+program.addCommand(createSkillsCommand());
 program.addCommand(createFindSkillsCommand());
 program.addCommand(createReadSkillCommand());
 program.addCommand(createCreateSkillCommand());

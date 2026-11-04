@@ -3,7 +3,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { executeSearch, handleSearchCommand } from '../../commands/search';
+import {
+  createFindSkillsCommand,
+  createSkillsCommand,
+} from '../../commands/alexandria';
+import {
+  executeSearch,
+  handleSearchCommand,
+  skillReadHint,
+} from '../../commands/search';
 import { getClient, keylessRequest } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { writeOutput } from '../../utils/output';
@@ -106,7 +114,7 @@ describe('executeSearch', () => {
         limit: 5,
         integration: 'cli',
         toolDetail: 'compact',
-        sources: [{ type: 'web' }, { type: 'alexandria' }],
+        sources: [{ type: 'web' }, { type: 'alexandria' }, { type: 'skills' }],
         domainTools: true,
       });
       const body = mockHttpPost.mock.calls[0][1];
@@ -239,7 +247,11 @@ describe('executeSearch', () => {
     });
 
     it.each([
-      [undefined, [{ type: 'web' }, { type: 'alexandria' }], true],
+      [
+        undefined,
+        [{ type: 'web' }, { type: 'alexandria' }, { type: 'skills' }],
+        true,
+      ],
       [['web'], [{ type: 'web' }, { type: 'alexandria' }], true],
       [['web', 'alexandria'], [{ type: 'web' }, { type: 'alexandria' }], true],
       [
@@ -355,6 +367,49 @@ describe('executeSearch', () => {
         sources: [{ type: 'news' }],
         domainTools: false,
       });
+    });
+
+    it('drops default skill cards when added discovery is refused', async () => {
+      mockHttpPost
+        .mockRejectedValueOnce({
+          response: {
+            status: 403,
+            data: {
+              error: 'Exchange is not enabled for this team.',
+            },
+          },
+        })
+        .mockResolvedValueOnce(mockSearchResponse({ web: [] }));
+      const result = await executeSearch({ query: 'records' });
+      expect(result.success).toBe(true);
+      expect(mockHttpPost.mock.calls[0][1].sources).toEqual([
+        { type: 'web' },
+        { type: 'alexandria' },
+        { type: 'skills' },
+      ]);
+      expect(mockHttpPost.mock.calls[1][1]).toMatchObject({
+        sources: [{ type: 'web' }],
+        domainTools: false,
+      });
+    });
+
+    it('does not retry a refusal of an explicit skill source', async () => {
+      mockHttpPost.mockRejectedValue({
+        response: {
+          status: 403,
+          data: { error: 'Exchange is not enabled for this team.' },
+        },
+      });
+      const result = await executeSearch({
+        query: 'records',
+        sources: ['skills'],
+      });
+      expect(result.success).toBe(false);
+      expect(mockHttpPost).toHaveBeenCalledTimes(1);
+      expect(mockHttpPost.mock.calls[0][1].sources).toEqual([
+        { type: 'skills' },
+        { type: 'alexandria' },
+      ]);
     });
 
     it('does not retry when alexandria was requested explicitly', async () => {
@@ -1047,5 +1102,133 @@ describe('executeSearch', () => {
         passage
       );
     });
+  });
+
+  describe('ranked skills', () => {
+    const writtenOutput = () =>
+      vi.mocked(writeOutput).mock.calls.at(-1)?.[0] as string;
+    const skills = [
+      {
+        id: 'firecrawl-deep-research',
+        name: 'Deep research',
+        description: 'Research a question with Alexandria tools.',
+        source: 'official',
+        similarity: 0.91,
+      },
+      {
+        id: 'provider:carbon-arc/carbon-arc-company-intelligence/ca-audience',
+        name: 'Audience',
+        description: 'Audience report',
+        source: 'provider',
+        provider: 'carbon-arc',
+        similarity: 0.74,
+      },
+    ];
+
+    it('prints skills after web results and tools and keeps them in JSON', async () => {
+      mockHttpPost.mockResolvedValue(
+        mockSearchResponse({
+          web: [{ url: 'https://example.com', title: 'GDP report' }],
+          tools: [
+            {
+              provider: 'fred',
+              capability: 'series/observations',
+              description: 'Read an economic series',
+            },
+          ],
+          skills,
+        })
+      );
+
+      await handleSearchCommand({ query: 'GDP growth' });
+      const readable = writtenOutput();
+      const webAt = readable.indexOf('GDP report');
+      const toolsAt = readable.indexOf('=== Alexandria Tools ===');
+      const skillsAt = readable.indexOf('=== Skills ===');
+      expect(webAt).toBeGreaterThanOrEqual(0);
+      expect(webAt).toBeLessThan(toolsAt);
+      expect(toolsAt).toBeLessThan(skillsAt);
+      expect(readable).toContain('Deep research');
+      expect(readable).toContain('  ID: firecrawl-deep-research');
+      expect(readable).toContain('Audience');
+      expect(readable).toContain(
+        '  ID: provider:carbon-arc/carbon-arc-company-intelligence/ca-audience'
+      );
+      expect(readable).toContain('Official');
+      expect(readable).toContain('Provider: carbon-arc');
+      expect(readable).toContain('Similarity: 0.91');
+      expect(readable).toContain(
+        'Read: firecrawl skills read firecrawl-deep-research'
+      );
+      expect(readable).toContain(
+        'Read: firecrawl skills read --provider carbon-arc --plugin carbon-arc-company-intelligence --skill ca-audience'
+      );
+
+      await handleSearchCommand({ query: 'GDP growth', json: true });
+      expect(JSON.parse(writtenOutput()).data.skills).toEqual(skills);
+    });
+
+    it('leaves search output unchanged when skills are absent', async () => {
+      mockHttpPost.mockResolvedValue(
+        mockSearchResponse({
+          web: [{ url: 'https://example.com', title: 'GDP report' }],
+        })
+      );
+
+      const result = await executeSearch({ query: 'GDP growth' });
+      expect(result.data).toEqual({
+        web: [{ url: 'https://example.com', title: 'GDP report' }],
+      });
+      expect(result.data).not.toHaveProperty('skills');
+
+      await handleSearchCommand({ query: 'GDP growth' });
+      expect(writtenOutput()).not.toContain('=== Skills ===');
+      expect(writtenOutput()).not.toContain('firecrawl skills read');
+
+      await handleSearchCommand({ query: 'GDP growth', json: true });
+      expect(JSON.parse(writtenOutput()).data).not.toHaveProperty('skills');
+    });
+  });
+});
+
+describe('skill read hints', () => {
+  it('quotes provider and skill arguments that are not shell-safe', () => {
+    expect(
+      skillReadHint({
+        id: 'provider:acme/research/brief',
+        source: 'provider',
+      })
+    ).toBe(
+      'firecrawl skills read --provider acme --plugin research --skill brief'
+    );
+    expect(
+      skillReadHint({
+        id: "provider:acme/my plugin/o'brien;rm",
+        source: 'provider',
+      })
+    ).toBe(
+      "firecrawl skills read --provider acme --plugin 'my plugin' --skill 'o'\\''brien;rm'"
+    );
+    expect(
+      skillReadHint({ id: 'team:weekly-digest', source: 'official' })
+    ).toBe('firecrawl skills read team:weekly-digest');
+    expect(
+      skillReadHint({ id: 'team:weekly digest', source: 'official' })
+    ).toBe("firecrawl skills read 'team:weekly digest'");
+  });
+});
+
+describe('skills list query help', () => {
+  it('describes a natural-language goal', () => {
+    const list = createSkillsCommand().commands.find(
+      (command) => command.name() === 'list'
+    );
+    for (const command of [createFindSkillsCommand(), list]) {
+      const text = command!.helpInformation().replace(/\s+/g, ' ');
+      expect(text).not.toContain('words that must all appear');
+      expect(text).toContain(
+        'Natural-language goal. Official and provider skills are ranked semantically; team skills still match every word.'
+      );
+    }
   });
 });
