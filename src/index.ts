@@ -140,6 +140,22 @@ function collectTopLevelCommands(): void {
   }
 }
 
+function addCommandHints(command: Command, path = 'firecrawl'): void {
+  const names = command
+    .createHelp()
+    .visibleCommands(command)
+    .map((sub) => sub.name())
+    .filter((name) => name !== 'help');
+  if (path === 'firecrawl')
+    command.showHelpAfterError('Run firecrawl --help to list commands.');
+  else if (names.length)
+    command.showHelpAfterError(
+      `Commands of ${path}: ${names.join(', ')}. Run ${path} <command> --help for usage.`
+    );
+  for (const sub of command.commands)
+    addCommandHints(sub, `${path} ${sub.name()}`);
+}
+
 function parseJsonInput(raw: string, label: string): unknown {
   try {
     return JSON.parse(raw);
@@ -3017,6 +3033,7 @@ program
   });
 
 collectTopLevelCommands();
+addCommandHints(program);
 
 // Handle the main entry point
 async function main() {
