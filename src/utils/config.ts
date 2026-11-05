@@ -74,12 +74,17 @@ export function getApiKey(providedKey?: string): string | undefined {
 
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
 
+/** Remove trailing slashes before comparing or joining an API base URL. */
+export function normalizeApiUrl(apiUrl: string): string {
+  return apiUrl.replace(/\/+$/, '');
+}
+
 /**
  * Check if using a custom (non-cloud) API URL
  */
 export function isCustomApiUrl(apiUrl?: string): boolean {
   const url = apiUrl || globalConfig.apiUrl;
-  return !!url && url !== DEFAULT_API_URL;
+  return !!url && normalizeApiUrl(url) !== DEFAULT_API_URL;
 }
 
 /**

@@ -11,7 +11,7 @@ import {
   validateConfig,
   isCustomApiUrl,
 } from '../../utils/config';
-import { getClient, resetClient } from '../../utils/client';
+import { getClient, isKeylessMode, resetClient } from '../../utils/client';
 import * as credentials from '../../utils/credentials';
 
 // Mock credentials module
@@ -240,6 +240,12 @@ describe('Config Fallback Priority', () => {
       expect(isCustomApiUrl()).toBe(false);
     });
 
+    it('should ignore trailing slashes on the default cloud API URL', () => {
+      initializeConfig({ apiUrl: 'https://api.firecrawl.dev/' });
+      expect(isCustomApiUrl()).toBe(false);
+      expect(isCustomApiUrl('https://api.firecrawl.dev///')).toBe(false);
+    });
+
     it('should return true for custom API URLs', () => {
       initializeConfig({ apiUrl: 'http://localhost:3002' });
       expect(isCustomApiUrl()).toBe(true);
@@ -254,6 +260,16 @@ describe('Config Fallback Priority', () => {
       initializeConfig({ apiUrl: 'https://api.firecrawl.dev' });
       expect(isCustomApiUrl('http://localhost:3002')).toBe(true);
     });
+
+    it('should keep custom API URLs custom when they have trailing slashes', () => {
+      expect(isCustomApiUrl('http://localhost:3002/')).toBe(true);
+    });
+  });
+
+  describe('keyless mode with cloud API URLs', () => {
+    it('should allow a trailing slash on the default cloud API URL', () => {
+      expect(isKeylessMode(undefined, 'https://api.firecrawl.dev/')).toBe(true);
+    });
   });
 
   describe('validateConfig with custom API URLs', () => {
@@ -265,6 +281,11 @@ describe('Config Fallback Priority', () => {
 
     it('should require API key for cloud API URL', () => {
       initializeConfig({ apiUrl: 'https://api.firecrawl.dev' });
+      expect(() => validateConfig()).toThrow('API key is required');
+    });
+
+    it('should require API key for cloud API URL with a trailing slash', () => {
+      initializeConfig({ apiUrl: 'https://api.firecrawl.dev/' });
       expect(() => validateConfig()).toThrow('API key is required');
     });
 
