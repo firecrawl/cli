@@ -299,7 +299,7 @@ export async function handleList(
       throw new Error(
         '--request cannot be combined with a path or list filters.'
       );
-    if (path[0] === 'search')
+    if (options.category && path[0] === 'search')
       throw new Error(
         `unknown command 'search'. Did you mean firecrawl search alexandria ${quote(path.slice(1).join(' ') || '<query>')}?`
       );
