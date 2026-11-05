@@ -15,7 +15,6 @@ import { integrationHeaders } from '../utils/integration';
 
 type Selectors = Record<string, unknown>;
 type ListOptions = AlexandriaOptions & {
-  browse?: boolean;
   category?: boolean;
   contracts?: boolean;
   limit?: number;
@@ -300,7 +299,7 @@ export async function handleList(
       throw new Error(
         '--request cannot be combined with a path or list filters.'
       );
-    if (options.browse && path[0] === 'search')
+    if (path[0] === 'search')
       throw new Error(
         `unknown command 'search'. Did you mean firecrawl search alexandria ${quote(path.slice(1).join(' ') || '<query>')}?`
       );
@@ -535,7 +534,6 @@ export function createAlexandriaCommand(): Command {
     (path: string[], options: ListOptions) =>
       handleList(path, {
         ...options,
-        browse: true,
         category: path.length > 0,
       })
   );
