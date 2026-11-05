@@ -2,47 +2,69 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import packageJson from '../../package.json';
-import { compareVersions, getLatestVersion } from './npm-registry';
+import { isHomebrewPath } from './install-channel';
+import {
+  compareVersions,
+  getLatestVersion,
+  isPrerelease,
+} from './npm-registry';
+import { colorizeUpdateNotice, formatUpdateBox } from './update-notice-format';
 
 const CACHE_FILENAME = 'update-check.json';
 const CACHE_TTL_MS = 20 * 60 * 60 * 1000;
 const NOTICE_TTL_MS = 12 * 60 * 60 * 1000;
 const RELEASE_NOTES_URL = 'https://github.com/firecrawl/cli/releases/latest';
-const INSTALL_COMMAND = 'npm install -g firecrawl-cli';
+const NPM_UPDATE_COMMAND = 'npm install -g firecrawl-cli';
+const BREW_UPDATE_COMMAND = 'brew upgrade firecrawl-cli';
 
 interface UpdateCache {
   latestVersion: string;
   checkedAt: string;
   lastShownVersion?: string;
   lastShownAt?: string;
+  /** The update line last shown; installs sharing this cache can need different ones. */
+  lastShownHint?: string;
 }
 
 export interface UpdateNoticeOptions {
   cacheDir?: string;
+  command?: string;
+  /** Replaces the "Run <command> to update." line, for installs no command updates. */
+  hint?: string;
+  installPaths?: string[];
   now?: Date;
   stderr?: Pick<NodeJS.WriteStream, 'write' | 'isTTY'>;
 }
 
-function getCachePath(cacheDir?: string): string {
+export function getCachePath(cacheDir?: string): string {
   return path.join(
     cacheDir ?? path.join(os.homedir(), '.firecrawl'),
     CACHE_FILENAME
   );
 }
 
-function updateCheckDisabled(): boolean {
-  const value = process.env.FIRECRAWL_NO_UPDATE_CHECK;
+/**
+ * Homebrew installs live under a Cellar keg and must be upgraded with brew.
+ * Compiled binaries report a virtual __dirname, so the executable path is checked too.
+ */
+export function updateCommand(
+  installPaths: string[] = [__dirname, process.execPath]
+): string {
+  return installPaths.some(isHomebrewPath)
+    ? BREW_UPDATE_COMMAND
+    : NPM_UPDATE_COMMAND;
+}
+
+export function envFlag(name: string): boolean {
+  const value = process.env[name];
   return value === '1' || value === 'true';
 }
 
-function supportsColor(stderr: Pick<NodeJS.WriteStream, 'isTTY'>): boolean {
-  if (process.env.NO_COLOR !== undefined) return false;
-  if (process.env.FORCE_COLOR !== undefined)
-    return process.env.FORCE_COLOR !== '0';
-  return Boolean(stderr.isTTY);
+export function updateCheckDisabled(): boolean {
+  return envFlag('FIRECRAWL_NO_UPDATE_CHECK');
 }
 
-async function readCachedLatest(
+export async function readCachedLatest(
   cachePath: string,
   now: Date
 ): Promise<{
@@ -51,6 +73,7 @@ async function readCachedLatest(
   stale: boolean;
   lastShownVersion?: string;
   lastShownAt?: string;
+  lastShownHint?: string;
 }> {
   try {
     const raw = await fs.readFile(cachePath, 'utf-8');
@@ -71,51 +94,48 @@ async function readCachedLatest(
       stale,
       lastShownVersion: parsed.lastShownVersion,
       lastShownAt: parsed.lastShownAt,
+      lastShownHint: parsed.lastShownHint,
     };
   } catch {
     return { stale: true };
   }
 }
 
-async function writeCachedLatest(
+export async function writeCachedLatest(
   cachePath: string,
   cache: UpdateCache
 ): Promise<void> {
+  const staged = `${cachePath}.${process.pid}.tmp`;
   try {
     await fs.mkdir(path.dirname(cachePath), { recursive: true });
-    await fs.writeFile(cachePath, `${JSON.stringify(cache)}\n`, 'utf-8');
+    await fs.writeFile(staged, `${JSON.stringify(cache)}\n`, 'utf-8');
+    await fs.rename(staged, cachePath);
   } catch {
     // Update checks should never make a real command fail.
+    await fs.rm(staged, { force: true }).catch(() => {});
   }
 }
 
-function colorize(message: string, stderr: Pick<NodeJS.WriteStream, 'isTTY'>) {
-  if (!supportsColor(stderr)) return message;
-  return message
-    .replace('Update available!', '\x1b[1;36mUpdate available!\x1b[0m')
-    .replace(INSTALL_COMMAND, `\x1b[36m${INSTALL_COMMAND}\x1b[0m`)
-    .replace(RELEASE_NOTES_URL, `\x1b[36;4m${RELEASE_NOTES_URL}\x1b[0m`);
-}
-
-export function formatUpdateNotice(latestVersion: string): string {
+export function formatUpdateNotice(
+  latestVersion: string,
+  command: string = updateCommand(),
+  hint = `Run ${command} to update.`
+): string {
   const currentVersion = packageJson.version;
   const lines = [
     `✨ Update available! ${currentVersion} -> ${latestVersion}`,
-    `Run ${INSTALL_COMMAND} to update.`,
+    hint,
     '',
     'See full release notes:',
     RELEASE_NOTES_URL,
   ];
-  const width = Math.max(...lines.map((line) => line.length));
-  const top = `╭${'─'.repeat(width + 2)}╮`;
-  const bottom = `╰${'─'.repeat(width + 2)}╯`;
-  const body = lines.map((line) => `│ ${line.padEnd(width)} │`);
-  return [top, ...body, bottom].join('\n');
+  return formatUpdateBox(lines);
 }
 
 function shouldShowNotice(latestVersion: string | undefined): boolean {
   return (
     typeof latestVersion === 'string' &&
+    !isPrerelease(latestVersion) &&
     compareVersions(packageJson.version, latestVersion) < 0
   );
 }
@@ -124,11 +144,17 @@ function noticeWasRecentlyShown(
   cache: {
     lastShownVersion?: string;
     lastShownAt?: string;
+    lastShownHint?: string;
   },
   latestVersion: string,
+  hint: string,
   now: Date
 ): boolean {
   if (cache.lastShownVersion !== latestVersion || !cache.lastShownAt) {
+    return false;
+  }
+  // A cache written before hints were recorded keeps its cooldown.
+  if (cache.lastShownHint !== undefined && cache.lastShownHint !== hint) {
     return false;
   }
 
@@ -142,7 +168,13 @@ export async function maybeShowUpdateNotice(
   options: UpdateNoticeOptions = {}
 ): Promise<void> {
   const stderr = options.stderr ?? process.stderr;
-  if (!stderr.isTTY || updateCheckDisabled()) return;
+  if (
+    !stderr.isTTY ||
+    updateCheckDisabled() ||
+    isPrerelease(packageJson.version)
+  ) {
+    return;
+  }
 
   const now = options.now ?? new Date();
   const cachePath = getCachePath(options.cacheDir);
@@ -160,18 +192,32 @@ export async function maybeShowUpdateNotice(
         checkedAt,
         lastShownVersion: cached.lastShownVersion,
         lastShownAt: cached.lastShownAt,
+        lastShownHint: cached.lastShownHint,
       });
     }
   }
 
   if (!shouldShowNotice(latestVersion) || latestVersion === undefined) return;
-  if (noticeWasRecentlyShown(cached, latestVersion, now)) return;
+  const command = options.command ?? updateCommand(options.installPaths);
+  const hint = options.hint ?? `Run ${command} to update.`;
+  if (noticeWasRecentlyShown(cached, latestVersion, hint, now)) return;
 
-  stderr.write(`${colorize(formatUpdateNotice(latestVersion), stderr)}\n\n`);
+  stderr.write(
+    `${colorizeUpdateNotice(
+      formatUpdateNotice(latestVersion, command, options.hint),
+      stderr,
+      {
+        title: 'Update available!',
+        commands: options.hint ? [] : [command],
+        url: RELEASE_NOTES_URL,
+      }
+    )}\n\n`
+  );
   await writeCachedLatest(cachePath, {
     latestVersion,
     checkedAt: checkedAt ?? now.toISOString(),
     lastShownVersion: latestVersion,
     lastShownAt: now.toISOString(),
+    lastShownHint: hint,
   });
 }

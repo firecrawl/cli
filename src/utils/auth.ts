@@ -3,7 +3,6 @@
  * Provides automatic authentication prompts when credentials are missing
  */
 
-import * as readline from 'readline';
 import * as crypto from 'crypto';
 import {
   loadCredentials,
@@ -11,6 +10,8 @@ import {
   getConfigDirectoryPath,
 } from './credentials';
 import { updateConfig, getApiKey } from './config';
+import { promptInput } from './prompt';
+import { bold, dim, orange, reset } from './terminal';
 
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
 // The apex redirects to www, and egress allowlists often permit only www.
@@ -24,22 +25,8 @@ const MAX_TRANSPORT_FAILURES = 3;
 // The server rate limits at 30 polls per minute, so allow it to recover.
 const MAX_SERVER_FAILURES = 5;
 
-/**
- * Prompt for input
- */
-function promptInput(question: string): Promise<string> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise((resolve) => {
-    rl.question(question, (answer: string) => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
+const NO_LOGIN_INPUT_MESSAGE =
+  'No input to log in with. Run "firecrawl login --browser", pass --api-key, or set FIRECRAWL_API_KEY.';
 
 /**
  * Open URL in the default browser
@@ -668,7 +655,8 @@ async function manualLogin(
 
   if (isCustomUrl) {
     const apiKey = await promptInput(
-      'Enter your API key (press Enter to skip): '
+      'Enter your API key (press Enter to skip): ',
+      'No input to configure this API URL. Pass --api-key or set FIRECRAWL_API_KEY.'
     );
     return {
       apiKey: apiKey.trim(),
@@ -676,7 +664,10 @@ async function manualLogin(
     };
   }
 
-  const apiKey = await promptInput('Enter your Firecrawl API key: ');
+  const apiKey = await promptInput(
+    'Enter your Firecrawl API key: ',
+    NO_LOGIN_INPUT_MESSAGE
+  );
 
   if (!apiKey || apiKey.trim().length === 0) {
     throw new Error('API key cannot be empty');
@@ -710,11 +701,6 @@ function envVarLogin(): { apiKey: string; apiUrl: string } | null {
  * Print the Firecrawl CLI banner
  */
 function printBanner(): void {
-  const orange = '\x1b[38;5;208m';
-  const reset = '\x1b[0m';
-  const dim = '\x1b[2m';
-  const bold = '\x1b[1m';
-
   // Get version from package.json
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const packageJson = require('../../package.json');
@@ -724,7 +710,7 @@ function printBanner(): void {
   console.log(
     `  ${orange}🔥 ${bold}firecrawl${reset} ${dim}cli${reset} ${dim}v${version}${reset}`
   );
-  console.log(`  ${dim}Turn websites into LLM-ready data${reset}`);
+  console.log(`  ${dim}The context API for AI agents${reset}`);
   console.log('');
 }
 
@@ -758,14 +744,17 @@ async function interactiveLogin(
     'Welcome! To get started, authenticate with your Firecrawl account.\n'
   );
   console.log(
-    '  \x1b[1m1.\x1b[0m Login with browser \x1b[2m(recommended)\x1b[0m'
+    `  ${bold}1.${reset} Login with browser ${dim}(recommended)${reset}`
   );
-  console.log('  \x1b[1m2.\x1b[0m Enter API key manually');
+  console.log(`  ${bold}2.${reset} Enter API key manually`);
   console.log('');
   printEnvHint();
   printTelemetryNotice();
 
-  const choice = await promptInput('Enter choice [1/2]: ');
+  const choice = await promptInput(
+    'Enter choice [1/2]: ',
+    NO_LOGIN_INPUT_MESSAGE
+  );
 
   if (choice === '2' || choice.toLowerCase() === 'manual') {
     return manualLogin(effectiveApiUrl);
@@ -778,8 +767,6 @@ async function interactiveLogin(
  * Print hint about environment variable
  */
 function printEnvHint(): void {
-  const dim = '\x1b[2m';
-  const reset = '\x1b[0m';
   console.log(
     `${dim}Tip: You can also set FIRECRAWL_API_KEY environment variable${reset}\n`
   );
@@ -789,9 +776,6 @@ function printEnvHint(): void {
  * Print telemetry notice
  */
 function printTelemetryNotice(): void {
-  const dim = '\x1b[2m';
-  const reset = '\x1b[0m';
-
   if (isTelemetryDisabled()) {
     console.log(`${dim}Telemetry disabled${reset}\n`);
   } else {
@@ -817,7 +801,7 @@ export function isAuthenticated(): boolean {
 
 /**
  * Ensure user is authenticated before running a command
- * If not authenticated, prompts for login
+ * If not authenticated, prompts for login in a terminal and exits with status 1 without one
  * Returns the API key
  */
 export async function ensureAuthenticated(): Promise<string> {
@@ -825,6 +809,14 @@ export async function ensureAuthenticated(): Promise<string> {
   const existingKey = getApiKey();
   if (existingKey) {
     return existingKey;
+  }
+
+  // Without a terminal the login prompt can never be answered.
+  if (!process.stdin.isTTY) {
+    console.error(
+      'Error: Not authenticated. Set FIRECRAWL_API_KEY, pass --api-key, or run "firecrawl login" in a terminal.'
+    );
+    process.exit(1);
   }
 
   // No credentials found - prompt for login

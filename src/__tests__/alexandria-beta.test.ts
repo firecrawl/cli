@@ -1,10 +1,11 @@
 import { execFile } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
+import packageJson from '../../package.json';
 
 const exec = promisify(execFile);
 const requests: { url?: string; headers: Record<string, any>; body: any }[] =
@@ -137,6 +138,10 @@ it('starts with a live category guide and preserves category-discovery access er
       { id: 'new-category' },
     ],
   });
+  const priced = await cli(['list', '--include-costs', '--json']);
+  expect(JSON.parse(priced.stdout).data.items[0].nextCommand).toBe(
+    'firecrawl alexandria list finance --category --include-costs'
+  );
   status = 403;
   response = {
     success: false,
@@ -242,7 +247,17 @@ it('expands only a selected tool without falling back to a group', async () => {
   const leaf = await cli(['list', 'benzinga', 'calendar/earnings']);
   expect(leaf.code).toBe(0);
   expect(leaf.stdout).toContain('Inputs:');
-  expect(leaf.stdout).toContain('2 credits per call');
+  expect(leaf.stdout).not.toContain('credits per');
+  const priced = await cli([
+    'list',
+    'benzinga',
+    'calendar/earnings',
+    '--include-costs',
+  ]);
+  expect(priced.stdout).toContain('2 credits per call');
+  expect(requests.at(-1)?.body.alexandria[0].options).not.toHaveProperty(
+    'includeCosts'
+  );
   expect(requests.at(-1)?.body.alexandria[0].options).toMatchObject({
     capabilities: ['calendar/earnings'],
     expand: ['options', 'response', 'examples'],
@@ -257,7 +272,7 @@ it('expands only a selected tool without falling back to a group', async () => {
     level: 'tools',
     limit: 20,
   });
-  expect(requests).toHaveLength(4);
+  expect(requests).toHaveLength(6);
 });
 
 it('inspects a combined tool address in one request and preserves provider errors', async () => {
@@ -352,9 +367,23 @@ it('preserves scoped next requests, pagination and discovery receipts', async ()
     {
       requestId: parsed.requestId,
       scrape_id: 'discovery-1',
-      creditsCost: 0,
     },
   ]);
+  const priced = JSON.parse(
+    (
+      await cli([
+        'list',
+        '--request',
+        JSON.stringify(next),
+        '--include-costs',
+        '--json',
+      ])
+    ).stdout
+  );
+  expect(priced.data.alexandria[0].data.nextCommand).toBe(
+    `firecrawl list --request '${JSON.stringify(next)}' --include-costs`
+  );
+  expect(priced.discoveryRequests[0].creditsCost).toBe(0);
 });
 
 it('refuses execution through list and propagates discovery access errors', async () => {
@@ -411,11 +440,13 @@ it('refuses execution through list and propagates discovery access errors', asyn
   expect(requests).toHaveLength(1);
 });
 
-it('documents the default discovery flow and respects explicit web-only search', async () => {
+it('documents the default discovery flow and adds alexandria to explicit sources', async () => {
   const help = await cli(['--help']);
   expect(help.stdout).toContain('find-tools');
   const searchHelp = await cli(['search', '--help']);
-  expect(searchHelp.stdout).toContain('web,alexandria');
+  expect(searchHelp.stdout.replace(/\s+/g, ' ')).toContain(
+    'with an API key, alexandria is always added'
+  );
   expect(searchHelp.stdout).toContain('--no-domain-tools');
   const scrapeHelp = await cli(['scrape', '--help']);
   expect(scrapeHelp.stdout).toContain('--alexandria');
@@ -441,7 +472,16 @@ it('documents the default discovery flow and respects explicit web-only search',
   ]);
   expect(result.code).toBe(0);
   expect(requests[0].body).toMatchObject({
-    sources: [{ type: 'web' }],
+    sources: [{ type: 'web' }, { type: 'alexandria' }],
+    domainTools: true,
+  });
+  const keyless = await cli(
+    ['search', 'pizza hut', '--sources', 'news', '--json'],
+    ''
+  );
+  expect(keyless.code).toBe(0);
+  expect(requests[1].body).toMatchObject({
+    sources: [{ type: 'news' }],
     domainTools: false,
   });
 });
@@ -512,6 +552,7 @@ it('sends provider calls to Scrape with a stable retry ID and preserves the rece
     expect(result.code).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual({
       ...response,
+      data: { ...response.data, alexandria: [{ data: { value: 42 } }] },
       requestId: 'retry-1',
       receipt: {
         creditsUsed: 1,
@@ -560,10 +601,55 @@ it('relays terms refusals and keeps the request ID on failure', async () => {
   expect(result.code).toBe(1);
   const body = JSON.parse(result.stdout);
   expect(body).toMatchObject(response);
-  expect(body.guidance).toContain('wait for explicit approval');
-  expect(body.guidance).toContain('/app/settings?tab=data-sources');
+  expect(body.guidance).toContain('organization admin');
+  expect(body.guidance).toContain('https://firecrawl.dev/terms/provider');
+  expect(body.guidance).not.toContain('alexandria terms accept');
   expect(result.stderr).toContain(body.requestId);
   expect(requests).toHaveLength(1);
+});
+
+it('points terms refusals without a returned link to the dashboard settings', async () => {
+  status = 403;
+  response = {
+    success: false,
+    error: 'Accept provider terms',
+    code: 'THIRD_PARTY_DATA_TERMS_REQUIRED',
+  };
+  const result = await cli([
+    'scrape',
+    '--alexandria',
+    'provider/lookup',
+    '--json',
+  ]);
+  expect(result.code).toBe(1);
+  expect(JSON.parse(result.stdout).guidance).toContain(
+    'https://www.firecrawl.dev/app/settings?tab=data-sources'
+  );
+});
+
+it('never accepts terms from the CLI and points to the dashboard instead', async () => {
+  const result = await cli([
+    'alexandria',
+    'terms',
+    'accept',
+    'provider',
+    '--terms-version',
+    '1.0',
+    '--digest',
+    'a'.repeat(64),
+    '--confirm',
+  ]);
+  expect(result.code).toBe(1);
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    success: false,
+    guidance: {
+      url: 'https://www.firecrawl.dev/app/settings?tab=data-sources',
+    },
+  });
+  expect(requests).toHaveLength(0);
+  const help = await cli(['alexandria', 'terms', '--help']);
+  expect(help.stdout).toContain('show');
+  expect(help.stdout).not.toMatch(/^\s+accept\b/m);
 });
 
 it('executes Find Tools through the same API and refuses keyless access', async () => {
@@ -583,6 +669,178 @@ it('executes Find Tools through the same API and refuses keyless access', async 
       ],
     },
   });
+});
+
+it('finds and reads skills through the same API and refuses keyless access', async () => {
+  expect((await cli(['find-skills'], '')).code).toBe(1);
+  expect(requests).toHaveLength(0);
+  expect(
+    (await cli(['find-skills', 'weekly', 'digest', '--limit', '5'])).code
+  ).toBe(0);
+  expect(requests[0]).toMatchObject({
+    url: '/v2/scrape',
+    body: {
+      alexandria: [
+        {
+          provider: 'firecrawl',
+          capability: 'find-skills',
+          options: { query: 'weekly digest', limit: 5 },
+        },
+      ],
+    },
+  });
+  expect((await cli(['find-skills'])).code).toBe(0);
+  expect(requests[1].body.alexandria[0].options).toEqual({});
+  const read = await cli([
+    'read-skill',
+    'team:weekly-digest',
+    '--path',
+    'references/sources.md',
+    '--skill-version',
+    '2',
+  ]);
+  expect(read.code).toBe(0);
+  expect(read.stdout).not.toMatch(/^\d+\.\d+\.\d+\s*$/);
+  expect(requests[2].body.alexandria[0]).toEqual({
+    provider: 'firecrawl',
+    capability: 'read-skill',
+    options: {
+      id: 'team:weekly-digest',
+      path: 'references/sources.md',
+      version: 2,
+    },
+  });
+});
+
+it('refuses invalid skill options before calling the API', async () => {
+  expect((await cli(['find-skills', '--limit', '51'])).code).toBe(1);
+  expect(
+    (await cli(['read-skill', 'deep-research', '--skill-version', '0'])).code
+  ).toBe(1);
+  expect((await cli(['read-skill'])).code).toBe(1);
+  for (const value of ['0x10', '1e1', ' 5', '5.0'])
+    expect((await cli(['find-skills', '--limit', value])).code).toBe(1);
+  expect(requests).toHaveLength(0);
+  expect((await cli(['read-skill', 'deep-research', '--path', ''])).code).toBe(
+    0
+  );
+  expect(requests[0].body.alexandria[0].options).toEqual({
+    id: 'deep-research',
+    path: '',
+  });
+  const help = await cli(['--help']);
+  expect(help.stdout).toContain('find-skills');
+  expect(help.stdout).toContain('read-skill');
+});
+
+it('creates and updates team skills through the same API', async () => {
+  const bodyFile = join(home, 'skill.md');
+  writeFileSync(bodyFile, 'Run @fred/series/observations.');
+  expect(
+    (
+      await cli([
+        'create-skill',
+        '--from',
+        'firecrawl-deep-research',
+        '--slug',
+        'our-research',
+      ])
+    ).code
+  ).toBe(0);
+  expect(requests[0].body.alexandria[0]).toEqual({
+    provider: 'firecrawl',
+    capability: 'create-skill',
+    options: { from: 'firecrawl-deep-research', slug: 'our-research' },
+  });
+  expect(
+    (
+      await cli([
+        'create-skill',
+        '--from',
+        'firecrawl-deep-research',
+        '--request-id',
+        'save-1',
+      ])
+    ).code
+  ).toBe(0);
+  expect(requests.at(-1)!.headers['x-request-id']).toBe('save-1');
+  requests.splice(1);
+  expect(
+    (
+      await cli([
+        'create-skill',
+        '--name',
+        'Digest',
+        '--description',
+        'Summarise.',
+        '--body-file',
+        bodyFile,
+      ])
+    ).code
+  ).toBe(0);
+  expect(requests[1].body.alexandria[0].options).toEqual({
+    name: 'Digest',
+    description: 'Summarise.',
+    body: 'Run @fred/series/observations.',
+  });
+  expect(
+    (
+      await cli([
+        'update-skill',
+        'team:digest',
+        '--base-version',
+        '2',
+        '--enabled',
+        'false',
+        '--name',
+        'Weekly digest',
+      ])
+    ).code
+  ).toBe(0);
+  expect(requests[2].body.alexandria[0]).toEqual({
+    provider: 'firecrawl',
+    capability: 'update-skill',
+    options: {
+      id: 'team:digest',
+      baseVersion: 2,
+      name: 'Weekly digest',
+      enabled: false,
+    },
+  });
+});
+
+it('refuses invalid skill writes before calling the API', async () => {
+  expect((await cli(['update-skill', 'team:digest', '--name', 'x'])).code).toBe(
+    1
+  );
+  expect(
+    (
+      await cli([
+        'update-skill',
+        'team:digest',
+        '--base-version',
+        '0',
+        '--name',
+        'x',
+      ])
+    ).code
+  ).toBe(1);
+  expect(
+    (
+      await cli([
+        'update-skill',
+        'team:digest',
+        '--base-version',
+        '1',
+        '--enabled',
+        'yes',
+      ])
+    ).code
+  ).toBe(1);
+  expect(
+    (await cli(['create-skill', '--body', 'x', '--body-file', 'x.md'])).code
+  ).toBe(1);
+  expect(requests).toHaveLength(0);
 });
 
 it('preserves charged SDK failures', async () => {
@@ -613,7 +871,16 @@ it('retains successful results and billing when one provider fails', async () =>
     'other/lookup',
   ]);
   expect(result.code).toBe(1);
-  expect(JSON.parse(result.stdout)).toMatchObject(response);
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    ...response,
+    data: {
+      creditsCost: 1,
+      alexandria: [{ data: { value: 42 } }, response.data.alexandria[1]],
+    },
+  });
+  expect(JSON.parse(result.stdout).data.alexandria[0]).not.toHaveProperty(
+    'creditsCost'
+  );
   expect(requests).toHaveLength(1);
 });
 
@@ -674,11 +941,12 @@ it('presents tools compactly after web results while JSON preserves full contrac
   expect(readable.stdout.indexOf('GDP report')).toBeLessThan(
     readable.stdout.indexOf('=== Alexandria Tools ===')
   );
-  expect(readable.stdout).toContain('5 credits per record');
+  expect(readable.stdout).not.toContain('credits per');
   expect(readable.stdout).toContain('scrape --alexandria');
   expect(readable.stdout).not.toContain('EXAMPLE_PAYLOAD');
   const json = await cli(['search', 'GDP growth', '--json']);
-  expect(JSON.parse(json.stdout).data.tools).toEqual([tool]);
+  const { creditsCost: _cost, perRecord: _perRecord, ...unpriced } = tool;
+  expect(JSON.parse(json.stdout).data.tools).toEqual([unpriced]);
   response.data.tools = [
     {
       provider: tool.provider,
@@ -1318,6 +1586,10 @@ it('shows a pending approval and how to answer it', async () => {
   const terms = await cli(['agent', RUN_ID]);
   expect(terms.stdout).toContain('Approving does not accept terms.');
   expect(terms.stdout).toContain(
+    'Firecrawl dashboard first: https://www.firecrawl.dev/app/settings?tab=data-sources'
+  );
+  expect(terms.stdout).not.toContain('alexandria terms accept');
+  expect(terms.stdout).toContain(
     '  - Crunchbase: https://example.com/terms/crunchbase'
   );
   expect(terms.stdout).toContain('firecrawl alexandria terms show crunchbase');
@@ -1769,28 +2041,32 @@ it('forwards URL scrape discovery detail and rejects invalid combinations locall
 
 it('submits Alexandria session feedback without a job ID', async () => {
   response = { success: true, feedbackId: 'feedback-1', creditsRefunded: 0 };
-  const result = await cli([
-    'alexandria',
-    'feedback',
-    '--rating',
-    'partial',
-    '--url',
-    'https://example.com',
-    '--requested-functionality',
-    'Download attachments',
-    '--objective',
-    ' Compare contract requirements across agencies ',
-    '--rationale',
-    'Only summaries available',
-    '--json',
-  ]);
+  const result = await cli(
+    [
+      'alexandria',
+      'feedback',
+      '--rating',
+      'partial',
+      '--url',
+      'https://example.com',
+      '--requested-functionality',
+      'Download attachments',
+      '--objective',
+      ' Compare contract requirements across agencies ',
+      '--rationale',
+      'Only summaries available',
+      '--json',
+    ],
+    'fc-test',
+    { FIRECRAWL_CLI_DISABLE_AGENT_ORIGIN: '1' }
+  );
   expect(result.code).toBe(0);
   expect(JSON.parse(result.stdout).feedbackId).toBe('feedback-1');
   expect(requests[0].url).toBe('/v2/feedback');
   expect(requests[0].body).toEqual({
     endpoint: 'alexandria',
     rating: 'partial',
-    origin: 'cli',
+    origin: `cli@${packageJson.version}`,
     integration: 'cli',
     requestedWebsite: {
       url: 'https://example.com',

@@ -4,6 +4,7 @@
  */
 
 import { getClient, isKeylessMode, KEYLESS_CLI_HEADERS } from '../utils/client';
+import { getCliOrigin } from '../utils/agent-origin';
 import { getConfig, normalizeApiUrl, validateConfig } from '../utils/config';
 import {
   getScrapeId,
@@ -11,6 +12,7 @@ import {
   clearInteractSession,
 } from '../utils/interact-session';
 import { writeOutput } from '../utils/output';
+import { integrationHeaders } from '../utils/integration';
 
 export interface InteractExecuteOptions {
   scrapeId?: string;
@@ -60,7 +62,7 @@ function buildHeaders(apiKey: string | undefined, keyless: boolean) {
     headers.Authorization = `Bearer ${apiKey}`;
   }
   if (keyless) Object.assign(headers, KEYLESS_CLI_HEADERS);
-  return headers;
+  return { ...headers, ...integrationHeaders() };
 }
 
 /**
@@ -80,7 +82,10 @@ export async function handleInteractExecute(
       `Using scrape ${scrapeId}` + (storedUrl ? ` (${storedUrl})` : '') + '\n'
     );
 
-    const body: Record<string, unknown> = { origin: 'cli', integration: 'cli' };
+    const body: Record<string, unknown> = {
+      origin: getCliOrigin(),
+      integration: 'cli',
+    };
 
     if (options.code) {
       body.code = options.code;

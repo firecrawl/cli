@@ -1,0 +1,5 @@
+allowBuilds:
+  esbuild: false
+minimumReleaseAge: 4320 # 3 days
+minimumReleaseAgeExclude:
+  - firecrawl

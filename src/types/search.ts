@@ -12,17 +12,13 @@ export interface SearchOptions {
   toolDetail?: 'compact' | 'summary' | 'full';
   /** Search query (required) */
   query: string;
-  /** Optional broader task goal for this search */
-  objective?: string;
-  /** Model issuing and consuming this search, if known */
-  clientModel?: string;
   /** API key for Firecrawl */
   apiKey?: string;
   /** API URL for Firecrawl */
   apiUrl?: string;
   /** Maximum number of results (default: 5, max: 100) */
   limit?: number;
-  /** Sources to search: web, images, news, alexandria (CLI default: web,alexandria) */
+  /** Sources to search: web, images, news, alexandria (default: web; alexandria is added when an API key is set) */
   sources?: SearchSource[];
   /** Categories to filter results: research, pdf, developer, gov */
   categories?: SearchCategory[];

@@ -4,14 +4,18 @@
  * agent repo's CLI output style so scaffold messages match docs verbatim.
  */
 
-export const orange = '\x1b[38;5;208m';
-export const reset = '\x1b[0m';
-export const dim = '\x1b[2m';
-export const bold = '\x1b[1m';
-export const green = '\x1b[32m';
-export const red = '\x1b[31m';
-export const cyan = '\x1b[36m';
-export const yellow = '\x1b[33m';
+import {
+  bold,
+  cyan,
+  dim,
+  green,
+  orange,
+  red,
+  reset,
+  yellow,
+} from '../terminal';
+
+export { bold, cyan, dim, green, orange, red, reset, yellow };
 
 export function printBanner(): void {
   console.log('');

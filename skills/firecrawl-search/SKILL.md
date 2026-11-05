@@ -29,6 +29,14 @@ Use `firecrawl search --help` for search options, `firecrawl list --help` for co
 
 `--categories developer` searches an index of public repositories, GitHub issues, merged pull requests, repository READMEs, and curated documentation sites. `--categories gov` searches US federal, state, and local government legal and regulatory sources and cannot be combined with other categories. `--categories research` is a website filter, not the paper index. Dedicated skills: [firecrawl-developer-index](../firecrawl-developer-index/SKILL.md) and [firecrawl-research-index](../firecrawl-research-index/SKILL.md).
 
+## Government Index
+
+For US legal or regulatory source discovery, use `firecrawl gov "<question, jurisdiction, and date>" --limit 10`. Use `--limit` for result count; `-k` is the API-key option. `search --categories gov` also uses `--limit` and returns results in `data.web`; run other categories separately rather than combining them with `gov`.
+
+`firecrawl gov` also takes filters; `search --categories gov` does not. Narrow with `--jurisdiction us-ca`, `--court ca9`, `--court-type state-supreme`, `--cites "42 U.S.C. § 1983"`, or `--domain irs.gov`; see `firecrawl gov --help` for values. Filters keep only pages the index has labeled, so a filtered search can leave out relevant pages, and no results does not mean none exist. Court labels are most complete for federal courts and case-law collections.
+
+Read a supplied source URL directly with `scrape`. Before citing current governing law, verify the source's issuer, jurisdiction, enacted/effective status, and version. Bill text, agency guidance, historical versions, and third-party reproductions need that verification too. Ask for a missing jurisdiction before selecting a rule; use general search for non-US questions or missing coverage. No hits does not prove that no applicable law exists.
+
 **Done when:** relevant results have been inspected, per-call errors and empty results have been checked, the request has been answered with source links, and feedback is sent within the time window unless opted out.
 
 ## Go beyond page content with Alexandria
@@ -41,7 +49,7 @@ Alexandria is a catalogue of ready-made website workflows, API providers, and sp
 
 ### Inspect before execution
 
-Search defaults to `web,alexandria` with domain-tool matching on. Preserve the user's location, marketplace, and constraints in the query; do not turn normal research into an artificial tool-discovery query. Inspect `data.web` and `data.tools` from the same response.
+With an API key, search always includes Alexandria: it defaults to `web,alexandria` with domain-tool matching on, and `--sources` without `alexandria` (for example `--sources news`) gets it added. Preserve the user's location, marketplace, and constraints in the query; do not turn normal research into an artificial tool-discovery query. Inspect `data.web` and `data.tools` from the same response.
 
 Search returns compact tool matches by default: only `provider`, `capability`, and `description`. A match is not executed data. Select a candidate, then run `firecrawl list <provider> <capability> --pretty` with its provider and capability IDs to read the contract's inputs, coverage, and access requirements.
 
@@ -51,7 +59,7 @@ After inspecting the contract, execute with `firecrawl scrape <provider/capabili
 
 Use `list` for category/provider browsing and selected contracts. For a known website, `find-tools <url>` discovers associated tools without executing them. Run `firecrawl find-tools --help` for advanced catalogue selectors; avoid broad expansion unless the task needs it.
 
-If no returned tool covers the country/market/segment or required inputs, continue with ordinary web results. Do not exhaust the catalogue or pay for adjacent tools just to probe coverage. `--sources web` explicitly opts out of Alexandria; `--sources web --domain-tools` retains domain matches only.
+If no returned tool covers the country/market/segment or required inputs, continue with ordinary web results. Do not exhaust the catalogue or pay for adjacent tools just to probe coverage. With an API key, `--no-domain-tools` turns off domain matches only and semantic tool matches stay on; keyless searches return web results only.
 
 For Alexandria feedback about a provider result or coverage gap (each refunds 1 credit, up to 10 per website and 100 per team each UTC day), see [firecrawl-alexandria](../firecrawl-alexandria/SKILL.md).
 
@@ -83,7 +91,8 @@ Keep large search responses in `--json -o` output and select the relevant result
 - **`--highlights` on by default:** results are query-relevant excerpts from the page. Use `--no-highlights` for the original snippets.
 - **`--scrape` fetches full content** — reuse that content instead of re-scraping result URLs. This saves credits and avoids redundant fetches.
 - For large results, use `-o` and bounded local reads when a filesystem is available. Do not dump the full response into context.
-- Use `jq` to extract URLs or titles: `jq -r '.data.web[].url' .firecrawl/search.json`
+- Use `jq` to extract URLs **with their source and 1-indexed position** (you'll need both for feedback): `jq -r '.data | to_entries[] | select(.key as $k | ["web","images","news"] | index($k)) | .key as $s | .value | to_entries[] | "\($s):\(.key + 1)\t\(.value.url // "-")"' .firecrawl/search.json`
+  Only those three groups are addressable by `--valuable-results`; `data.tools` and any other key are skipped, and an image or news result with no `url` prints `-` — address it by its position anyway.
 - Naming convention: `.firecrawl/search-{query}.json` or `.firecrawl/search-{query}-scraped.json`
 
 ## Send feedback after every search (refunds 1 credit)
@@ -96,9 +105,10 @@ Search costs 2 credits. After you've actually used the results (or decided they 
 
 - **Time window:** must be sent within ~2 minutes of the search. Late feedback is rejected.
 - **`--missing-content` is the most important field.** It's a list of _specific pieces_ of content you expected but did not find. One topic per entry, each in its own string. These aggregate across teams and tell us what to index next.
+- **`--valuable-results` marks which results were useful.** Results come back grouped (`data.web`, `data.images`, `data.news`) and **each group is numbered from 1 independently**, so every entry is `source:position` — `web:1` and `news:1` are two different results. **Be exhaustive** — list every result that was actually useful; unlisted results are treated as not useful, so a partial list corrupts the signal. Reserve `--valuable-sources` for useful URLs that were NOT among the returned results (e.g. a page you found by following a result's link) — never report the same result in both.
 - **Substantive content required** (zero-effort feedback is rejected with HTTP 400):
-  - `good` → must include at least one `--valuable-sources` entry.
-  - `partial` → must include `--valuable-sources` or `--missing-content`.
+  - `good` → must include `--valuable-results` or at least one `--valuable-sources` entry.
+  - `partial` → must include `--valuable-results`, `--valuable-sources`, or `--missing-content`.
   - `bad` → must include `--missing-content` or `--query-suggestions`.
 - **Daily refund cap (per team, per UTC day, default 100 credits).** Once your team has been refunded 100 credits today, further submissions still record feedback but no longer refund credits. The response includes `creditsRefundedToday` / `dailyRefundCap` / `dailyCapReached`. **When `dailyCapReached: true`, stop calling `search-feedback` for the rest of the UTC day** — it won't refund anything and you're wasting bandwidth.
 - **Idempotent:** re-submitting for the same search id returns success but no extra refund.
@@ -107,13 +117,15 @@ Search costs 2 credits. After you've actually used the results (or decided they 
 Verify the search returned results before reading its `id`. Zero-result searches write no output file, so the file may be missing — or left over from an earlier search. The guard below skips feedback when the file is missing or has zero results; call `search-feedback` only inside it:
 
 ```bash
-# Send once per search. Rate honestly and replace the placeholder with the
-# rating that matches what actually happened. The two fields shown
-# satisfy the substantive-content rule for every rating.
+# Send once per search. Replace BOTH placeholders: the rating that matches
+# what actually happened, and the exhaustive source:position list of the
+# results that were genuinely useful (from the jq above). Never send the
+# list below as-is -- marking results you did not use corrupts the signal.
+# The two fields shown satisfy the substantive-content rule for every rating.
 if SEARCH_ID=$(jq -er 'select(any(.data[]; length > 0)) | .id' .firecrawl/search-react-hooks.json); then
   firecrawl search-feedback "$SEARCH_ID" \
     --rating "<good|partial|bad>" \
-    --valuable-sources '[{"url":"https://react.dev/reference/react/hooks","reason":"Most authoritative"}]' \
+    --valuable-results "<source:position,... - every result you actually used>" \
     --missing-content '[{"topic":"useDeferredValue","description":"No example of useDeferredValue with Suspense"}]' \
     --silent &
 fi

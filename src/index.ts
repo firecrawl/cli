@@ -5,12 +5,16 @@
  * Entry point for the CLI application
  */
 
-import { Command, Option } from 'commander';
+import { Command, InvalidArgumentError, Option } from 'commander';
 import { createSqlCommand } from './commands/sql';
 import { addFormatsAlias } from './utils/format-option';
 import {
   addAlexandriaScrapeOptions,
   createFindToolsCommand,
+  createFindSkillsCommand,
+  createReadSkillCommand,
+  createCreateSkillCommand,
+  createUpdateSkillCommand,
   handleAlexandria,
 } from './commands/alexandria';
 import { readFileSync } from 'fs';
@@ -23,6 +27,10 @@ import { initializeConfig, updateConfig } from './utils/config';
 import { configure, viewConfig } from './commands/config';
 import { handleCreditUsageCommand } from './commands/credit-usage';
 import { handleCrawlCommand } from './commands/crawl';
+import {
+  collectBatchScrapeUrls,
+  handleBatchScrapeCommand,
+} from './commands/batch-scrape';
 import { handleMapCommand } from './commands/map';
 import { handleParseCommand } from './commands/parse';
 import { createMonitorCommand } from './commands/monitor';
@@ -33,12 +41,12 @@ import {
   handleInspectPaperCommand,
   handleReadPaperCommand,
   handleRelatedPapersCommand,
-  handleSearchGitHubCommand,
   handleSearchPapersCommand,
 } from './commands/research';
 import {
   handleSearchFeedbackCommand,
   parseValuableSourcesArg,
+  parseValuableResultsArg,
   parseMissingContentArg,
   type SearchFeedbackRating,
 } from './commands/search-feedback';
@@ -73,10 +81,24 @@ import { handleStatusCommand } from './commands/status';
 import { handleDoctorCommand } from './commands/doctor';
 import { isUrl, normalizeUrl } from './utils/url';
 import { resolveScrapeTarget } from './utils/scrape-target';
-import { parseMaxPages, parseScrapeOptions } from './utils/options';
+import {
+  onlyMainContentFlag,
+  parseCrawlDelay,
+  parseMaxPages,
+  parseScrapeOptions,
+} from './utils/options';
 import { isJobId } from './utils/job';
 import { ensureAuthenticated, printBanner } from './utils/auth';
 import { maybeShowUpdateNotice } from './utils/update-notice';
+import {
+  isAutoUpdateWorker,
+  runAutoUpdateWorker,
+  startAutoUpdate,
+  updateHint,
+} from './utils/auto-update';
+import { detectInstallChannel } from './utils/install-channel';
+import { handleUpdateCommand } from './commands/update';
+import { maybeShowSkillUpdateNotice } from './utils/skill-update-notice';
 import packageJson from '../package.json';
 import type { SearchSource, SearchCategory } from './types/search';
 import type { ScrapeFormat } from './types/scrape';
@@ -96,6 +118,7 @@ initializeConfig();
 const AUTH_REQUIRED_COMMANDS = [
   'download',
   'crawl',
+  'batch-scrape',
   'map',
   'feedback',
   'search-feedback',
@@ -236,6 +259,22 @@ function researchLimit(options: {
   return options.k ?? options.limit;
 }
 
+function parseNonEmpty(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) throw new InvalidArgumentError('Must not be empty.');
+  return trimmed;
+}
+
+function parseJurisdiction(value: string): string {
+  const jurisdiction = value.trim().toLowerCase();
+  if (!/^us(-[a-z]{2})?$/.test(jurisdiction)) {
+    throw new InvalidArgumentError(
+      'Must be "us" for federal, or "us-" plus a two-letter state or territory code, such as "us-ca" or "us-dc".'
+    );
+  }
+  return jurisdiction;
+}
+
 function parseAgentWebhookOption(
   raw: string | undefined,
   label: string
@@ -258,7 +297,7 @@ function parseAgentWebhookOption(
 function getFirstPositionalArg(args: string[]): string | undefined {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (!arg || arg === '--') {
+    if (!arg || arg === '--' || arg === '--status') {
       continue;
     }
 
@@ -315,7 +354,9 @@ const program = new Command();
 
 program
   .name('firecrawl')
-  .description('CLI tool for Firecrawl web scraping')
+  .description(
+    'Command-line interface for Firecrawl, the context API for AI agents: search, scrape, and interact with the web'
+  )
   .version(packageJson.version)
   .option(
     '-k, --api-key <key>',
@@ -377,7 +418,14 @@ function createScrapeCommand(): Command {
       'Maximum PDF pages to parse (1-10000). PDFs cost 1 credit per parsed page; extra options may cost more.',
       parseMaxPages
     )
-    .option('--only-main-content', 'Include only main content', false)
+    .option(
+      '--only-main-content',
+      'Include only the main content (the API default)'
+    )
+    .option(
+      '--full-page',
+      'Keep the whole page, including navigation, headers and footers'
+    )
     .option(
       '--wait-for <ms>',
       'Wait time before scraping in milliseconds',
@@ -439,6 +487,7 @@ function createScrapeCommand(): Command {
     .option('--proxy <proxy>', 'Proxy mode for scraping (e.g., auto, basic)')
 
     .action(async (positionalArgs, options) => {
+      onlyMainContentFlag(options);
       const target = resolveScrapeTarget(positionalArgs ?? [], options);
       if (target.kind === 'alexandria') {
         await handleAlexandria(target.calls, options);
@@ -556,7 +605,14 @@ function createDownloadCommand(): Command {
       '-S, --summary',
       'Download as summary (shortcut for --format summary)'
     )
-    .option('--only-main-content', 'Include only main content', false)
+    .option(
+      '--only-main-content',
+      'Include only the main content (the API default)'
+    )
+    .option(
+      '--full-page',
+      'Keep the whole page, including navigation, headers and footers'
+    )
     .option(
       '--wait-for <ms>',
       'Wait time before scraping in milliseconds',
@@ -627,15 +683,22 @@ function createDownloadCommand(): Command {
 function createCrawlCommand(): Command {
   const crawlCmd = new Command('crawl')
     .description('Crawl a website using Firecrawl')
-    .argument('[url-or-job-id]', 'URL to crawl or job ID to check status')
+    .argument(
+      '[url-or-job-id]',
+      'URL to crawl, or job ID to read its status and pages'
+    )
     .option(
       '-u, --url <url>',
       'URL to crawl (alternative to positional argument)'
     )
-    .option('--status', 'Check status of existing crawl job', false)
+    .option(
+      '--status',
+      'Read the status and pages of an existing crawl job',
+      false
+    )
     .option(
       '--wait',
-      'Wait for crawl to complete before returning results',
+      'Wait for the crawl (new or by job ID) to finish before returning results; exits 1 if it fails or is cancelled',
       false
     )
     .option(
@@ -668,7 +731,11 @@ function createCrawlCommand(): Command {
     .option('--crawl-entire-domain', 'Crawl entire domain', false)
     .option('--allow-external-links', 'Allow external links', false)
     .option('--allow-subdomains', 'Allow subdomains', false)
-    .option('--delay <ms>', 'Delay between requests in milliseconds', parseInt)
+    .option(
+      '--delay <ms>',
+      'Delay between requests in milliseconds, 1 to 60000 (sent to the API in seconds)',
+      parseCrawlDelay
+    )
     .option(
       '--max-concurrency <number>',
       'Maximum concurrent requests',
@@ -764,6 +831,164 @@ function createCrawlCommand(): Command {
 }
 
 /**
+ * Create and configure the batch-scrape command
+ */
+function createBatchScrapeCommand(): Command {
+  const batchCmd = new Command('batch-scrape')
+    .description(
+      'Scrape a list of known URLs as one async job (returns a job ID unless --wait)'
+    )
+    .argument('[urls-or-job-id...]', 'URLs to scrape, or a job ID to check')
+    .option(
+      '--urls-file <path>',
+      'File with one URL per line (blank lines and # comments ignored)'
+    )
+    .option(
+      '-f, --format <formats>',
+      'Output format(s), comma-separated (default: markdown). Available: markdown, html, rawHtml, links, images, screenshot, summary, changeTracking, json, attributes, branding'
+    )
+    .option(
+      '--only-main-content',
+      'Include only the main content (the API default)'
+    )
+    .option(
+      '--full-page',
+      'Keep the whole page, including navigation, headers and footers'
+    )
+    .option(
+      '--wait-for <ms>',
+      'Wait time before scraping in milliseconds',
+      parseInt
+    )
+    .option(
+      '--max-age <milliseconds>',
+      'Maximum age of cached content in milliseconds',
+      parseInt
+    )
+    .option(
+      '--schema <json>',
+      'JSON schema for structured extraction (adds the json format)'
+    )
+    .option('--schema-file <path>', 'Path to JSON schema file')
+    .option(
+      '--prompt <text>',
+      'Extraction prompt for the json format (adds the json format)'
+    )
+    .option(
+      '--scrape-options <json>',
+      'JSON scrape options applied to every URL (explicit flags win)'
+    )
+    .option('--scrape-options-file <path>', 'Path to scrape options JSON file')
+    .option('--status', 'Check status of existing batch scrape job', false)
+    .option('--cancel', 'Cancel active batch scrape job by job ID', false)
+    .option('--wait', 'Wait for the job to complete and return results', false)
+    .option(
+      '--poll-interval <seconds>',
+      'Polling interval in seconds when waiting (default: 2)',
+      parseFloat
+    )
+    .option(
+      '--timeout <seconds>',
+      'Timeout in seconds when waiting (default: no timeout)',
+      parseFloat
+    )
+    .option('--progress', 'Show progress while waiting', false)
+    .option('--webhook <url-or-json>', 'Webhook URL or webhook configuration')
+    .option(
+      '--max-concurrency <number>',
+      'Maximum concurrent scrapes for this job',
+      parseInt
+    )
+    .option(
+      '--ignore-invalid-urls',
+      'Skip invalid URLs instead of failing the job',
+      false
+    )
+    .option(
+      '-k, --api-key <key>',
+      'Firecrawl API key (overrides global --api-key)'
+    )
+    .option('--api-url <url>', 'API URL (overrides global --api-url)')
+    .option('-o, --output <path>', 'Output file path (default: stdout)')
+    .option('--pretty', 'Pretty print JSON output', false)
+    .action(async (positional: string[], options, command: Command) => {
+      const jobId =
+        positional.length === 1 && isJobId(positional[0])
+          ? positional[0]
+          : undefined;
+
+      let urls: string[] = [];
+      let schema: Record<string, unknown> | undefined;
+      let scrapeOptions: Record<string, unknown> | undefined;
+      let webhook: string | Record<string, unknown> | undefined;
+
+      try {
+        if (!jobId) {
+          urls = collectBatchScrapeUrls(positional, options.urlsFile);
+        }
+        schema =
+          parseJsonObject(options.schema, undefined, '--schema') ??
+          parseJsonObject(undefined, options.schemaFile, '--schema-file');
+        scrapeOptions =
+          parseJsonObject(
+            options.scrapeOptions,
+            undefined,
+            '--scrape-options'
+          ) ??
+          parseJsonObject(
+            undefined,
+            options.scrapeOptionsFile,
+            '--scrape-options-file'
+          );
+        webhook = parseWebhookOption(options.webhook, '--webhook');
+      } catch (error) {
+        console.error(
+          'Error:',
+          error instanceof Error ? error.message : String(error)
+        );
+        process.exit(1);
+      }
+
+      await handleBatchScrapeCommand({
+        urls,
+        jobId,
+        status: options.status || command.parent?.opts().status,
+        cancel: options.cancel,
+        wait: options.wait,
+        pollInterval: options.pollInterval,
+        timeout: options.timeout,
+        progress: options.progress,
+        output: options.output,
+        pretty: options.pretty,
+        apiKey: options.apiKey,
+        apiUrl: options.apiUrl,
+        format: options.format,
+        onlyMainContent: onlyMainContentFlag(options),
+        waitFor: options.waitFor,
+        maxAge: options.maxAge,
+        schema,
+        prompt: options.prompt,
+        scrapeOptions,
+        webhook,
+        maxConcurrency: options.maxConcurrency,
+        ignoreInvalidUrls: options.ignoreInvalidUrls,
+      });
+    });
+
+  batchCmd.addHelpText(
+    'after',
+    `
+Examples:
+  firecrawl batch-scrape https://example.com https://example.org
+  firecrawl batch-scrape --urls-file urls.txt --format markdown,links --wait -o .firecrawl/batch.json
+  firecrawl batch-scrape --urls-file urls.txt --wait --schema '{"type":"object","properties":{"title":{"type":"string"}}}'
+  firecrawl batch-scrape <job-id>
+`
+  );
+  return addFormatsAlias(batchCmd);
+}
+
+/**
  * Create and configure the map command
  */
 function createMapCommand(): Command {
@@ -839,7 +1064,14 @@ function createParseCommand(): Command {
       '-f, --format <formats>',
       'Output format(s). Multiple formats can be specified with commas (e.g., "markdown,links"). Available: markdown, html, rawHtml, links, images, summary, json, attributes. Single format outputs raw content; multiple formats output JSON.'
     )
-    .option('--only-main-content', 'Include only main content', false)
+    .option(
+      '--only-main-content',
+      'Include only the main content (the API default)'
+    )
+    .option(
+      '--full-page',
+      'Keep the whole page, including navigation, headers and footers'
+    )
     .option('-S, --summary', 'Output summary (shortcut for --format summary)')
     .option('--include-tags <tags>', 'Comma-separated list of tags to include')
     .option('--exclude-tags <tags>', 'Comma-separated list of tags to exclude')
@@ -926,11 +1158,8 @@ function createSearchCommand(): Command {
     )
     .argument('<query>', 'Search query, or alexandria for semantic tool search')
     .argument('[tool-query]', 'Query for search alexandria')
-    .option('--objective <goal>', 'Broader task goal behind this search')
-    .option(
-      '--client-model <model>',
-      'Model issuing and consuming the results, if known'
-    )
+    .addOption(new Option('--objective <goal>').hideHelp())
+    .addOption(new Option('--client-model <model>').hideHelp())
     .option(
       '--limit <number>',
       'Maximum number of results (default: 5, max: 100)',
@@ -938,7 +1167,7 @@ function createSearchCommand(): Command {
     )
     .option(
       '--sources <sources>',
-      'Comma-separated sources: web, images, news, alexandria (default: web,alexandria; --sources web opts out of tools)'
+      'Comma-separated sources: web, images, news, alexandria (default: web; with an API key, alexandria is always added)'
     )
     .option(
       '--categories <categories>',
@@ -981,8 +1210,11 @@ function createSearchCommand(): Command {
     )
     .option(
       '--only-main-content',
-      'Include only main content when scraping',
-      true
+      'Include only the main content when scraping (the API default)'
+    )
+    .option(
+      '--full-page',
+      'Keep the whole page when scraping, including navigation, headers and footers'
     )
     .option(
       '-k, --api-key <key>',
@@ -1017,9 +1249,9 @@ function createSearchCommand(): Command {
       }
       if (alexandriaOnly) query = toolQuery;
       // Parse sources
-      let sources: SearchSource[] = alexandriaOnly
+      let sources: SearchSource[] | undefined = alexandriaOnly
         ? ['alexandria']
-        : ['web', 'alexandria'];
+        : undefined;
       if (options.sources) {
         sources = options.sources
           .split(',')
@@ -1049,7 +1281,9 @@ function createSearchCommand(): Command {
         for (const category of categories) {
           if (!validCategories.includes(category)) {
             console.error(
-              `Error: Invalid category "${category}". Valid categories: ${validCategories.join(', ')}`
+              (category as string) === 'github'
+                ? 'Error: The github category was removed. Use --categories developer or `firecrawl developer`.'
+                : `Error: Invalid category "${category}". Valid categories: ${validCategories.join(', ')}`
             );
             process.exit(1);
           }
@@ -1066,12 +1300,8 @@ function createSearchCommand(): Command {
 
       const searchOptions = {
         query,
-        objective: options.objective,
-        clientModel: options.clientModel,
         toolDetail: options.toolDetail,
-        domainTools:
-          options.domainTools ??
-          (!alexandriaOnly && sources.includes('alexandria')),
+        domainTools: options.domainTools,
         limit: options.limit,
         sources,
         categories,
@@ -1083,7 +1313,7 @@ function createSearchCommand(): Command {
         highlights: options.highlights,
         scrape: options.scrape,
         scrapeFormats,
-        onlyMainContent: options.onlyMainContent,
+        onlyMainContent: onlyMainContentFlag(options),
         apiKey: options.apiKey,
         apiUrl: options.apiUrl,
         output: options.output,
@@ -1180,6 +1410,44 @@ function createGovCommand(): Command {
     )
     .addOption(new Option('--k <number>').argParser(parseInt).hideHelp())
     .option(
+      '--jurisdiction <code>',
+      'Keep only pages of one jurisdiction: "us" for federal, or "us-" plus a two-letter state or territory code, such as "us-ca" or "us-dc"',
+      parseJurisdiction
+    )
+    .option(
+      '--court <id>',
+      'Keep only pages labeled for one court, by CourtListener court id, such as "scotus", "ca9" or "nysd"',
+      parseNonEmpty
+    )
+    .addOption(
+      new Option(
+        '--court-type <type>',
+        'Keep only pages from one type of court'
+      ).choices([
+        'federal-supreme',
+        'federal-appellate',
+        'federal-district',
+        'federal-bankruptcy',
+        'federal-special',
+        'military',
+        'state-supreme',
+        'state-appellate',
+        'state-trial',
+        'state-special',
+        'state-attorney-general',
+      ])
+    )
+    .option(
+      '--cites <citation>',
+      'Keep only pages that cite one law or case, as a printed citation such as "42 U.S.C. § 1983" or "5 U.S. 137", or a citation id such as "us:usc:42:1983"',
+      parseNonEmpty
+    )
+    .option(
+      '--domain <domain>',
+      'Keep only pages from one site, such as "irs.gov"',
+      parseNonEmpty
+    )
+    .option(
       '-k, --api-key <key>',
       'Firecrawl API key (overrides global --api-key)'
     )
@@ -1190,15 +1458,25 @@ function createGovCommand(): Command {
     .addHelpText(
       'after',
       `
+Filters keep only pages the index has labeled, so a filtered search can leave
+out relevant pages, and no results does not mean none exist. Court labels are
+most complete for federal courts and case-law collections.
+
 Examples:
   $ firecrawl gov "food labeling requirements for allergens" --limit 10
   $ firecrawl gov "California data breach notification statute" --json
+  $ firecrawl gov "qualified immunity excessive force" --court ca9
 `
     )
     .action(async (query, options) => {
       await handleGovSearchCommand({
         query,
         k: researchLimit(options),
+        jurisdiction: options.jurisdiction,
+        court: options.court,
+        courtType: options.courtType,
+        cites: options.cites,
+        domain: options.domain,
         apiKey: options.apiKey,
         apiUrl: options.apiUrl,
         output: options.output,
@@ -1216,7 +1494,7 @@ Examples:
 function createResearchCommand(): Command {
   const researchCmd = new Command('research')
     .description(
-      "Search Firecrawl's research paper index: ~43M abstracts, around 90% biomedical (PubMed, bioRxiv, medRxiv) plus arXiv. Use this for biomedical, clinical, and scientific literature instead of scraping PubMed, bioRxiv, or Google Scholar by hand. Also searches GitHub issue/PR history."
+      "Search Firecrawl's research paper index: ~43M abstracts, around 90% biomedical (PubMed, bioRxiv, medRxiv) plus arXiv. Use this for biomedical, clinical, and scientific literature instead of scraping PubMed, bioRxiv, or Google Scholar by hand."
     )
     .addHelpText(
       'after',
@@ -1228,7 +1506,6 @@ Examples:
   $ firecrawl research related-papers pmcid:PMC12530322 --intent "in vivo delivery"
   $ firecrawl research read-paper doi:10.1016/j.neunet.2025.108095 --question "What was the sample size?"
   $ firecrawl research read-paper arxiv:1706.03762 --question "What is the attention mechanism?"
-  $ firecrawl research search-github "foundationdb queue worker shutdown" --limit 10
 `
     );
 
@@ -1260,6 +1537,12 @@ Examples:
       '--to <date>',
       'Inclusive upper bound on created/updated date (YYYY-MM-DD)'
     )
+    .addOption(
+      new Option(
+        '--sort <order>',
+        'relevance (default) or date_desc, which returns the newest of the most relevant matches'
+      ).choices(['relevance', 'date_desc'])
+    )
     .option(
       '-k, --api-key <key>',
       'Firecrawl API key (overrides global --api-key)'
@@ -1276,6 +1559,7 @@ Examples:
         categories: parseCommaList(options.categories),
         from: options.from,
         to: options.to,
+        sort: options.sort,
         apiKey: options.apiKey,
         apiUrl: options.apiUrl,
         output: options.output,
@@ -1413,37 +1697,19 @@ Examples:
       });
     });
 
-  researchCmd
-    .command('search-github')
-    .description(
-      'Search GitHub issue/PR history and repository readmes. Returns ranked matches with repo, url, a short snippet, and when available the full matched content in markdown.'
-    )
-    .argument('<query>', 'GitHub history/readme search query')
-    .option(
-      '--limit <number>',
-      'Number of results to return (max: 100)',
-      parseInt
-    )
-    .addOption(new Option('--k <number>').argParser(parseInt).hideHelp())
-    .option(
-      '-k, --api-key <key>',
-      'Firecrawl API key (overrides global --api-key)'
-    )
-    .option('--api-url <url>', 'API URL (overrides global --api-url)')
-    .option('-o, --output <path>', 'Output file path (default: stdout)')
-    .option('--json', 'Output as compact JSON', false)
-    .option('--pretty', 'Pretty print JSON output', false)
-    .action(async (query, options) => {
-      await handleSearchGitHubCommand({
-        query,
-        k: researchLimit(options),
-        apiKey: options.apiKey,
-        apiUrl: options.apiUrl,
-        output: options.output,
-        json: options.json,
-        pretty: options.pretty,
-      });
-    });
+  researchCmd.addCommand(
+    new Command('search-github')
+      .helpOption(false)
+      .allowUnknownOption()
+      .allowExcessArguments()
+      .action(() => {
+        console.error(
+          'Error: `firecrawl research search-github` was removed after 2026-11-03. Use `firecrawl developer "<query>"` instead.'
+        );
+        process.exit(1);
+      }),
+    { hidden: true }
+  );
 
   return researchCmd;
 }
@@ -1462,8 +1728,17 @@ function createSearchFeedbackCommand(): Command {
     .argument('<searchId>', 'The id returned by `firecrawl search ... --json`')
     .requiredOption('--rating <rating>', 'Overall rating: good | bad | partial')
     .option(
+      '--valuable-results <positionsOrJson>',
+      'Every result that was useful, as "source:position" (e.g. ' +
+        '"web:1,news:2") OR a JSON array of {source, position, reason}. ' +
+        'Results are grouped and each group is numbered from 1, so the ' +
+        'source is required. Unlisted results are treated as not useful.'
+    )
+    .option(
       '--valuable-sources <urlsOrJson>',
-      'Comma-separated URLs OR JSON array of {url, reason} entries'
+      'Comma-separated URLs OR JSON array of {url, reason} entries. ' +
+        'For useful URLs NOT among the returned results; use ' +
+        '--valuable-results for results the search returned.'
     )
     .option(
       '--missing-content <topicsOrJson...>',
@@ -1504,6 +1779,14 @@ function createSearchFeedbackCommand(): Command {
         process.exit(1);
       }
 
+      let valuableResults;
+      try {
+        valuableResults = parseValuableResultsArg(options.valuableResults);
+      } catch (error: any) {
+        console.error('Error:', error?.message || 'Invalid --valuable-results');
+        process.exit(1);
+      }
+
       let missingContent;
       try {
         missingContent = parseMissingContentArg(options.missingContent);
@@ -1516,6 +1799,7 @@ function createSearchFeedbackCommand(): Command {
         searchId,
         rating: rating as SearchFeedbackRating,
         valuableSources,
+        valuableResults,
         missingContent,
         querySuggestions: options.querySuggestions,
         apiKey: options.apiKey,
@@ -1551,6 +1835,11 @@ function createFeedbackCommand(): Command {
     .option(
       '--valuable-sources <urlsOrJson>',
       'Comma-separated URLs OR JSON array of {url, reason} entries'
+    )
+    .option(
+      '--valuable-results <positionsOrJson>',
+      'Search only: every useful result as "source:position" (e.g. ' +
+        '"web:1,news:2") OR a JSON array of {source, position, reason}'
     )
     .option(
       '--missing-content <topicsOrJson...>',
@@ -1607,6 +1896,7 @@ function createFeedbackCommand(): Command {
         tags: parsed.tags,
         note: options.note,
         valuableSources: parsed.valuableSources,
+        valuableResults: parsed.valuableResults,
         missingContent: parsed.missingContent,
         querySuggestions: options.querySuggestions,
         url: options.url,
@@ -2375,11 +2665,16 @@ Examples:
 
 // Add core commands to main program
 program.addCommand(createCrawlCommand());
+program.addCommand(createBatchScrapeCommand());
 program.addCommand(createMapCommand());
 program.addCommand(createParseCommand());
 program.addCommand(createMonitorCommand());
 program.addCommand(createSearchCommand());
 program.addCommand(createFindToolsCommand());
+program.addCommand(createFindSkillsCommand());
+program.addCommand(createReadSkillCommand());
+program.addCommand(createCreateSkillCommand());
+program.addCommand(createUpdateSkillCommand());
 program.addCommand(createListCommand());
 program.addCommand(createAlexandriaCommand());
 program.addCommand(createDeveloperCommand());
@@ -2485,10 +2780,7 @@ program
   .description(
     'Set up Firecrawl: install CLI, authenticate, add integrations, and scaffold a template'
   )
-  .argument(
-    '[template]',
-    'Template to scaffold (e.g. browser-nextjs, scrape-express)'
-  )
+  .argument('[template]', 'Template to scaffold (e.g. open-lovable)')
   .option(
     '--all',
     'Explicitly install skills to all detected agents (default unless --agent is used)'
@@ -2704,6 +2996,19 @@ Exits 1 if any check fails.
   });
 
 program
+  .command('update')
+  .description('Update the Firecrawl CLI to the latest release')
+  .option('--enable-auto', 'Turn automatic background updates on')
+  .option('--disable-auto', 'Turn automatic background updates off')
+  .option(
+    '--rollback',
+    'Restore the previous version and disable automatic updates'
+  )
+  .action(async (options) => {
+    await handleUpdateCommand(options);
+  });
+
+program
   .command('version')
   .description('Display version information')
   .option('--auth-status', 'Also show authentication status', false)
@@ -2715,10 +3020,15 @@ collectTopLevelCommands();
 
 // Handle the main entry point
 async function main() {
+  if (isAutoUpdateWorker()) {
+    await runAutoUpdateWorker();
+    return;
+  }
   // Parse user arguments explicitly instead of letting Commander infer whether
   // argv came from node, eval, electron, or another wrapper.
   const args = process.argv.slice(2);
-
+  const isUpdate = getFirstPositionalArg(args) === 'update';
+  const channel = detectInstallChannel();
   // Handle --version with --auth-status before Commander processes it
   // Commander's built-in --version handler doesn't support additional flags
   const hasVersion = args.includes('--version') || args.includes('-V');
@@ -2737,13 +3047,22 @@ async function main() {
     return;
   }
 
-  await maybeShowUpdateNotice();
+  if (!isUpdate && !(await startAutoUpdate({ channel }))) {
+    await maybeShowUpdateNotice({ hint: updateHint(channel) });
+  }
+  const isSetup =
+    args[0] === 'init' ||
+    args[0] === 'setup' ||
+    (args.length === 1 && ['-y', '--yes'].includes(args[0]));
+  if (!isSetup && !isUpdate) {
+    await maybeShowSkillUpdateNotice();
+  }
 
   // If no arguments or just help flags, check auth and show appropriate message
   if (args.length === 0) {
     const { isAuthenticated } = await import('./utils/auth');
 
-    if (!isAuthenticated()) {
+    if (!isAuthenticated() && process.stdin.isTTY) {
       // Not authenticated - run the onboarding auth step, which offers logging in
       // OR continuing on the keyless free tier (no API key required).
       printBanner();
@@ -2755,7 +3074,7 @@ async function main() {
       return;
     }
 
-    // Authenticated - show banner and help
+    // Authenticated, or no terminal to prompt in - show banner and help
     printBanner();
     program.outputHelp();
     return;

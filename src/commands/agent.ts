@@ -25,6 +25,7 @@ import { getClient } from '../utils/client';
 import { isJobId } from '../utils/job';
 import { writeOutput } from '../utils/output';
 import { createSpinner } from '../utils/spinner';
+import { TERMS_DASHBOARD_URL } from './terms';
 import { readFileSync } from 'fs';
 
 /**
@@ -523,7 +524,7 @@ function pendingApprovalLines(
   const lines = [`Pending approval ${approval.id}: ${approval.reason}`];
   if (approval.kind === 'terms') {
     lines.push(
-      'Approving does not accept terms. Accept them first in the dashboard, or review them with terms show and, once agreed, accept the version and digest it returns with firecrawl alexandria terms accept <provider> --terms-version <version> --digest <digest> --confirm:'
+      `Approving does not accept terms. An organization admin must accept them in the Firecrawl dashboard first: ${TERMS_DASHBOARD_URL}`
     );
     for (const gate of approval.terms) {
       lines.push(

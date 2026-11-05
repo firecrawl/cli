@@ -1,5 +1,5 @@
 name: firecrawl
-description: CLI for Firecrawl - web scraping, web and research paper search, and browser automation
+description: CLI for Firecrawl, the context API for AI agents. Search, scrape, parse, crawl, map, and interact with the web, and search research papers.
 homepage: https://firecrawl.dev
 maintainer: Firecrawl <support@firecrawl.dev>
 license: ISC

@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  parseCrawlDelay,
   parseFormats,
   parseMaxPages,
   parseScrapeOptions,
@@ -207,6 +208,31 @@ describe('Option Parsing Utilities', () => {
       const result = parseScrapeOptions(options);
 
       expect(result.onlyMainContent).toBe(true);
+    });
+
+    it('should leave onlyMainContent unset so the API default applies', () => {
+      const result = parseScrapeOptions({ url: 'https://example.com' });
+
+      expect(result.onlyMainContent).toBeUndefined();
+    });
+
+    it('should send onlyMainContent: false for --full-page', () => {
+      const result = parseScrapeOptions({
+        url: 'https://example.com',
+        fullPage: true,
+      });
+
+      expect(result.onlyMainContent).toBe(false);
+    });
+
+    it('should reject --only-main-content together with --full-page', () => {
+      expect(() =>
+        parseScrapeOptions({
+          url: 'https://example.com',
+          onlyMainContent: true,
+          fullPage: true,
+        })
+      ).toThrow('Use either --only-main-content or --full-page, not both');
     });
 
     it('should parse waitFor option', () => {
@@ -448,6 +474,20 @@ describe('PDF page cap options', () => {
     (value) => {
       expect(() => parseMaxPages(value)).toThrow(
         'must be an integer between 1 and 10000'
+      );
+    }
+  );
+});
+
+describe('crawl delay option', () => {
+  it.each(['1', '1500', '60000'])('accepts %s milliseconds', (value) => {
+    expect(parseCrawlDelay(value)).toBe(Number(value));
+  });
+  it.each(['0', '-1', '60001', '1.5', '1e3', 'abc', ''])(
+    'rejects %s',
+    (value) => {
+      expect(() => parseCrawlDelay(value)).toThrow(
+        'must be between 1 and 60000 milliseconds'
       );
     }
   );

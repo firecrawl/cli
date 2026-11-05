@@ -1,9 +1,11 @@
 ---
 name: firecrawl-developer-index
-description: Search an index of public repositories, GitHub issues, merged pull requests, repository READMEs, and curated documentation sites. Use when a programming question needs external documentation or upstream evidence.
+description: Searches current documentation, release notes, API references and public repository issues for libraries, frameworks, SDKs, APIs and CLI tools with `firecrawl developer`. Use before answering when the user names a version, is upgrading, pastes an error from a library or tool, or asks how to use, configure or migrate a specific library or API. Model knowledge stops at a training cutoff and misses new releases, renamed APIs, changed defaults and recent fixes, so when a version, option, error or API is unfamiliar or may have changed, look it up instead of guessing. Also checks whether a bug was fixed and in which release. Not for general programming concepts, code that uses no specific library, or refactoring code the user supplied.
 ---
 
 # Firecrawl Developer Index
+
+For official documentation, setup, examples, migrations or compatibility, follow [official documentation](references/official-documentation.md). Continue below for implementation or bug evidence beyond the docs. Reuse adequate evidence when switching approaches.
 
 Answer a developer question from the primary source: the issue where the bug was reported, the merged pull request that fixed it, the README or documentation page that states the contract. A blog post that describes a behaviour is a weaker answer than the passage that defines it, so reach for the index first and the open web second. The repository half of the index covers public repositories only. Private or internal repositories are not in it, so a question about private code needs a different route: read that code directly.
 
@@ -43,7 +45,7 @@ Only the HTTP surface takes these. On `GET`, pass `types=issue,pull_request` or 
 
 - **Literal error message or stack-trace string** → search the string itself plus the library name, with `types=["issue","pull_request"]`. Whoever hit it filed it. If nothing matches, strip the volatile parts (paths, line numbers, ids, addresses) and retry — the invariant middle of the message is what is indexed.
 - **Conceptual "how do I do X"** → the full question in natural language, all four types. The answer is usually a `doc` or a `readme`; raise `passages` before raising `k`.
-- **Known bug** → the issue reports it, the merged pull request _fixes_ it, and the fix is what you want. Search `types=["issue","pull_request"]`, then re-query the issue's own terms scoped to its repo with `types=["pull_request"]`. A merged PR's passages tell you what changed and in which direction.
+- **Known bug** → the issue reports it, the merged pull request _fixes_ it, and the fix is what you want. Search `types=["issue","pull_request"]`, then re-query the issue's own terms scoped to its repo with `types=["pull_request"]`. A merged PR's passages tell you what changed and in which direction. Before describing it as the user's installed behavior, confirm a release contains it.
 - **API contract** ("what does X return", "is Y required", "what is the default") → `readme` and `doc` are authoritative and a blog post is not. Use `types=["readme","doc"]`. If the contract looks like it moved, follow up with `pull_request` for the change that moved it.
 - **Version-specific behaviour** → an issue's opening report describes the broken version; its resolution supersedes it. Raise `passages` to see further into the thread, and read the resolution and the linked pull request before answering. Never answer from an opening report alone.
 - **Scoped to one library** → `repos=["owner/name"]` when you know the slug, plus `sources` if you want its docs in the same call. If a scoped search comes back empty, read the echoed `indexed` flag first: `false` means nothing from that repo or source can ever match and no rephrasing will help — drop the scope and search the whole index, or go to the web.
@@ -54,7 +56,7 @@ Only the HTTP surface takes these. On `GET`, pass `types=issue,pull_request` or 
 ## Principles
 
 - **Quote the passage, cite the `url`.** The passages are the evidence; hand them over rather than paraphrasing them into a claim the reader can't check. `title` is frequently absent on `doc` results — fall back to `url`.
-- **A merge supersedes a report.** When an issue and a pull request disagree, the merged pull request is the current behaviour. Say which one you read.
+- **Distinguish a fix from a release.** A merged fix can supersede an earlier issue report about repository code, but it reaches the user's version only once a release contains the merge. Confirm that from the project's release notes, changelog entry or release tag (search for them, or scrape the releases or changelog page when the index lacks them), and cite that evidence.
 - **Scope last, not first.** Search the whole index, then narrow with `types`, `repos`, or `sources` once you know what the hits look like. Scoping first hides the result that would have told you where to look.
 - **Go to the web when the index has nothing to say.** Trade-offs, ecosystem opinion, and anything about an unindexed project are web questions. Don't force them through the index, and don't dress a general web page up as a primary source.
 

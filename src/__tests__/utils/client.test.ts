@@ -15,6 +15,10 @@ vi.mock('../../utils/credentials', () => ({
   loadCredentials: vi.fn(() => null),
 }));
 
+vi.mock('../../utils/agent-origin', () => ({
+  getCliOrigin: () => 'cli.test@1.0.0',
+}));
+
 const OWN_SIGNUP_URL = 'https://firecrawl.dev/k/7fq2xab9';
 
 const API_LIMIT_MESSAGE = `You've hit Firecrawl's keyless free tier rate limit. To continue now, create a free API key at ${OWN_SIGNUP_URL}
@@ -80,6 +84,19 @@ describe('keyless requests', () => {
       expect(headers['X-Origin']).toBe('cli');
       expect(headers.Authorization).toBeUndefined();
     }
+  });
+
+  it('stamps the agent origin in the POST body without overriding integration', async () => {
+    const fetchMock = stubFetch(200, { success: true });
+
+    await keylessRequest('/v2/scrape', {
+      url: 'https://example.com',
+      integration: 'cli',
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
+    expect(body.origin).toBe('cli.test@1.0.0');
+    expect(body.integration).toBe('cli');
   });
 });
 

@@ -14,6 +14,12 @@ import {
   normalizeApiUrl,
   type GlobalConfig,
 } from './config';
+import { getCliOrigin } from './agent-origin';
+import { integrationHeaders, withIntegrationHeader } from './integration';
+
+// SDK versions without an origin option ignore it, so the request origin
+// reaches the API only once the SDK supports it.
+type ClientOptionsWithOrigin = FirecrawlClientOptions & { origin?: string };
 
 let clientInstance: Firecrawl | null = null;
 
@@ -33,7 +39,8 @@ export function isKeylessMode(apiKey?: string, apiUrl?: string): boolean {
 /**
  * Headers for keyless requests. The API reads X-Origin to attribute keyless
  * use, and a keyless prompt's signup link, to the CLI; requests without a body
- * (GET research and developer lookups, interact stop) carry nothing else.
+ * (GET research and developer lookups, interact stop) carry only this and
+ * X-Integration.
  * Keyless error messages are printed as the API sends them: their
  * firecrawl.dev/k/<id> link already resolves to CLI attribution.
  */
@@ -48,8 +55,12 @@ export async function keylessRequest(
   const apiUrl = normalizeApiUrl(getConfig().apiUrl || DEFAULT_API_URL);
   const response = await fetch(`${apiUrl}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...KEYLESS_CLI_HEADERS },
-    body: JSON.stringify(body),
+    headers: {
+      'Content-Type': 'application/json',
+      ...KEYLESS_CLI_HEADERS,
+      ...integrationHeaders(),
+    },
+    body: JSON.stringify({ origin: getCliOrigin(), ...body }),
   });
   const json: any = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -64,7 +75,11 @@ export async function keylessGet(path: string): Promise<any> {
   const apiUrl = normalizeApiUrl(getConfig().apiUrl || DEFAULT_API_URL);
   const response = await fetch(`${apiUrl}${path}`, {
     method: 'GET',
-    headers: { 'Content-Type': 'application/json', ...KEYLESS_CLI_HEADERS },
+    headers: {
+      'Content-Type': 'application/json',
+      ...KEYLESS_CLI_HEADERS,
+      ...integrationHeaders(),
+    },
   });
   const json: any = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -121,15 +136,16 @@ export function getClient(
     const normalizedApiKey = apiKey === null ? undefined : apiKey;
     validateConfig(normalizedApiKey);
 
-    const clientOptions: FirecrawlClientOptions = {
+    const clientOptions: ClientOptionsWithOrigin = {
       apiKey: normalizedApiKey || undefined,
       apiUrl: apiUrl === null ? undefined : apiUrl,
       timeoutMs: options.timeoutMs ?? config.timeoutMs,
       maxRetries: options.maxRetries ?? config.maxRetries,
       backoffFactor: options.backoffFactor ?? config.backoffFactor,
+      origin: getCliOrigin(),
     };
 
-    return new Firecrawl(clientOptions);
+    return withIntegrationHeader(new Firecrawl(clientOptions));
   }
 
   // Return singleton instance or create one
@@ -137,15 +153,16 @@ export function getClient(
     const config = getConfig();
     validateConfig(config.apiKey);
 
-    const clientOptions: FirecrawlClientOptions = {
+    const clientOptions: ClientOptionsWithOrigin = {
       apiKey: config.apiKey || undefined,
       apiUrl: config.apiUrl || undefined,
       timeoutMs: config.timeoutMs,
       maxRetries: config.maxRetries,
       backoffFactor: config.backoffFactor,
+      origin: getCliOrigin(),
     };
 
-    clientInstance = new Firecrawl(clientOptions);
+    clientInstance = withIntegrationHeader(new Firecrawl(clientOptions));
   }
 
   return clientInstance;

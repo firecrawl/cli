@@ -10,6 +10,8 @@ import { isAuthenticated } from '../utils/auth';
 import { getConfig, validateConfig } from '../utils/config';
 import { loadCredentials } from '../utils/credentials';
 import { isSearchFeedbackDisabledLocally } from './search-feedback';
+import { integrationHeaders } from '../utils/integration';
+import { bold, dim, green, orange, red, reset } from '../utils/terminal';
 
 export type AuthSource = 'env' | 'stored' | 'none';
 
@@ -81,6 +83,7 @@ async function fetchQueueStatus(
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
+      ...integrationHeaders(),
     },
   });
 
@@ -107,6 +110,7 @@ async function fetchCreditUsage(
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
+      ...integrationHeaders(),
     },
   });
 
@@ -243,13 +247,6 @@ async function getLocalStatus(cwd: string): Promise<LocalStatus> {
  * Handle status command output
  */
 export async function handleStatusCommand(): Promise<void> {
-  const orange = '\x1b[38;5;208m';
-  const reset = '\x1b[0m';
-  const dim = '\x1b[2m';
-  const bold = '\x1b[1m';
-  const green = '\x1b[32m';
-  const red = '\x1b[31m';
-
   const status = await getStatus();
   const localStatus = await getLocalStatus(process.cwd());
 

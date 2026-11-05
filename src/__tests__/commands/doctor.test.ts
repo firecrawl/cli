@@ -158,6 +158,27 @@ describe('runChecks', () => {
     return c;
   }
 
+  it('sends FIRECRAWL_INTEGRATION as X-Integration on its API pings', async () => {
+    vi.stubEnv('FIRECRAWL_INTEGRATION', 'hermes');
+    initializeConfig({
+      apiKey: 'fc-abc123def456',
+      apiUrl: 'https://api.firecrawl.dev',
+    });
+    stubFetch({});
+    try {
+      await runChecks({});
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    const apiCalls = mockFetch.mock.calls.filter(([url]) =>
+      String(url).startsWith('https://api.firecrawl.dev/')
+    );
+    expect(apiCalls).toHaveLength(2);
+    for (const [, init] of apiCalls) {
+      expect(init.headers['X-Integration']).toBe('hermes');
+    }
+  });
+
   it('fails the API Key check when no key is configured', async () => {
     stubFetch({});
     const { checks } = await runChecks({});
@@ -398,6 +419,25 @@ describe('runSupportAsk', () => {
         }),
       })
     );
+  });
+
+  it('sends FIRECRAWL_INTEGRATION as X-Integration to support Ask', async () => {
+    vi.stubEnv('FIRECRAWL_INTEGRATION', 'hermes');
+    initializeConfig({
+      apiKey: 'fc-test',
+      apiUrl: 'https://api.firecrawl.dev',
+    });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ answer: 'Try increasing waitFor.' }),
+    });
+    try {
+      await runSupportAsk({ jobId, query: 'why is it empty?' });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(mockFetch.mock.calls[0][1].headers['X-Integration']).toBe('hermes');
   });
 
   it('does not call support Ask without an API key', async () => {

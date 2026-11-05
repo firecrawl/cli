@@ -12,11 +12,20 @@ import type {
   NewsSearchResult,
   DeveloperSearchResult,
 } from '../types/search';
+import type { SearchSource } from '../types/search';
 import { getClient, isKeylessMode, keylessRequest } from '../utils/client';
+import { getApiKey } from '../utils/config';
 import { writeOutput } from '../utils/output';
+import { withoutToolPrice } from '../utils/alexandria-prices';
 import { apiFailure, requireAlexandriaKey } from './alexandria';
 
 const DEFAULT_SEARCH_LIMIT = 5;
+
+const DISCOVERY_REFUSALS = [
+  'Provider discovery requires access and does not support zero data retention.',
+  'This endpoint is not enabled for this team.',
+  'Exchange is not enabled for this team.',
+];
 
 /**
  * Execute search command
@@ -32,21 +41,25 @@ export async function executeSearch(
       limit: options.limit ?? DEFAULT_SEARCH_LIMIT,
       integration: 'cli',
     };
-    if (options.objective) searchParams.objective = options.objective;
-    if (options.clientModel) searchParams.clientModel = options.clientModel;
     searchParams.toolDetail = options.toolDetail ?? 'compact';
-    if (options.domainTools !== undefined)
-      searchParams.domainTools = options.domainTools;
+
+    // Authenticated searches always include Alexandria, keeping the requested sources.
+    const requestedSources: SearchSource[] = options.sources?.length
+      ? [...new Set(options.sources)]
+      : ['web'];
+    const addsAlexandria =
+      !!getApiKey(options.apiKey) && !requestedSources.includes('alexandria');
+    const sources: SearchSource[] = addsAlexandria
+      ? [...requestedSources, 'alexandria']
+      : requestedSources;
+    searchParams.sources = sources.map((source) => ({ type: source }));
+    searchParams.domainTools =
+      options.domainTools ??
+      (sources.includes('alexandria') &&
+        sources.some((source) => source !== 'alexandria'));
 
     if (options.highlights !== undefined) {
       searchParams.highlights = options.highlights;
-    }
-
-    // Add sources if specified
-    if (options.sources && options.sources.length > 0) {
-      searchParams.sources = options.sources.map((source) => ({
-        type: source,
-      }));
     }
 
     // Add categories if specified
@@ -122,16 +135,27 @@ export async function executeSearch(
       >;
     } else {
       const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
-      const httpResponse = await (app as any).http.post(
-        '/v2/search',
-        searchBody
-      );
+      const post = (body: Record<string, unknown>) =>
+        (app as any).http.post('/v2/search', body);
+      const httpResponse = await post(searchBody).catch((error: any) => {
+        const response = error?.response;
+        const refused =
+          response?.status === 403 &&
+          DISCOVERY_REFUSALS.includes(response?.data?.error);
+        if (!addsAlexandria || options.domainTools === true || !refused)
+          throw error;
+        return post({
+          ...searchBody,
+          sources: requestedSources.map((source) => ({ type: source })),
+          domainTools: false,
+        });
+      });
       envelope = (httpResponse?.data ?? {}) as Record<string, any>;
     }
     const payload = (envelope.data ?? {}) as Record<string, any>;
 
     const data: SearchResultData = {};
-    if (payload.tools) data.tools = payload.tools;
+    if (payload.tools) data.tools = payload.tools.map(withoutToolPrice);
     if (payload.web) data.web = payload.web as WebSearchResult[];
     if (payload.images) data.images = payload.images as ImageSearchResult[];
     if (payload.news) data.news = payload.news as NewsSearchResult[];
@@ -188,7 +212,8 @@ function formatSearchReadable(
     const hasDeveloperResults = !!data.developer && data.developer.length > 0;
     if (
       (options.sources && options.sources.length > 1) ||
-      hasDeveloperResults
+      hasDeveloperResults ||
+      !!data.tools?.length
     ) {
       lines.push('=== Web Results ===');
       lines.push('');
@@ -310,10 +335,6 @@ function formatSearchReadable(
       }
       if (typeof tool.description === 'string')
         lines.push(`  ${clipPassage(tool.description)}`);
-      if (typeof tool.creditsCost === 'number')
-        lines.push(
-          `  Cost: ${tool.creditsCost} credits per ${tool.perRecord ? 'record' : 'call'}`
-        );
       if (Array.isArray(tool.matchedUrls) && tool.matchedUrls.length)
         lines.push(`  Matches: ${tool.matchedUrls.join(', ')}`);
       lines.push('');

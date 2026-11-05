@@ -1,11 +1,11 @@
 import { existsSync } from 'fs';
 import os from 'os';
 import path from 'path';
-import readline from 'readline';
 import { spawnSync } from 'child_process';
 import { installMcp, installSkillsForAgent } from './setup';
 import { ALL_SKILL_REPOS } from './skills-install';
 import { getApiKey } from '../utils/config';
+import { promptInput } from '../utils/prompt';
 
 export interface LaunchOptions {
   config?: boolean;
@@ -121,19 +121,6 @@ function supportedTargets(): string {
     .join(', ');
 }
 
-function promptInput(question: string): Promise<string> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-  return new Promise((resolve) => {
-    rl.question(question, (answer: string) => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
-
 async function pickLaunchTarget(): Promise<LaunchTarget> {
   if (!process.stdin.isTTY) {
     throw new Error(
@@ -147,7 +134,10 @@ async function pickLaunchTarget(): Promise<LaunchTarget> {
   });
   console.log('');
 
-  const answer = await promptInput('Launch app: ');
+  const answer = await promptInput(
+    'Launch app: ',
+    'No launch app chosen. Pass the app name, for example "firecrawl launch claude".'
+  );
   const byNumber = Number.parseInt(answer, 10);
   if (
     Number.isInteger(byNumber) &&

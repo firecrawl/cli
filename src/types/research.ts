@@ -13,6 +13,7 @@ export interface SearchPapersOptions extends ResearchBaseOptions {
   categories?: string[];
   from?: string;
   to?: string;
+  sort?: 'relevance' | 'date_desc';
 }
 
 export interface InspectPaperOptions extends ResearchBaseOptions {
@@ -33,33 +34,16 @@ export interface ReadPaperOptions extends ResearchBaseOptions {
   k?: number;
 }
 
-export interface SearchGitHubOptions extends ResearchBaseOptions {
-  query: string;
-  k?: number;
-}
-
 export interface PaperHit {
   paperId?: string;
   primaryId?: string;
   ids?: Record<string, string[]>;
   title?: string;
   abstract?: string;
-  authors?: string | { name: string; affiliation?: string }[];
+  authors?: string | string[];
   categories?: string[];
   createdDate?: string;
   updateDate?: string;
   signals?: Record<string, unknown>;
   score?: number;
-}
-
-export interface GitHubItem {
-  repo?: string;
-  url?: string;
-  pageType?: string;
-  number?: number;
-  segmentCount?: number;
-  readmeUrl?: string;
-  title?: string;
-  snippet?: string;
-  contentMd?: string;
 }

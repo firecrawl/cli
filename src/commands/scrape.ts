@@ -19,6 +19,7 @@ import { getOrigin } from '../utils/url';
 import { executeMap } from './map';
 import { getStatus } from './status';
 import { requireAlexandriaKey } from './alexandria';
+import { withoutToolPrice } from '../utils/alexandria-prices';
 
 /**
  * Output timing information if requested
@@ -191,7 +192,9 @@ export async function executeScrape(
 
     return {
       success: true,
-      data: result,
+      data: Array.isArray(result?.tools)
+        ? { ...result, tools: result.tools.map(withoutToolPrice) }
+        : result,
     };
   } catch (error) {
     const requestEndTime = Date.now();
@@ -436,11 +439,9 @@ async function runWizard(
   // 2. Main content only
   const mainContent = await confirm({
     message: 'Only main content?',
-    default: false,
+    default: true,
   });
-  if (mainContent) {
-    options = { ...options, onlyMainContent: true };
-  }
+  options = { ...options, onlyMainContent: mainContent };
 
   // 3. Filter by paths (spacebar multi-select from discovered paths)
   const topPaths = getTopPaths(urls);
@@ -517,7 +518,7 @@ export async function handleAllScrapeCommand(
       options.formats[0] !== 'markdown') ||
     options.screenshot ||
     options.fullPageScreenshot ||
-    options.onlyMainContent;
+    options.onlyMainContent !== undefined;
 
   if (!hasExplicitFlags && process.stdin.isTTY) {
     const result = await runWizard(urls, options, allOptions);

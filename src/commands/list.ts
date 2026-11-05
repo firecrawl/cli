@@ -11,6 +11,7 @@ import {
 } from './alexandria';
 import { writeOutput } from '../utils/output';
 import { getApiKey, getConfig } from '../utils/config';
+import { integrationHeaders } from '../utils/integration';
 
 type Selectors = Record<string, unknown>;
 type ListOptions = AlexandriaOptions & {
@@ -19,6 +20,7 @@ type ListOptions = AlexandriaOptions & {
   limit?: number;
   request?: string;
   providers?: boolean;
+  includeCosts?: boolean;
 };
 const CATEGORY_NAMES: Record<string, string> = {
   software: 'Developer',
@@ -96,6 +98,7 @@ async function requestCategories(
       headers: {
         Authorization: `Bearer ${getApiKey(options.apiKey)}`,
         'X-Request-ID': requestId,
+        ...integrationHeaders(),
       },
       signal: AbortSignal.timeout(getConfig().timeoutMs ?? 30000),
       redirect: 'error',
@@ -141,7 +144,7 @@ async function requestCategories(
               )
               .join(' '),
         description: row.about,
-        nextCommand: `firecrawl alexandria list ${quote(row.cohort)} --category${options.limit === undefined ? '' : ` --limit ${options.limit}`}`,
+        nextCommand: `firecrawl alexandria list ${quote(row.cohort)} --category${options.limit === undefined ? '' : ` --limit ${options.limit}`}${options.includeCosts ? ' --include-costs' : ''}`,
       }))
       .sort((a: Category, b: Category) => a.name.localeCompare(b.name));
     return {
@@ -168,7 +171,7 @@ function renderCategories(items: Category[]): string {
     '  Tools:   firecrawl alexandria list <provider>',
     '  Inspect: firecrawl alexandria list <provider> <capability>',
     "  Execute: firecrawl scrape --alexandria <provider>/<capability> --options '<input JSON>'",
-    '  Catalog browsing is free. Check the contract and price before executing.',
+    '  Catalog browsing is free. Check the contract before executing.',
     '  Use your existing Firecrawl login or FIRECRAWL_API_KEY.',
     '',
     `Categories (${items.length})`,
@@ -441,11 +444,13 @@ export async function handleList(
     }
 
     const { envelope, page } = await resolve();
+    const carry = (command: string | undefined) =>
+      command && options.includeCosts ? `${command} --include-costs` : command;
     page.items = page.items.map((item) => ({
       ...item,
-      nextCommand: itemCommand(item),
+      nextCommand: carry(itemCommand(item)),
     }));
-    if (page.next) page.nextCommand = nextCommand(page.next);
+    if (page.next) page.nextCommand = carry(nextCommand(page.next));
     const output = asJson
       ? JSON.stringify(
           { ...envelope, discoveryRequests: receipts },
@@ -493,6 +498,7 @@ export function createListCommand(name = 'list'): Command {
     )
     .option('--contracts', 'Include full tool contracts for a category')
     .option('--providers', 'List all providers instead of the category index')
+    .option('--include-costs', 'Include per-capability credit prices')
     .option(
       '--limit <number>',
       'Provider/tool results per page (1-100; default: 20); the root shows all categories',

@@ -6,10 +6,19 @@ import {
   parseFeedbackListArg,
   parsePageNumbersArg,
 } from '../../commands/feedback';
+import {
+  executeSearchFeedback,
+  parseValuableResultsArg,
+  type ValuableResultInput,
+} from '../../commands/search-feedback';
 import { parseAlexandriaFeedbackArray } from '../../commands/alexandria-feedback';
 import { getClient } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { setupTest, teardownTest } from '../utils/mock-client';
+
+vi.mock('../../utils/agent-origin', () => ({
+  getCliOrigin: () => 'cli.test@1.0.0',
+}));
 
 vi.mock('../../utils/client', async () => {
   const actual = await vi.importActual('../../utils/client');
@@ -80,7 +89,7 @@ describe('executeEndpointFeedback', () => {
     expect(JSON.parse(request.body)).toEqual({
       endpoint: 'alexandria',
       rating: 'partial',
-      origin: 'cli',
+      origin: 'cli.test@1.0.0',
       integration: 'cli',
       requestedWebsite,
       rationale: 'Only summaries available',
@@ -144,7 +153,7 @@ describe('executeEndpointFeedback', () => {
       endpoint: 'scrape',
       jobId: '0193f6c5-1234-7890-abcd-1234567890ab',
       rating: 'partial',
-      origin: 'cli',
+      origin: 'cli.test@1.0.0',
       integration: 'cli',
       issues: ['missing_markdown'],
       tags: ['docs'],
@@ -153,6 +162,83 @@ describe('executeEndpointFeedback', () => {
       pageNumbers: [1, 2],
       metadata: { source: 'test' },
     });
+  });
+
+  it('sends FIRECRAWL_INTEGRATION as X-Integration on endpoint and search feedback', async () => {
+    vi.stubEnv('FIRECRAWL_INTEGRATION', 'rtk');
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true, feedbackId: 'feedback-1' }),
+    });
+
+    try {
+      await executeEndpointFeedback({
+        endpoint: 'scrape',
+        jobId: '0193f6c5-1234-7890-abcd-1234567890ab',
+        rating: 'good',
+      });
+      await executeSearchFeedback({ searchId: 'search-1', rating: 'good' });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    const [endpointUrl, endpointRequest] = mockFetch.mock.calls[0];
+    expect(endpointUrl).toBe('https://api.firecrawl.dev/v2/feedback');
+    expect(endpointRequest.headers['X-Integration']).toBe('rtk');
+    expect(JSON.parse(endpointRequest.body)).toMatchObject({
+      origin: 'cli.test@1.0.0',
+      integration: 'cli',
+    });
+    const [searchUrl, searchRequest] = mockFetch.mock.calls[1];
+    expect(searchUrl).toBe(
+      'https://api.firecrawl.dev/v2/search/search-1/feedback'
+    );
+    expect(searchRequest.headers['X-Integration']).toBe('rtk');
+    expect(JSON.parse(searchRequest.body)).toEqual({
+      rating: 'good',
+      origin: 'cli.test@1.0.0',
+      integration: 'cli',
+    });
+  });
+
+  it('rejects --valuable-results on non-search endpoints', async () => {
+    const result = await executeEndpointFeedback({
+      endpoint: 'scrape',
+      jobId: '0193f6c5-1234-7890-abcd-1234567890ab',
+      rating: 'good',
+      valuableResults: [{ source: 'web', position: 1 }],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe(
+      '--valuable-results is only supported for search feedback.'
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('forwards valuableResults for search feedback', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ success: true, creditsRefunded: 1 }),
+    });
+
+    const valuableResults: ValuableResultInput[] = [
+      { source: 'web', position: 1 },
+      { source: 'news', position: 2 },
+    ];
+    const result = await executeEndpointFeedback({
+      endpoint: 'search',
+      jobId: '0193f6c5-1234-7890-abcd-1234567890ab',
+      rating: 'good',
+      valuableResults,
+    });
+
+    expect(result.success).toBe(true);
+    const [, request] = mockFetch.mock.calls[0];
+    expect(JSON.parse(request.body).valuableResults).toEqual(valuableResults);
   });
 
   it('treats team opt-out as a disabled success', async () => {
@@ -340,6 +426,55 @@ describe('feedback parsing', () => {
   it('parses positive page numbers', () => {
     expect(parsePageNumbersArg('1, 2, bad, -1, 3')).toEqual([1, 2, 3]);
     expect(parsePageNumbersArg('[4,5]')).toEqual([4, 5]);
+  });
+
+  it('parses valuable results as source:position pairs', () => {
+    expect(parseValuableResultsArg('web:1, news:2')).toEqual([
+      { source: 'web', position: 1 },
+      { source: 'news', position: 2 },
+    ]);
+    expect(parseValuableResultsArg('images:3')).toEqual([
+      { source: 'images', position: 3 },
+    ]);
+  });
+
+  it('parses valuable results from JSON, keeping reasons', () => {
+    expect(
+      parseValuableResultsArg(
+        '[{"source":"web","position":1,"reason":"Answered it"},{"source":"news","position":2}]'
+      )
+    ).toEqual([
+      { source: 'web', position: 1, reason: 'Answered it' },
+      { source: 'news', position: 2 },
+    ]);
+  });
+
+  // Each group is numbered from 1 independently, so a bare position does not
+  // identify a result.
+  it('rejects valuable results without a source', () => {
+    expect(() => parseValuableResultsArg('1,3')).toThrow(
+      'must be "source:position"'
+    );
+    expect(() => parseValuableResultsArg('[{"position":1}]')).toThrow(
+      'source must be one of'
+    );
+  });
+
+  it('rejects unknown sources and non-positive positions', () => {
+    expect(() => parseValuableResultsArg('video:1')).toThrow(
+      'source must be one of'
+    );
+    expect(() => parseValuableResultsArg('web:0')).toThrow(
+      'positions must be integers of 1 or greater'
+    );
+    expect(() => parseValuableResultsArg('web:abc')).toThrow(
+      'positions must be integers of 1 or greater'
+    );
+  });
+
+  it('returns undefined for empty input', () => {
+    expect(parseValuableResultsArg(undefined)).toBeUndefined();
+    expect(parseValuableResultsArg('   ')).toBeUndefined();
   });
 });
 

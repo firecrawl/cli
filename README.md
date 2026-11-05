@@ -1,6 +1,6 @@
 # 🔥 Firecrawl CLI
 
-Command-line interface for Firecrawl. Search, scrape, interact, crawl, map, search research papers, developer sources, and government sources, and run agent jobs directly from your terminal.
+Command-line interface for Firecrawl, the context API for AI agents. Search, scrape, parse, crawl, map, and interact with the web, search research papers, developer sources, and government sources, and run agent jobs directly from your terminal.
 
 ## Installation
 
@@ -8,7 +8,7 @@ Command-line interface for Firecrawl. Search, scrape, interact, crawl, map, sear
 npm install -g firecrawl-cli
 ```
 
-Or set up everything in one command (install CLI globally, authenticate, and add skills across all detected coding editors):
+Or set up everything in one command (install CLI globally, authenticate, and install shared skills for your detected coding editors):
 
 ```bash
 npx -y firecrawl-cli@latest init -y --browser
@@ -16,7 +16,7 @@ npx -y firecrawl-cli@latest init -y --browser
 
 - `-y` runs setup non-interactively
 - `--browser` opens the browser for Firecrawl authentication automatically
-- skills install globally to every detected AI coding agent by default
+- skills install globally in the shared skills directory and are made available to detected AI coding agents by default
 
 ### Setup Skills, Workflows, and MCP
 
@@ -37,7 +37,7 @@ firecrawl setup seo-audit
 
 If no API key is found afterwards, an interactive terminal offers a browser login (pass `--browser` to log in without the prompt); non-interactive runs never block — they print a hint and the skills walk agents through setup on first use.
 
-These install globally across all detected coding editors by default. Use `--agent <agent>` to scope any of them to one editor.
+Default installs use the shared `~/.agents/skills` directory and the coding editors detected by Firecrawl. The npx installer always includes Codex as the shared-directory target, even when Codex is not detected, preserving shared files and agent links. If no editors are detected, only the shared directory is populated. The npx path detects supported global targets, including Kiro and custom configuration locations such as `CLAUDE_CONFIG_DIR` and `XDG_CONFIG_HOME`. Project-only targets are excluded. Use `--agent <agent>` to target a specific editor.
 
 #### Scope setup to a single harness
 
@@ -74,7 +74,7 @@ detected harnesses (all selected by default) so you can pick a subset.
 
 The init command installs the **CLI skills** by default and offers the **workflow skills** as optional extras, into AI coding agents (Cursor, Claude Code, Windsurf, etc.):
 
-- **CLI skills** — teach agents how to use the Firecrawl CLI for live web work (search, scrape, interact, map, crawl, agent). Installed by default.
+- **CLI skills** — teach agents how to use the Firecrawl CLI for live web work (search, scrape, interact, map, crawl, agent) and Alexandria data providers. Installed by default.
 - **Workflow skills** — teach agents how to produce Firecrawl-powered deliverables such as research briefs, SEO audits, QA reports, lead lists, knowledge bases, and design-system extraction. Interactive multi-select during init.
 
 All skill families live in the [`firecrawl/skills`](https://github.com/firecrawl/skills) catalog — including the **build skills** for integrating Firecrawl into application code:
@@ -85,6 +85,8 @@ npx skills add firecrawl/skills
 
 > Contributing skills? CLI skills (including the research/developer index skills) → PR this repo (`skills/`). Build/SDK skills → PR the [`firecrawl`](https://github.com/firecrawl/firecrawl) monorepo (`skills/`). Workflow skills → PR [`firecrawl/firecrawl-workflows`](https://github.com/firecrawl/firecrawl-workflows). The catalog ([`firecrawl/skills`](https://github.com/firecrawl/skills)) is read-only — never PR it directly.
 
+The Firecrawl Claude Code and Cursor plugins are released separately and do not include these CLI skills. Changes here still reach the skill catalog.
+
 To reinstall skills manually:
 
 ```bash
@@ -93,11 +95,143 @@ firecrawl setup build
 firecrawl setup workflows
 ```
 
+### CLI updates
+
+Global npm, pnpm, bun, and yarn installations, plus standalone binaries on macOS
+and Linux, check for updates in the background. Commands do not wait for an
+update, and the updater never writes to stdout. The next invocation uses the
+updated release, with a one-time notice on an interactive terminal.
+
+For global package installs, the installed package is a stable launcher. The
+updater uses npm to install a new release into a separate directory under
+`~/.firecrawl/versions/`, verifies it, then atomically switches the current
+version pointer. It never rewrites the global installation or removes files
+used by running commands. Managed versions are shared within a Node major
+version, so a patch upgrade reuses the saved release. The launcher checks the
+release's Node requirements before selecting it. npm must be available on PATH
+for automatic package updates; otherwise use your package manager's manual
+update command. Install scripts are disabled. Dependencies resolve to versions
+published no later than the release itself, so the waiting period covers them
+too.
+
+Each global installation has its own version selection. Maintenance retains
+the current and previous release for each installation, plus any older release
+still used by a running CLI process. It removes other inactive versions and
+staging directories older than 24 hours whose installer has exited. Files owned
+by another machine on shared storage are retained conservatively.
+
+Reinstalling with npm resets the launcher's selection to that package,
+including an explicit downgrade. Disable automatic updates before reinstalling
+if you want to stay on the selected version. Disabling updates alone keeps the
+currently selected release.
+
+Standalone binaries download their release archive, verify its SHA-256 checksum
+and reported version, then atomically replace the executable. The previous
+binary is retained beside it with a `.previous` suffix.
+
+A newly observed release waits at least 24 hours before unattended installation.
+The worker rechecks that it is still the latest release after this delay; a
+changed candidate starts a new waiting period. Version checks normally refresh
+about once a day. Automatic updates never cross a major version or install a
+prerelease. Prerelease installations remain pinned.
+
+To update immediately, bypassing the waiting period, including to a new major
+version:
+
+```bash
+firecrawl update
+```
+
+To restore the previous version without the network:
+
+```bash
+firecrawl update --rollback
+```
+
+For global package installs, the launcher handles rollback without loading the
+active release, so it works even when that release cannot start. Rollback
+disables automatic updates so the same release is not immediately
+installed again. The first managed-package rollback returns to the original
+package-manager installation; later updates can roll back to the previous
+managed version. Moving the registry's latest tag back does not automatically
+downgrade an existing installation.
+
+Control automatic updates with:
+
+```bash
+firecrawl update --disable-auto
+firecrawl update --enable-auto
+export FIRECRAWL_NO_AUTO_UPDATE=1
+```
+
+Automatic updates are also off when `CI` is set, unless it is `0` or `false`.
+`FIRECRAWL_NO_UPDATE_CHECK=1` disables both automatic updates and notices.
+Explicit updates still work with these settings. Failures leave the active
+installation unchanged and back off before retrying. Details are recorded in
+`~/.firecrawl/auto-update.log`.
+
+Homebrew and other system packages, project-local installs, package runners
+such as npx, and standalone Windows binaries retain their selected release and
+show the appropriate manual update instruction. Enabling automatic updates on
+these installations reports that they are externally managed. Disabling updates
+saves the shared user preference from any installation.
+Non-writable or differently owned standalone binaries are not replaced.
+
+Package updates use npm's registry configuration. Binary version checks honor
+`npm_config_registry`; binary downloads use GitHub releases, or the mirror set
+with `FIRECRAWL_RELEASES_URL`.
+
+### Skill updates
+
+Interactive CLI sessions (except `init`, `setup`, and the `-y`/`--yes` init
+shorthand) show a boxed notice when installed Firecrawl skills differ from the
+current catalog. The check includes supporting reference files and runs
+independently of CLI releases. Installs record which catalog skills existed, so
+the notice announces skills published later, once, in families whose umbrella
+skill is installed. Skills skipped during setup are not offered again.
+
+Each affected family gets one command: `firecrawl setup core`,
+`firecrawl setup build`, or `firecrawl setup workflows`. These commands install
+the entire current family, including previously skipped skills and
+new skills added since your CLI was released. When installing through npx, failed
+catalog API discovery falls back to this CLI release's known names with a warning.
+Native installs discover skills directly from the Git repository and require that
+repository to be available. An explicit refresh replaces installed files, including
+local edits; the notice itself never changes them.
+
+Checks cover global installations recorded in `~/.agents/.skill-lock.json` with
+files in `~/.agents/skills`. They cache catalog results for 20 hours, repeat the
+notice at most once every 12 hours, and retry failed checks after an hour.
+Non-interactive runs stay quiet. Set `FIRECRAWL_NO_UPDATE_CHECK=1` to disable both
+CLI and skill update notices.
+
+### MCP and web defaults
+
 To install the Firecrawl MCP server into your editors (Cursor, Claude Code, VS Code, etc.):
 
 ```bash
 firecrawl setup mcp
 ```
+
+With a key saved by `firecrawl login`, export `FIRECRAWL_API_KEY` and pass
+`--agent <agent>` (or `--agent all`), or add `--keyless`: setup never writes a
+stored key into client configs.
+
+Use `--agent <agent>` for one client, or `--agent all --global` to configure
+Claude Code, VS Code, Codex, OpenCode, Cursor, Gemini CLI, Windsurf,
+Antigravity, Amp, Grok Build, Zed, Hermes Agent, and OpenClaw in one run. The
+`--agent` values for the newer clients are `amp` (or `ampcode`, `amp-code`),
+`grok` (or `grok-build`, `grok-cli`), and `zed`. Amp, Grok Build, and Zed are written to their user settings, so they do not take
+`--project`: Amp to `~/.config/amp/settings.json` (or an existing
+`settings.jsonc` when there is no `settings.json`), Grok Build to
+`~/.grok/config.toml`, and Zed to `~/.config/zed/settings.json`
+(`$XDG_CONFIG_HOME/zed/settings.json` on Linux when it is set,
+`%APPDATA%\Zed\settings.json` on Windows). Clients that cannot be
+configured on this machine (for example OpenClaw when the `openclaw` command is
+not installed) are skipped and listed in the summary; the command only fails
+when a client it tried to configure fails. When `FIRECRAWL_API_KEY` is set,
+Antigravity and Zed are skipped because they have no verified way to reference
+the key from the environment; add `--keyless` to include them.
 
 To make Firecrawl the default web provider for supported AI agents:
 
@@ -215,29 +349,30 @@ firecrawl scrape https://firecrawl.dev https://firecrawl.dev/blog https://docs.f
 
 #### Scrape Options
 
-| Option                     | Description                                             |
-| -------------------------- | ------------------------------------------------------- |
-| `-f, --format <formats>`   | Output format(s), comma-separated                       |
-| `-H, --html`               | Shortcut for `--format html`                            |
-| `-S, --summary`            | Shortcut for `--format summary`                         |
-| `--only-main-content`      | Extract only main content (removes navs, footers, etc.) |
-| `--wait-for <ms>`          | Wait time before scraping (for JS-rendered content)     |
-| `--screenshot`             | Take a screenshot                                       |
-| `--full-page-screenshot`   | Take a full page screenshot                             |
-| `--include-tags <tags>`    | Only include specific HTML tags                         |
-| `--exclude-tags <tags>`    | Exclude specific HTML tags                              |
-| `--max-age <milliseconds>` | Maximum age of cached content in milliseconds           |
-| `--lockdown`               | Enable lockdown mode for the scrape                     |
-| `--redact-pii`             | Redact personally identifiable information from output  |
-| `--schema <json>`          | JSON schema for structured extraction                   |
-| `--schema-file <path>`     | Path to JSON schema file for structured extraction      |
-| `--actions <json>`         | JSON actions array to run during scrape                 |
-| `--actions-file <path>`    | Path to JSON actions file                               |
-| `--proxy <proxy>`          | Proxy mode for scraping (for example, `auto`, `basic`)  |
-| `-o, --output <path>`      | Save output to file                                     |
-| `--json`                   | Output as JSON format                                   |
-| `--pretty`                 | Pretty print JSON output                                |
-| `--timing`                 | Show request timing info                                |
+| Option                     | Description                                            |
+| -------------------------- | ------------------------------------------------------ |
+| `-f, --format <formats>`   | Output format(s), comma-separated                      |
+| `-H, --html`               | Shortcut for `--format html`                           |
+| `-S, --summary`            | Shortcut for `--format summary`                        |
+| `--only-main-content`      | Extract only main content (the default)                |
+| `--full-page`              | Keep the whole page, including navs and footers        |
+| `--wait-for <ms>`          | Wait time before scraping (for JS-rendered content)    |
+| `--screenshot`             | Take a screenshot                                      |
+| `--full-page-screenshot`   | Take a full page screenshot                            |
+| `--include-tags <tags>`    | Only include specific HTML tags                        |
+| `--exclude-tags <tags>`    | Exclude specific HTML tags                             |
+| `--max-age <milliseconds>` | Maximum age of cached content in milliseconds          |
+| `--lockdown`               | Enable lockdown mode for the scrape                    |
+| `--redact-pii`             | Redact personally identifiable information from output |
+| `--schema <json>`          | JSON schema for structured extraction                  |
+| `--schema-file <path>`     | Path to JSON schema file for structured extraction     |
+| `--actions <json>`         | JSON actions array to run during scrape                |
+| `--actions-file <path>`    | Path to JSON actions file                              |
+| `--proxy <proxy>`          | Proxy mode for scraping (for example, `auto`, `basic`) |
+| `-o, --output <path>`      | Save output to file                                    |
+| `--json`                   | Output as JSON format                                  |
+| `--pretty`                 | Pretty print JSON output                               |
+| `--timing`                 | Show request timing info                               |
 
 #### Available Formats
 
@@ -333,7 +468,7 @@ firecrawl search "AI data tools"
 | Option                       | Description                                                                                                                                                                                                       |
 | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--limit <n>`                | Maximum results (default: 5, max: 100)                                                                                                                                                                            |
-| `--sources <sources>`        | Comma-separated: `web`, `images`, `news` (default: web)                                                                                                                                                           |
+| `--sources <sources>`        | Comma-separated: `web`, `images`, `news`, `alexandria` (default: web). With an API key, `alexandria` is always added with domain matching; `--no-domain-tools` turns domain matching off                          |
 | `--categories <categories>`  | Comma-separated: `research` (research-affiliated websites -- for papers use [`research search-papers`](#research---search-research-papers)), `pdf`, `developer`, `gov` (cannot be combined with other categories) |
 | `--tbs <value>`              | Time filter: `qdr:h` (hour), `qdr:d` (day), `qdr:w` (week), `qdr:m` (month), `qdr:y` (year)                                                                                                                       |
 | `--location <location>`      | Geo-targeting (e.g., "Germany", "San Francisco,California,United States")                                                                                                                                         |
@@ -344,7 +479,8 @@ firecrawl search "AI data tools"
 | `--ignore-invalid-urls`      | Exclude URLs invalid for other Firecrawl endpoints                                                                                                                                                                |
 | `--scrape`                   | Enable scraping of search results                                                                                                                                                                                 |
 | `--scrape-formats <formats>` | Scrape formats when `--scrape` enabled (default: markdown)                                                                                                                                                        |
-| `--only-main-content`        | Include only main content when scraping (default: true)                                                                                                                                                           |
+| `--only-main-content`        | Include only the main content when scraping (the API default)                                                                                                                                                     |
+| `--full-page`                | Keep the whole page when scraping, including navs and footers                                                                                                                                                     |
 | `-o, --output <path>`        | Save to file                                                                                                                                                                                                      |
 | `--json`                     | Output as compact JSON                                                                                                                                                                                            |
 
@@ -424,18 +560,31 @@ firecrawl gov "food labeling requirements for allergens"
 
 #### Options
 
-| Option                | Description                               |
-| --------------------- | ----------------------------------------- |
-| `--limit <n>`         | Number of results (default: 10, max: 100) |
-| `-o, --output <path>` | Save to file                              |
-| `--json`              | Output the raw response as JSON           |
-| `--pretty`            | Pretty print JSON output                  |
+| Option                  | Description                                                                                                                                                                                                                                              |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--limit <n>`           | Number of results (default: 10, max: 100)                                                                                                                                                                                                                |
+| `--jurisdiction <code>` | Keep only pages of one jurisdiction: `us` for federal, or `us-` plus a two-letter state or territory code, such as `us-ca` or `us-dc`                                                                                                                    |
+| `--court <id>`          | Keep only pages labeled for one court, by CourtListener court id, such as `scotus`, `ca9`, or `nysd`                                                                                                                                                     |
+| `--court-type <type>`   | Keep only pages from one type of court: `federal-supreme`, `federal-appellate`, `federal-district`, `federal-bankruptcy`, `federal-special`, `military`, `state-supreme`, `state-appellate`, `state-trial`, `state-special`, or `state-attorney-general` |
+| `--cites <citation>`    | Keep only pages that cite one law or case, as a printed citation such as `"42 U.S.C. § 1983"` or `"5 U.S. 137"`, or a citation id such as `us:usc:42:1983`                                                                                               |
+| `--domain <domain>`     | Keep only pages from one site, such as `irs.gov`                                                                                                                                                                                                         |
+| `-o, --output <path>`   | Save to file                                                                                                                                                                                                                                             |
+| `--json`                | Output the raw response as JSON                                                                                                                                                                                                                          |
+| `--pretty`              | Pretty print JSON output                                                                                                                                                                                                                                 |
+
+Filters combine with AND. Filters keep only pages the index has labeled, so a filtered search can leave out relevant pages, and no results does not mean none exist. Court labels are most complete for federal courts and case-law collections.
 
 #### Examples
 
 ```bash
 # Find state statutes on a topic
 firecrawl gov "California data breach notification statute" --limit 10
+
+# Narrow to one court
+firecrawl gov "qualified immunity excessive force" --court ca9
+
+# Keep only pages that cite a statute
+firecrawl gov "civil rights claims against police officers" --cites "42 U.S.C. § 1983"
 
 # Keep the raw response
 firecrawl gov "FDA food labeling regulations" --json -o results.json
@@ -461,9 +610,6 @@ firecrawl research related-papers pmcid:PMC12530322 --intent "in vivo delivery"
 
 # Read full-text passages to verify a specific claim
 firecrawl research read-paper doi:10.1016/j.neunet.2025.108095 --question "What was the sample size?"
-
-# Search GitHub issue/PR history and repository READMEs
-firecrawl research search-github "foundationdb queue worker shutdown" --limit 10
 ```
 
 Paper ids accept `pmid:`, `pmcid:`, `doi:`, and `arxiv:` forms, plus canonical `paperId` values returned by search.
@@ -476,7 +622,6 @@ Paper ids accept `pmid:`, `pmcid:`, `doi:`, and `arxiv:` forms, plus canonical `
 | `inspect-paper <paperId>`     | Canonical metadata: title, abstract, authors, categories, source ids, dates |
 | `related-papers <seedIds...>` | Citation-graph expansion from seed papers, ranked against `--intent`        |
 | `read-paper <paperId>`        | Best-matching in-body full-text passages for a `--question`                 |
-| `search-github <query>`       | GitHub issue/PR history and repository READMEs                              |
 
 #### `search-papers` Options
 
@@ -487,6 +632,7 @@ Paper ids accept `pmid:`, `pmcid:`, `doi:`, and `arxiv:` forms, plus canonical `
 | `--categories <categories>` | arXiv-style taxonomy labels (e.g. `cs.LG,cs.IR`). Biomedical records do not use these. |
 | `--from <date>`             | Inclusive lower bound on created/updated date (YYYY-MM-DD)                             |
 | `--to <date>`               | Inclusive upper bound on created/updated date (YYYY-MM-DD)                             |
+| `--sort <order>`            | `relevance` (default) or `date_desc` (newest of the most relevant matches)             |
 | `-o, --output <path>`       | Save to file                                                                           |
 | `--json`                    | Output as compact JSON                                                                 |
 | `--pretty`                  | Pretty print JSON output                                                               |
@@ -522,20 +668,21 @@ endpoint feedback calls silently.
 
 #### Feedback Options
 
-| Option                           | Description                                  |
-| -------------------------------- | -------------------------------------------- |
-| `--rating <rating>`              | Required: `good`, `partial`, or `bad`        |
-| `--issues <codesOrJson>`         | Comma-separated issue codes or JSON array    |
-| `--tags <codesOrJson>`           | Comma-separated tags or JSON array           |
-| `--note <text>`                  | Short human-readable feedback                |
-| `--valuable-sources <json>`      | JSON array of `{url, reason}` entries        |
-| `--missing-content <json>`       | JSON array of `{topic, description}` entries |
-| `--query-suggestions <text>`     | Search/query improvement notes               |
-| `--url <url>`                    | Relevant URL for scrape or parse feedback    |
-| `--page-numbers <numbersOrJson>` | Comma-separated page numbers or JSON array   |
-| `--metadata <json>`              | Small JSON object with extra context         |
-| `--metadata-file <path>`         | Path to small metadata JSON object           |
-| `--silent`                       | Suppress output for background agent calls   |
+| Option                                 | Description                                                                                                                  |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `--rating <rating>`                    | Required: `good`, `partial`, or `bad`                                                                                        |
+| `--issues <codesOrJson>`               | Comma-separated issue codes or JSON array                                                                                    |
+| `--tags <codesOrJson>`                 | Comma-separated tags or JSON array                                                                                           |
+| `--note <text>`                        | Short human-readable feedback                                                                                                |
+| `--valuable-sources <json>`            | JSON array of `{url, reason}` entries                                                                                        |
+| `--valuable-results <positionsOrJson>` | Search only: every useful result as `source:position`, e.g. `web:1,news:2`, or a JSON array of `{source, position, reason?}` |
+| `--missing-content <json>`             | JSON array of `{topic, description}` entries                                                                                 |
+| `--query-suggestions <text>`           | Search/query improvement notes                                                                                               |
+| `--url <url>`                          | Relevant URL for scrape or parse feedback                                                                                    |
+| `--page-numbers <numbersOrJson>`       | Comma-separated page numbers or JSON array                                                                                   |
+| `--metadata <json>`                    | Small JSON object with extra context                                                                                         |
+| `--metadata-file <path>`               | Path to small metadata JSON object                                                                                           |
+| `--silent`                             | Suppress output for background agent calls                                                                                   |
 
 ---
 
@@ -611,27 +758,27 @@ firecrawl crawl https://example.com --limit 100 --max-depth 3
 
 #### Crawl Options
 
-| Option                         | Description                              |
-| ------------------------------ | ---------------------------------------- |
-| `--wait`                       | Wait for crawl to complete               |
-| `--progress`                   | Show progress while waiting              |
-| `--limit <n>`                  | Maximum pages to crawl                   |
-| `--max-depth <n>`              | Maximum crawl depth                      |
-| `--include-paths <paths>`      | Only crawl matching paths                |
-| `--exclude-paths <paths>`      | Skip matching paths                      |
-| `--sitemap <mode>`             | `include`, `skip`, or `only`             |
-| `--allow-subdomains`           | Include subdomains                       |
-| `--allow-external-links`       | Follow external links                    |
-| `--crawl-entire-domain`        | Crawl entire domain                      |
-| `--ignore-query-parameters`    | Treat URLs with different params as same |
-| `--delay <ms>`                 | Delay between requests                   |
-| `--max-concurrency <n>`        | Max concurrent requests                  |
-| `--scrape-options <json>`      | JSON scrape options passed to each page  |
-| `--scrape-options-file <path>` | Path to scrape options JSON file         |
-| `--webhook <url-or-json>`      | Webhook URL or configuration             |
-| `--cancel`                     | Cancel an active crawl job by job ID     |
-| `--timeout <seconds>`          | Timeout when waiting                     |
-| `--poll-interval <seconds>`    | Status check interval                    |
+| Option                         | Description                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------- |
+| `--wait`                       | Wait for crawl to complete                                                      |
+| `--progress`                   | Show progress while waiting                                                     |
+| `--limit <n>`                  | Maximum pages to crawl                                                          |
+| `--max-depth <n>`              | Maximum crawl depth                                                             |
+| `--include-paths <paths>`      | Only crawl matching paths                                                       |
+| `--exclude-paths <paths>`      | Skip matching paths                                                             |
+| `--sitemap <mode>`             | `include`, `skip`, or `only`                                                    |
+| `--allow-subdomains`           | Include subdomains                                                              |
+| `--allow-external-links`       | Follow external links                                                           |
+| `--crawl-entire-domain`        | Crawl entire domain                                                             |
+| `--ignore-query-parameters`    | Treat URLs with different params as same                                        |
+| `--delay <ms>`                 | Delay between requests in milliseconds, 1 to 60000 (sent to the API in seconds) |
+| `--max-concurrency <n>`        | Max concurrent requests                                                         |
+| `--scrape-options <json>`      | JSON scrape options passed to each page                                         |
+| `--scrape-options-file <path>` | Path to scrape options JSON file                                                |
+| `--webhook <url-or-json>`      | Webhook URL or configuration                                                    |
+| `--cancel`                     | Cancel an active crawl job by job ID                                            |
+| `--timeout <seconds>`          | Timeout when waiting                                                            |
+| `--poll-interval <seconds>`    | Status check interval                                                           |
 
 #### Examples
 
@@ -650,6 +797,68 @@ firecrawl crawl https://example.com --limit 1000 --max-depth 10 --wait --progres
 
 # Save results
 firecrawl crawl https://example.com --wait -o crawl-results.json --pretty
+```
+
+---
+
+### `batch-scrape` - Scrape a list of URLs
+
+Scrape many known URLs as one async job. Unlike multi-URL `scrape`, every requested format is kept and results come back as JSON.
+
+```bash
+# Start a batch scrape (returns job ID)
+firecrawl batch-scrape https://example.com https://example.org
+
+# Read URLs from a file (one per line; blank lines and # comments ignored)
+firecrawl batch-scrape --urls-file urls.txt
+
+# Wait for results
+firecrawl batch-scrape --urls-file urls.txt --format markdown,links --wait --progress
+
+# Check status (returns documents scraped so far)
+firecrawl batch-scrape <job-id>
+
+# Cancel a job
+firecrawl batch-scrape <job-id> --cancel
+```
+
+#### Batch Scrape Options
+
+| Option                         | Description                                     |
+| ------------------------------ | ----------------------------------------------- |
+| `--urls-file <path>`           | File with one URL per line                      |
+| `-f, --format <formats>`       | Output format(s), comma-separated               |
+| `--only-main-content`          | Extract only main content (the default)         |
+| `--full-page`                  | Keep the whole page, including navs and footers |
+| `--wait-for <ms>`              | Wait time before scraping each page             |
+| `--max-age <milliseconds>`     | Maximum age of cached content in milliseconds   |
+| `--schema <json>`              | JSON schema for extraction (adds `json` format) |
+| `--schema-file <path>`         | Path to JSON schema file                        |
+| `--prompt <text>`              | Extraction prompt (adds `json` format)          |
+| `--scrape-options <json>`      | JSON scrape options applied to every URL        |
+| `--scrape-options-file <path>` | Path to scrape options JSON file                |
+| `--wait`                       | Wait for the job to complete                    |
+| `--progress`                   | Show progress while waiting                     |
+| `--timeout <seconds>`          | Timeout when waiting                            |
+| `--poll-interval <seconds>`    | Status check interval (default: 2)              |
+| `--webhook <url-or-json>`      | Webhook URL or configuration                    |
+| `--max-concurrency <n>`        | Max concurrent scrapes for this job             |
+| `--ignore-invalid-urls`        | Skip invalid URLs instead of failing the job    |
+| `--status`                     | Check status of a job by job ID                 |
+| `--cancel`                     | Cancel an active job by job ID                  |
+| `-o, --output <path>`          | Save output to file                             |
+| `--pretty`                     | Pretty print JSON output                        |
+
+#### Examples
+
+```bash
+# Extract the same fields from every page
+firecrawl batch-scrape --urls-file products.txt --wait \
+  --schema '{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"string"}}}' \
+  -o products.json --pretty
+
+# Notify a webhook instead of waiting
+firecrawl batch-scrape --urls-file urls.txt --webhook https://example.com/hooks/firecrawl
 ```
 
 ---
@@ -977,6 +1186,9 @@ firecrawl https://example.com --format markdown,links,images
 ```bash
 # Just pass multiple URLs -- results are saved to .firecrawl/
 firecrawl scrape https://firecrawl.dev https://firecrawl.dev/blog https://docs.firecrawl.dev
+
+# Many URLs, other formats, or JSON extraction: run one batch job
+firecrawl batch-scrape --urls-file urls.txt --format markdown,links --wait -o results.json
 ```
 
 ### Combine with other tools
@@ -1019,6 +1231,18 @@ To disable telemetry, set the environment variable:
 
 ```bash
 export FIRECRAWL_NO_TELEMETRY=1
+```
+
+Requests from the CLI are tagged `integration: cli`. A tool that wraps the CLI can tag them as its own by setting `FIRECRAWL_INTEGRATION`: the CLI sends the value, trimmed, as the `X-Integration` header on every API request (a value with control or non-ASCII characters cannot be a header and is not sent), and the API attributes the request to it when it is one of its integration names or any value starting with an underscore. Any other value is ignored by the API and never makes a request fail.
+
+```bash
+export FIRECRAWL_INTEGRATION=_my-tool
+```
+
+Supported API requests carry an origin of `cli@<version>`. When a coding agent runs the CLI, the origin also names the agent, for example `cli.codex@<version>`; it is detected from environment variables the agent sets in the commands it runs. Calls routed through the SDK include the agent only after the pinned SDK supports the origin option. To send plain `cli@<version>` instead:
+
+```bash
+export FIRECRAWL_CLI_DISABLE_AGENT_ORIGIN=1
 ```
 
 ---
@@ -1069,30 +1293,19 @@ URLs (including domains, IP addresses and localhost) continue to scrape websites
 
 ### Alexandria provider terms
 
-When a provider returns `THIRD_PARTY_DATA_TERMS_REQUIRED`, review its linked terms.
-Read the current provider agreement and metadata with:
+When a provider returns `THIRD_PARTY_DATA_TERMS_REQUIRED`, an organization admin must
+accept that provider's terms in the Firecrawl dashboard, at the link the error returns
+(`requiresAction.url`) or https://www.firecrawl.dev/app/settings?tab=data-sources.
+The CLI does not accept terms. To read the current provider agreement and metadata first:
 
 ```bash
 npx firecrawl-cli@latest alexandria terms show benzinga --pretty
 ```
 
-After reviewing it, explicitly accept the exact version and digest for the organization
-associated with your Firecrawl API key:
-
-```bash
-npx firecrawl-cli@latest alexandria terms accept benzinga \
-  --terms-version '<reviewed-version>' --digest '<reviewed-sha256>' --confirm
-```
-
-This records acceptance of the reviewed Alexandria provider terms. No automatic
-acceptance or retry occurs. A `409 terms_changed` requires reviewing the new agreement before retrying.
-Agents must present the returned terms and provider links, ask the user for explicit
-approval, and wait before accepting. If review is refused or a provider link is
-unavailable, show the error and direct an organization admin to
-https://www.firecrawl.dev/app/settings?tab=data-sources. Never infer consent from a
-failed lookup or automatically retry an acceptance. The API remains authoritative
-for organization access and acceptance authority.
-After confirmed success, rerun the original provider command; its normal credits apply.
+Agents must give the user the dashboard link and must not retry the provider until the
+terms are accepted. Reading terms does not accept them, and a failed lookup is never
+consent. After an admin accepts them, rerun the original provider command; its normal
+credits apply.
 
 ### Alexandria receipts and retries
 
