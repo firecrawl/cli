@@ -15,7 +15,7 @@ import { integrationHeaders } from '../utils/integration';
 
 type Selectors = Record<string, unknown>;
 type ListOptions = AlexandriaOptions & {
-  browseCommands?: string[];
+  browse?: boolean;
   category?: boolean;
   contracts?: boolean;
   limit?: number;
@@ -302,7 +302,7 @@ export async function handleList(
       );
     if (path.some((part) => !part.trim() || part.length > 200))
       throw new Error('Use non-empty catalogue IDs of at most 200 characters.');
-    if (options.browseCommands && path[0] === 'search')
+    if (options.browse && path[0] === 'search')
       throw new Error(
         `unknown command 'search'. Did you mean firecrawl search alexandria ${quote(path.slice(1).join(' ') || '<query>')}?`
       );
@@ -468,16 +468,10 @@ export async function handleList(
     process.exitCode = 1;
     const failure =
       error instanceof DiscoveryFailure ? error.envelope : apiFailure(error);
-    let message =
+    const message =
       failure.error ??
       failure.data?.alexandria?.[0]?.error?.message ??
       'Tool discovery failed.';
-    if (
-      options.browseCommands &&
-      message.startsWith('Unknown or unavailable categories.')
-    )
-      failure.error =
-        message = `unknown command or category '${path[0]}'. Commands: ${options.browseCommands.join(', ')}. Run firecrawl alexandria to list categories.`;
     writeOutput(
       asJson
         ? JSON.stringify(
@@ -538,18 +532,12 @@ export function createListCommand(name = 'list'): Command {
 
 export function createAlexandriaCommand(): Command {
   const browse = createListCommand('browse').action(
-    (path: string[], options: ListOptions) => {
-      const alexandria = browse.parent!;
-      return handleList(path, {
+    (path: string[], options: ListOptions) =>
+      handleList(path, {
         ...options,
-        browseCommands: alexandria
-          .createHelp()
-          .visibleCommands(alexandria)
-          .map((command) => command.name())
-          .filter((name) => name !== 'help'),
+        browse: true,
         category: path.length > 0,
-      });
-    }
+      })
   );
   return new Command('alexandria')
     .description(
