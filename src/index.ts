@@ -2229,6 +2229,8 @@ function createAgentCommand(): Command {
  * Create and configure the browser command (deprecated — prefer scrape + interact)
  */
 function createBrowserCommand(): Command {
+  const deprecationWarning =
+    'Warning: `firecrawl browser` is deprecated and will be removed in a future release. Use `firecrawl scrape <url>`, then `firecrawl interact "<prompt>"` or `firecrawl interact -c "<code>"`. See `firecrawl interact --help`.';
   const browserCmd = new Command('browser')
     .description(
       '[Deprecated: prefer scrape + interact] Launch cloud browser sessions and execute code remotely via Playwright'
@@ -2249,6 +2251,10 @@ function createBrowserCommand(): Command {
     )
     .option('-o, --output <path>', 'Output file path (default: stdout)')
     .option('--json', 'Output as JSON format', false)
+    .hook('preAction', () => {
+      process.stderr.write(`${deprecationWarning}\n`);
+    })
+    .addHelpText('beforeAll', `${deprecationWarning}\n`)
     .action(async (code, options) => {
       if (code) {
         await handleBrowserQuickExecute({

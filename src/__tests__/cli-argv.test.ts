@@ -270,4 +270,50 @@ describe('CLI argv parsing', () => {
       expect(result.stderr).not.toContain('unknown command');
     }
   );
+
+  testWithBuiltCli(
+    'warns on stderr that browser is deprecated, for the command and its subcommands',
+    () => {
+      const offline = [
+        '--api-key',
+        'fc-test',
+        '--api-url',
+        'http://127.0.0.1:9',
+      ];
+      for (const [args, status] of [
+        [['browser', ...offline], 0],
+        [['browser', 'list', ...offline], 1],
+      ] as const) {
+        const result = spawnSync(process.execPath, [cliPath, ...args], {
+          encoding: 'utf8',
+          env: { ...process.env, FIRECRAWL_NO_UPDATE_CHECK: '1' },
+        });
+        expect(result.status).toBe(status);
+        expect(result.stderr).toContain(
+          '`firecrawl browser` is deprecated and will be removed'
+        );
+        expect(result.stderr).toContain('firecrawl interact');
+        expect(result.stdout).not.toContain('deprecated and will be removed');
+      }
+    }
+  );
+
+  testWithBuiltCli(
+    'shows the browser deprecation warning in browser help and subcommand help',
+    () => {
+      for (const args of [
+        ['browser', '--help'],
+        ['browser', 'list', '--help'],
+      ]) {
+        const result = spawnSync(process.execPath, [cliPath, ...args], {
+          encoding: 'utf8',
+          env: { ...process.env, FIRECRAWL_NO_UPDATE_CHECK: '1' },
+        });
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain(
+          '`firecrawl browser` is deprecated and will be removed'
+        );
+      }
+    }
+  );
 });
