@@ -22,6 +22,7 @@ vi.mock('../../utils/client', async () => ({
 import { requestAlexandria } from '../../commands/alexandria';
 import {
   executeEndpointFeedback,
+  handleEndpointFeedbackCommand,
   parseCallRatingArg,
   parseFeedbackTokenArg,
 } from '../../commands/feedback';
@@ -104,7 +105,12 @@ describe('alexandria feedback tokens in the CLI', () => {
       }),
     } as any);
     const envelope = await requestAlexandria(
-      [{ provider: 'fred', capability: 'series', options: {} }],
+      [
+        { provider: 'fred', capability: 'series', options: {} },
+        { provider: 'fred', capability: 'bad', options: {} },
+        { provider: 'firecrawl', capability: 'find-tools', options: {} },
+        { provider: 'fred', capability: 'plain', options: {} },
+      ],
       {}
     );
     expect(readFeedbackTokens(scope).map((entry) => entry.token)).toEqual([
@@ -224,6 +230,19 @@ describe('alexandria feedback tokens in the CLI', () => {
       }),
     });
     expect((await executeEndpointFeedback(base)).rejectedTokens).toBe(1);
+
+    const stdout = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+    try {
+      await handleEndpointFeedbackCommand(base);
+      const output = stdout.mock.calls.map(([chunk]) => chunk).join('');
+      expect(output).toContain(
+        '1 call token(s) could not be verified and were ignored.'
+      );
+    } finally {
+      stdout.mockRestore();
+    }
   });
 
   it('parses call ratings and tokens', () => {

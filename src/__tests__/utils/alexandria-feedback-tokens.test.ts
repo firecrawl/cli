@@ -120,7 +120,7 @@ describe('alexandria feedback token store', () => {
     recordFeedbackTokens(scope, ['a']);
     const mode =
       statSync(join(state.dir, 'alexandria-feedback-tokens.json')).mode & 0o777;
-    expect(mode).toBe(0o600);
+    if (process.platform !== 'win32') expect(mode).toBe(0o600);
   });
 
   it('never throws when the store cannot be written', () => {

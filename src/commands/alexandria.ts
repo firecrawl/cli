@@ -230,13 +230,15 @@ export async function requestAlexandria(
         creditsCost: result.creditsCost,
       },
     };
-    const tokened = (result.alexandria as any[]).filter(
-      (item) =>
+    const tokened = (
+      Array.isArray(result.alexandria) ? result.alexandria : []
+    ).filter(
+      (item: any) =>
         typeof item?.feedbackToken === 'string' && item.provider !== 'firecrawl'
     );
     const refs = recordFeedbackTokens(
       feedbackTokenScope(getApiKey(options.apiKey)),
-      tokened.map((item) => item.feedbackToken)
+      tokened.map((item: any) => item.feedbackToken as string)
     );
     if (options.showReceipt !== false)
       tokened.forEach((item, i) => {
