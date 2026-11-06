@@ -16,6 +16,17 @@ import { getClient } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { setupTest, teardownTest } from '../utils/mock-client';
 
+const configDir = vi.hoisted(() =>
+  require('fs').mkdtempSync(
+    require('path').join(require('os').tmpdir(), 'fc-feedback-')
+  )
+);
+
+vi.mock('../../utils/credentials', async () => ({
+  ...(await vi.importActual('../../utils/credentials')),
+  getConfigDirectoryPath: () => configDir,
+}));
+
 vi.mock('../../utils/agent-origin', () => ({
   getCliOrigin: () => 'cli.test@1.0.0',
 }));

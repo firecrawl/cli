@@ -7,6 +7,10 @@ import { getClient } from '../utils/client';
 import { getApiKey } from '../utils/config';
 import { writeOutput } from '../utils/output';
 import { withoutResultPrices } from '../utils/alexandria-prices';
+import {
+  feedbackTokenScope,
+  recordFeedbackTokens,
+} from '../utils/alexandria-feedback-tokens';
 import { TERMS_DASHBOARD_URL } from './terms';
 
 type Call = AlexandriaCall & { options: Record<string, unknown> };
@@ -226,6 +230,21 @@ export async function requestAlexandria(
         creditsCost: result.creditsCost,
       },
     };
+    const tokened = (result.alexandria as any[]).filter(
+      (item) =>
+        typeof item?.feedbackToken === 'string' && item.provider !== 'firecrawl'
+    );
+    const refs = recordFeedbackTokens(
+      feedbackTokenScope(getApiKey(options.apiKey)),
+      tokened.map((item) => item.feedbackToken)
+    );
+    if (options.showReceipt !== false)
+      tokened.forEach((item, i) => {
+        if (refs[i])
+          console.error(
+            `Feedback ref ${refs[i]}: ${item.provider}/${item.capability}`
+          );
+      });
   } catch (error) {
     envelope = apiFailure(error);
   }
