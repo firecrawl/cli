@@ -2382,17 +2382,19 @@ program.addCommand(createSearchFeedbackCommand());
 program.addCommand(createAgentCommand());
 program.addCommand(createInteractCommand());
 
+const browserRemoved = (): never => {
+  console.error(
+    'Error: `firecrawl browser` was removed. Use `firecrawl scrape <url>`, then `firecrawl interact "<prompt>"` or `firecrawl interact -c "<code>"`. See `firecrawl interact --help`.'
+  );
+  process.exit(1);
+};
 program.addCommand(
   new Command('browser')
     .helpOption(false)
     .allowUnknownOption()
     .allowExcessArguments()
-    .action(() => {
-      console.error(
-        'Error: `firecrawl browser` was removed. Use `firecrawl scrape <url>`, then `firecrawl interact "<prompt>"` or `firecrawl interact -c "<code>"`. See `firecrawl interact --help`.'
-      );
-      process.exit(1);
-    }),
+    .on('beforeHelp', browserRemoved)
+    .action(browserRemoved),
   { hidden: true }
 );
 

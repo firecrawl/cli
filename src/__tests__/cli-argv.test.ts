@@ -280,6 +280,7 @@ describe('CLI argv parsing', () => {
         ['browser', 'execute', '--python', 'print(1)'],
         ['browser', 'close', '--session', 'abc'],
         ['browser', '--help'],
+        ['help', 'browser'],
       ]) {
         const result = spawnSync(process.execPath, [cliPath, ...args], {
           encoding: 'utf8',
