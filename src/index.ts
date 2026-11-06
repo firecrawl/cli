@@ -56,13 +56,6 @@ import {
   parseEndpointFeedbackEndpoint,
 } from './commands/feedback';
 import { handleAgentCommand, handleAgentThreadCommand } from './commands/agent';
-import {
-  handleBrowserLaunch,
-  handleBrowserExecute,
-  handleBrowserList,
-  handleBrowserClose,
-  handleBrowserQuickExecute,
-} from './commands/browser';
 import { handleInteractExecute, handleInteractStop } from './commands/interact';
 import { handleVersionCommand } from './commands/version';
 import { handleLoginCommand } from './commands/login';
@@ -123,7 +116,6 @@ const AUTH_REQUIRED_COMMANDS = [
   'feedback',
   'search-feedback',
   'agent',
-  'browser',
   'credit-usage',
   'monitor',
 ];
@@ -2226,307 +2218,6 @@ function createAgentCommand(): Command {
 }
 
 /**
- * Create and configure the browser command (deprecated — prefer scrape + interact)
- */
-function createBrowserCommand(): Command {
-  const deprecationWarning =
-    'Warning: `firecrawl browser` is deprecated and will be removed in a future release. Use `firecrawl scrape <url>`, then `firecrawl interact "<prompt>"` or `firecrawl interact -c "<code>"`. See `firecrawl interact --help`.';
-  const browserCmd = new Command('browser')
-    .description(
-      '[Deprecated: prefer scrape + interact] Launch cloud browser sessions and execute code remotely via Playwright'
-    )
-    .argument('[code]', 'Shorthand: auto-launch session + execute command')
-    .option(
-      '-k, --api-key <key>',
-      'Firecrawl API key (overrides global --api-key)'
-    )
-    .option('--api-url <url>', 'API URL (overrides global --api-url)')
-    .option(
-      '--profile <name>',
-      'Name for a profile (survives close, reconnect by name later)'
-    )
-    .option(
-      '--no-save-changes',
-      'Load existing profile data without saving changes (default: saves changes)'
-    )
-    .option('-o, --output <path>', 'Output file path (default: stdout)')
-    .option('--json', 'Output as JSON format', false)
-    .hook('preAction', () => {
-      process.stderr.write(`${deprecationWarning}\n`);
-    })
-    .addHelpText('beforeAll', `${deprecationWarning}\n`)
-    .action(async (code, options) => {
-      if (code) {
-        await handleBrowserQuickExecute({
-          code,
-          profile: options.profile,
-          saveChanges: options.saveChanges,
-          apiKey: options.apiKey,
-          apiUrl: options.apiUrl,
-          output: options.output,
-          json: options.json,
-        });
-      }
-    })
-    .addHelpText(
-      'after',
-      `
-Shorthand (auto-launches session if needed):
-  $ firecrawl browser "open https://example.com"
-  $ firecrawl browser "snapshot"
-  $ firecrawl browser "click @e5"
-  $ firecrawl browser "scrape"
-
-Explicit subcommands:
-  $ firecrawl browser launch-session
-  $ firecrawl browser execute "open https://example.com"
-  $ firecrawl browser list active
-  $ firecrawl browser close
-
-  By default, commands are sent to agent-browser (pre-installed in every sandbox).
-  Use --python or --node to run Playwright code instead.
-  $ firecrawl browser execute --python 'print(await page.title())'
-  $ firecrawl browser execute --node 'await page.title()'
-
-  See all agent-browser commands:
-  $ firecrawl browser execute "--help"
-`
-    );
-
-  browserCmd
-    .command('launch-session')
-    .description(
-      'Launch a new cloud browser session (without executing a command)'
-    )
-    .option(
-      '--ttl <seconds>',
-      'Total session TTL in seconds (default: 300)',
-      parseInt
-    )
-    .option('--ttl-inactivity <seconds>', 'Inactivity TTL in seconds', parseInt)
-    .option(
-      '--profile <name>',
-      'Name for a profile (survives close, reconnect by name later)'
-    )
-    .option(
-      '--no-save-changes',
-      'Load existing profile data without saving changes (default: saves changes)'
-    )
-    .option(
-      '-k, --api-key <key>',
-      'Firecrawl API key (overrides global --api-key)'
-    )
-    .option('--api-url <url>', 'API URL (overrides global --api-url)')
-    .option('-o, --output <path>', 'Output file path (default: stdout)')
-    .option('--json', 'Output as JSON format', false)
-    .addHelpText(
-      'after',
-      `
-Output:
-  Prints the Session ID and CDP URL. The session is auto-saved so
-  subsequent execute/close commands target it automatically.
-
-  Tip: Use the shorthand to launch + execute in one step:
-    $ firecrawl browser "open https://example.com"
-
-Examples:
-  $ firecrawl browser launch-session
-  $ firecrawl browser launch-session --ttl 600
-  $ firecrawl browser launch-session --ttl 300 --ttl-inactivity 60
-  $ firecrawl browser launch-session --profile my-session
-  $ firecrawl browser launch-session --profile my-session --no-save-changes
-  $ firecrawl browser launch-session -o session.json --json
-`
-    )
-    .action(async (options) => {
-      await handleBrowserLaunch({
-        ttl: options.ttl,
-        ttlInactivity: options.ttlInactivity,
-        profile: options.profile,
-        saveChanges: options.saveChanges,
-        apiKey: options.apiKey,
-        apiUrl: options.apiUrl,
-        output: options.output,
-        json: options.json,
-      });
-    });
-
-  browserCmd
-    .command('execute')
-    .description(
-      'Execute agent-browser commands (default), or Playwright Python/JS in a session'
-    )
-    .argument(
-      '<code>',
-      'agent-browser command (default) or Playwright code (with --python/--node)'
-    )
-    .option('--python', 'Execute as Playwright Python code', false)
-    .option('--node', 'Execute as Playwright JavaScript code', false)
-    .option(
-      '--bash',
-      'Execute bash in the sandbox (agent-browser pre-installed, CDP_URL auto-injected)',
-      false
-    )
-    .option(
-      '--session <id>',
-      'Session ID (default: active session from last launch)'
-    )
-    .option(
-      '-k, --api-key <key>',
-      'Firecrawl API key (overrides global --api-key)'
-    )
-    .option('--api-url <url>', 'API URL (overrides global --api-url)')
-    .option('-o, --output <path>', 'Output file path (default: stdout)')
-    .option('--json', 'Output as JSON format', false)
-    .addHelpText(
-      'after',
-      `
-How it works:
-  By default, commands are sent to agent-browser (pre-installed in every sandbox).
-  You don't need to type "agent-browser" — it's added automatically.
-
-agent-browser examples (default):
-  $ firecrawl browser execute "open https://example.com"
-  $ firecrawl browser execute "snapshot"
-  $ firecrawl browser execute "click @e5"
-  $ firecrawl browser execute "scrape"
-
-  You can still pass the full command if you prefer:
-  $ firecrawl browser execute "agent-browser snapshot"
-
-  Use --bash for arbitrary bash commands (not just agent-browser):
-  $ firecrawl browser execute --bash 'ls /tmp'
-
-Python examples (use --python):
-  $ firecrawl browser execute --python 'print(await page.title())'
-  $ firecrawl browser execute --python '
-    await page.goto("https://news.ycombinator.com")
-    title = await page.title()
-    items = await page.query_selector_all(".titleline > a")
-    for item in items[:5]:
-        print(await item.inner_text())
-  '
-
-JavaScript examples (use --node):
-  $ firecrawl browser execute --node 'await page.goto("https://example.com"); await page.title()'
-
-Target a specific session:
-  $ firecrawl browser execute --session <id> "snapshot"
-
-Note: --python, --node, and --bash are mutually exclusive.
-`
-    )
-    .action(async (code, options) => {
-      const flagCount = [options.python, options.node, options.bash].filter(
-        Boolean
-      ).length;
-      if (flagCount > 1) {
-        console.error(
-          'Error: Only one of --python, --node, or --bash can be specified'
-        );
-        process.exit(1);
-      }
-      const language = options.python
-        ? 'python'
-        : options.node
-          ? 'node'
-          : 'bash';
-
-      // In default/bash mode, auto-prefix "agent-browser" if not already present
-      let finalCode = code;
-      if (
-        language === 'bash' &&
-        !options.bash &&
-        !finalCode.startsWith('agent-browser')
-      ) {
-        finalCode = `agent-browser ${finalCode}`;
-      }
-
-      await handleBrowserExecute({
-        code: finalCode,
-        language,
-        session: options.session,
-        apiKey: options.apiKey,
-        apiUrl: options.apiUrl,
-        output: options.output,
-        json: options.json,
-      });
-    });
-
-  browserCmd
-    .command('list [status]')
-    .description(
-      'List browser sessions (optionally filter by: active, destroyed)'
-    )
-    .option(
-      '-k, --api-key <key>',
-      'Firecrawl API key (overrides global --api-key)'
-    )
-    .option('--api-url <url>', 'API URL (overrides global --api-url)')
-    .option('-o, --output <path>', 'Output file path (default: stdout)')
-    .option('--json', 'Output as JSON format', false)
-    .addHelpText(
-      'after',
-      `
-Examples:
-  $ firecrawl browser list
-  $ firecrawl browser list active
-  $ firecrawl browser list destroyed
-  $ firecrawl browser list --json
-`
-    )
-    .action(async (status, options) => {
-      if (status && !['active', 'destroyed'].includes(status)) {
-        console.error(
-          `Error: Invalid status "${status}". Use "active" or "destroyed".`
-        );
-        process.exit(1);
-      }
-      await handleBrowserList({
-        status,
-        apiKey: options.apiKey,
-        apiUrl: options.apiUrl,
-        output: options.output,
-        json: options.json,
-      });
-    });
-
-  browserCmd
-    .command('close')
-    .description('Close a browser session')
-    .option(
-      '--session <id>',
-      'Session ID (default: active session from last launch)'
-    )
-    .option(
-      '-k, --api-key <key>',
-      'Firecrawl API key (overrides global --api-key)'
-    )
-    .option('--api-url <url>', 'API URL (overrides global --api-url)')
-    .option('-o, --output <path>', 'Output file path (default: stdout)')
-    .option('--json', 'Output as JSON format', false)
-    .addHelpText(
-      'after',
-      `
-Examples:
-  $ firecrawl browser close
-  $ firecrawl browser close --session <id>
-`
-    )
-    .action(async (options) => {
-      await handleBrowserClose({
-        session: options.session,
-        apiKey: options.apiKey,
-        apiUrl: options.apiUrl,
-        output: options.output,
-        json: options.json,
-      });
-    });
-
-  return browserCmd;
-}
-
-/**
  * Create and configure the interact command
  */
 function createInteractCommand(): Command {
@@ -2691,8 +2382,21 @@ program.addCommand(createSearchFeedbackCommand());
 program.addCommand(createAgentCommand());
 program.addCommand(createInteractCommand());
 
-// Hidden: deprecated browser command (still works, just not in --help)
-program.addCommand(createBrowserCommand(), { hidden: true });
+const browserRemoved = (): never => {
+  console.error(
+    'Error: `firecrawl browser` was removed. Use `firecrawl scrape <url>`, then `firecrawl interact "<prompt>"` or `firecrawl interact -c "<code>"`. See `firecrawl interact --help`.'
+  );
+  process.exit(1);
+};
+program.addCommand(
+  new Command('browser')
+    .helpOption(false)
+    .allowUnknownOption()
+    .allowExcessArguments()
+    .on('beforeHelp', browserRemoved)
+    .action(browserRemoved),
+  { hidden: true }
+);
 
 // Hidden: `firecrawl create <kind>` — scaffolds Firecrawl starter projects.
 // Undocumented until `firecrawl-agent-cli` is published to npm; flip to
