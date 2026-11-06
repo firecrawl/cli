@@ -218,10 +218,11 @@ function resolveAlexandriaTokens(
 ) {
   const stored = readFeedbackTokens(scope);
   const explicit = options.tokens ?? [];
-  const byRef = new Map<string, string>([
-    ...stored.map((entry): [string, string] => [entry.ref, entry.token]),
-    ...explicit.map((token): [string, string] => [token, token]),
-  ]);
+  const byRef = new Map<string, string>(
+    explicit.length
+      ? explicit.map((token): [string, string] => [token, token])
+      : stored.map((entry): [string, string] => [entry.ref, entry.token])
+  );
   const rated = new Map<string, SearchFeedbackRating>();
   for (const { ref, rating } of options.callRatings ?? []) {
     const token = byRef.get(ref);

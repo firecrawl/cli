@@ -182,6 +182,19 @@ describe('alexandria feedback tokens in the CLI', () => {
     ]);
   });
 
+  it('resolves call-rating refs only against explicit tokens when given', async () => {
+    recordFeedbackTokens(scope, ['stored']);
+    const result = await executeEndpointFeedback({
+      ...base,
+      tokens: ['explicit'],
+      callRatings: [{ ref: 'c1', rating: 'bad' }],
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Unknown call ref "c1"');
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(readFeedbackTokens(scope)).toHaveLength(1);
+  });
+
   it('sends no token fields when there are none', async () => {
     await executeEndpointFeedback(base);
     expect(sentBody().tokens).toBeUndefined();

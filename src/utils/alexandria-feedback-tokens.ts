@@ -10,6 +10,8 @@ import {
   mkdirSync,
   readFileSync,
   renameSync,
+  rmdirSync,
+  statSync,
   writeFileSync,
 } from 'fs';
 import { join } from 'path';
@@ -17,6 +19,8 @@ import { getConfigDirectoryPath } from './credentials';
 
 export const FEEDBACK_TOKEN_LIMIT = 20;
 export const FEEDBACK_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const LOCK_WAIT_MS = 2000;
+const LOCK_STALE_MS = 10_000;
 
 export interface StoredFeedbackToken {
   ref: string;
@@ -42,25 +46,29 @@ export function feedbackTokenScope(apiKey?: string): string {
     .slice(0, 16);
 }
 
-function load(now: number): StoreFile {
+function load(now: number): { store: StoreFile; pruned: boolean } {
   try {
     const parsed = JSON.parse(readFileSync(storePath(), 'utf-8'));
-    const entries: StoredFeedbackToken[] = Array.isArray(parsed?.entries)
-      ? parsed.entries.filter(
-          (entry: StoredFeedbackToken) =>
-            typeof entry?.ref === 'string' &&
-            typeof entry.token === 'string' &&
-            typeof entry.scope === 'string' &&
-            typeof entry.at === 'number' &&
-            entry.at > now - FEEDBACK_TOKEN_TTL_MS
-        )
+    const all: StoredFeedbackToken[] = Array.isArray(parsed?.entries)
+      ? parsed.entries
       : [];
+    const entries = all.filter(
+      (entry) =>
+        typeof entry?.ref === 'string' &&
+        typeof entry.token === 'string' &&
+        typeof entry.scope === 'string' &&
+        typeof entry.at === 'number' &&
+        entry.at > now - FEEDBACK_TOKEN_TTL_MS
+    );
     return {
-      counter: Number.isInteger(parsed?.counter) ? parsed.counter : 0,
-      entries,
+      store: {
+        counter: Number.isInteger(parsed?.counter) ? parsed.counter : 0,
+        entries,
+      },
+      pruned: entries.length !== all.length,
     };
   } catch {
-    return { counter: 0, entries: [] };
+    return { store: { counter: 0, entries: [] }, pruned: false };
   }
 }
 
@@ -74,18 +82,62 @@ function save(store: StoreFile): void {
   renameSync(temporary, path);
 }
 
+/** Serializes read-modify-write across processes with an exclusive lock directory. */
+function withLock<T>(run: () => T): T {
+  const dir = getConfigDirectoryPath();
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const lock = join(dir, 'alexandria-feedback-tokens.lock');
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  for (;;) {
+    try {
+      mkdirSync(lock);
+      break;
+    } catch (error: any) {
+      if (error?.code !== 'EEXIST') throw error;
+      try {
+        if (Date.now() - statSync(lock).mtimeMs > LOCK_STALE_MS)
+          rmdirSync(lock);
+      } catch {
+        // Released by its owner in the meantime.
+      }
+      if (Date.now() > deadline) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+    }
+  }
+  try {
+    return run();
+  } finally {
+    try {
+      rmdirSync(lock);
+    } catch {
+      // Already removed as stale.
+    }
+  }
+}
+
 /** Tokens of one credential that are still valid, oldest first. */
 export function readFeedbackTokens(
   scope: string,
   now = Date.now()
 ): StoredFeedbackToken[] {
-  return load(now).entries.filter((entry) => entry.scope === scope);
+  const { store, pruned } = load(now);
+  if (pruned) {
+    try {
+      withLock(() => {
+        const current = load(now);
+        if (current.pruned) save(current.store);
+      });
+    } catch {
+      // Expired entries are ignored on every read either way.
+    }
+  }
+  return store.entries.filter((entry) => entry.scope === scope);
 }
 
 /**
- * Stores call tokens and returns each one's ref. A token seen before keeps its ref,
- * and the oldest tokens of the scope are dropped past the limit. Storage failures
- * never fail the command.
+ * Stores call tokens and returns each one's ref, or an empty string for a token the
+ * cap dropped. A token seen before keeps its ref, and the oldest tokens of the scope
+ * are dropped past the limit. Storage failures never fail the command.
  */
 export function recordFeedbackTokens(
   scope: string,
@@ -93,21 +145,24 @@ export function recordFeedbackTokens(
   now = Date.now()
 ): string[] {
   try {
-    const store = load(now);
-    const refs = tokens.map((token) => {
-      const known = store.entries.find(
-        (entry) => entry.scope === scope && entry.token === token
-      );
-      if (known) return known.ref;
-      const ref = `c${++store.counter}`;
-      store.entries.push({ ref, token, scope, at: now });
-      return ref;
+    return withLock(() => {
+      const { store } = load(now);
+      const refs = tokens.map((token) => {
+        const known = store.entries.find(
+          (entry) => entry.scope === scope && entry.token === token
+        );
+        if (known) return known.ref;
+        const ref = `c${++store.counter}`;
+        store.entries.push({ ref, token, scope, at: now });
+        return ref;
+      });
+      const mine = store.entries.filter((entry) => entry.scope === scope);
+      const dropped = new Set(mine.slice(0, -FEEDBACK_TOKEN_LIMIT));
+      store.entries = store.entries.filter((entry) => !dropped.has(entry));
+      save(store);
+      const kept = new Set(store.entries.map((entry) => entry.ref));
+      return refs.map((ref) => (kept.has(ref) ? ref : ''));
     });
-    const mine = store.entries.filter((entry) => entry.scope === scope);
-    const dropped = new Set(mine.slice(0, -FEEDBACK_TOKEN_LIMIT));
-    store.entries = store.entries.filter((entry) => !dropped.has(entry));
-    save(store);
-    return refs;
   } catch {
     return [];
   }
@@ -120,12 +175,14 @@ export function clearFeedbackTokens(
 ): void {
   try {
     const sent = new Set(tokens);
-    const store = load(now);
-    const kept = store.entries.filter(
-      (entry) => entry.scope !== scope || !sent.has(entry.token)
-    );
-    if (kept.length === store.entries.length) return;
-    save({ ...store, entries: kept });
+    withLock(() => {
+      const { store, pruned } = load(now);
+      const kept = store.entries.filter(
+        (entry) => entry.scope !== scope || !sent.has(entry.token)
+      );
+      if (!pruned && kept.length === store.entries.length) return;
+      save({ ...store, entries: kept });
+    });
   } catch {
     // The tokens expire on their own.
   }

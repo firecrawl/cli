@@ -1,4 +1,12 @@
-import { mkdtempSync, rmSync, statSync, writeFileSync } from 'fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -68,6 +76,36 @@ describe('alexandria feedback token store', () => {
     expect(readFeedbackTokens(scope).map((entry) => entry.token)).toEqual([
       'mine',
     ]);
+  });
+
+  it('returns no ref for tokens the cap dropped', () => {
+    const tokens = Array.from(
+      { length: FEEDBACK_TOKEN_LIMIT + 2 },
+      (_, i) => `t${i}`
+    );
+    const refs = recordFeedbackTokens(scope, tokens);
+    expect(refs.slice(0, 2)).toEqual(['', '']);
+    expect(refs.slice(2).every(Boolean)).toBe(true);
+  });
+
+  it('removes expired tokens from disk on read', () => {
+    const start = 1_000_000;
+    recordFeedbackTokens(scope, ['old'], start);
+    expect(
+      readFeedbackTokens(scope, start + FEEDBACK_TOKEN_TTL_MS + 1)
+    ).toEqual([]);
+    const file = JSON.parse(
+      readFileSync(join(state.dir, 'alexandria-feedback-tokens.json'), 'utf-8')
+    );
+    expect(file.entries).toEqual([]);
+  });
+
+  it('breaks a stale lock left by a crashed process', () => {
+    const lock = join(state.dir, 'alexandria-feedback-tokens.lock');
+    mkdirSync(lock);
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(lock, old, old);
+    expect(recordFeedbackTokens(scope, ['a'])).toEqual(['c1']);
   });
 
   it('clears only the sent tokens', () => {
