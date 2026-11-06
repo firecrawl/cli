@@ -272,21 +272,23 @@ describe('CLI argv parsing', () => {
   );
 
   testWithBuiltCli(
-    'warns on stderr that browser is deprecated, for the command and its subcommands',
+    'points every removed browser invocation to scrape and interact',
     () => {
       for (const args of [
-        ['browser', '--api-url', 'http://127.0.0.1:9'],
-        ['browser', 'list', '--api-url', 'http://127.0.0.1:9'],
+        ['browser', 'open https://example.com'],
+        ['browser', 'launch-session', '--ttl', '600'],
+        ['browser', 'execute', '--python', 'print(1)'],
+        ['browser', 'close', '--session', 'abc'],
+        ['browser', '--help'],
       ]) {
         const result = spawnSync(process.execPath, [cliPath, ...args], {
           encoding: 'utf8',
           env: { ...process.env, FIRECRAWL_NO_UPDATE_CHECK: '1' },
         });
-        expect(result.stderr).toContain(
-          '`firecrawl browser` is deprecated and will be removed'
-        );
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain('`firecrawl browser` was removed');
         expect(result.stderr).toContain('firecrawl interact');
-        expect(result.stdout).not.toContain('deprecated');
+        expect(result.stdout).toBe('');
       }
     }
   );
