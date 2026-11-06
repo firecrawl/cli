@@ -1,9 +1,9 @@
-import { mkdtempSync, rmSync, statSync } from 'fs';
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({ dir: '' }));
+const state = vi.hoisted(() => ({ dir: '', root: '' }));
 
 vi.mock('../../utils/credentials', async () => ({
   ...(await vi.importActual('../../utils/credentials')),
@@ -23,11 +23,12 @@ const scope = feedbackTokenScope('fc-key');
 
 describe('alexandria feedback token store', () => {
   beforeEach(() => {
-    state.dir = mkdtempSync(join(tmpdir(), 'fc-tokens-'));
+    state.root = mkdtempSync(join(tmpdir(), 'fc-tokens-'));
+    state.dir = state.root;
   });
 
   afterEach(() => {
-    rmSync(state.dir, { recursive: true, force: true });
+    rmSync(state.root, { recursive: true, force: true });
   });
 
   it('keeps a token on one ref across calls', () => {
@@ -85,9 +86,9 @@ describe('alexandria feedback token store', () => {
   });
 
   it('never throws when the store cannot be written', () => {
-    state.dir = join(state.dir, 'file');
-    recordFeedbackTokens(scope, ['a']);
-    state.dir = '/dev/null/x';
+    const blocker = join(state.root, 'blocker');
+    writeFileSync(blocker, '');
+    state.dir = join(blocker, 'config');
     expect(recordFeedbackTokens(scope, ['a'])).toEqual([]);
     expect(() => clearFeedbackTokens(scope, ['a'])).not.toThrow();
   });
