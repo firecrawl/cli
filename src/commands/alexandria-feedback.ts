@@ -1,7 +1,9 @@
 import { Command, InvalidArgumentError } from 'commander';
 import {
   handleEndpointFeedbackCommand,
+  parseCallRatingArg,
   parseEndpointFeedbackRating,
+  parseFeedbackTokenArg,
 } from './feedback';
 
 function detail(value: string): string {
@@ -124,6 +126,16 @@ export function createAlexandriaFeedbackCommand(): Command {
       'Array of {name, provider, issue, why, requestedFunctionality?}; issues: new_capability_request (requires requestedFunctionality), missing_capability (provider exists but lacks this capability), insufficient_functionality, incorrect_result, execution_error, other',
       (value) => parseAlexandriaFeedbackArray(value, true)
     )
+    .option(
+      '--call-rating <ref=rating>',
+      'Rate one call by the ref printed after it, for example c3=good (repeatable). The overall --rating covers every call in the session',
+      parseCallRatingArg
+    )
+    .option(
+      '--token <token>',
+      'Send this call feedback token instead of the stored ones (repeatable, at most 20), for scripted use',
+      parseFeedbackTokenArg
+    )
     .option('-k, --api-key <key>', 'Firecrawl API key')
     .option('--api-url <url>', 'API base URL')
     .option('-o, --output <path>', 'Save the response to a file')
@@ -133,6 +145,8 @@ export function createAlexandriaFeedbackCommand(): Command {
     .action(async (options) => {
       await handleEndpointFeedbackCommand({
         ...options,
+        tokens: options.token,
+        callRatings: options.callRating,
         endpoint: 'alexandria',
         requestedWebsite: {
           url: options.url,

@@ -13,6 +13,12 @@ import {
   type ValuableSourceInput,
 } from './search-feedback';
 import { integrationHeaders } from '../utils/integration';
+import {
+  FEEDBACK_TOKEN_LIMIT,
+  clearFeedbackTokens,
+  feedbackTokenScope,
+  readFeedbackTokens,
+} from '../utils/alexandria-feedback-tokens';
 
 export type EndpointFeedbackEndpoint = 'search' | 'scrape' | 'parse' | 'map';
 
@@ -24,6 +30,8 @@ export interface EndpointFeedbackOptions {
   objective?: string;
   providerFeedback?: Record<string, unknown>[];
   capabilityFeedback?: Record<string, unknown>[];
+  tokens?: string[];
+  callRatings?: { ref: string; rating: SearchFeedbackRating }[];
   rating: SearchFeedbackRating;
   issues?: string[];
   tags?: string[];
@@ -63,6 +71,7 @@ export interface EndpointFeedbackResult {
   dailyCapReached?: boolean;
   websiteCapReached?: boolean;
   alreadySubmitted?: boolean;
+  rejectedTokens?: number;
   warning?: string;
   error?: string;
   errorCode?: EndpointFeedbackErrorCode;
@@ -199,6 +208,75 @@ export function parseEndpointFeedbackRating(
   return rating as SearchFeedbackRating;
 }
 
+/**
+ * The call tokens an Alexandria rating covers: the explicit ones when given, else those
+ * stored by earlier calls. Call-rating refs resolve against the store (or an explicit token).
+ */
+function resolveAlexandriaTokens(
+  options: EndpointFeedbackOptions,
+  scope: string
+) {
+  const stored = readFeedbackTokens(scope);
+  const explicit = options.tokens ?? [];
+  const byRef = new Map<string, string>(
+    explicit.length
+      ? explicit.map((token): [string, string] => [token, token])
+      : stored.map((entry): [string, string] => [entry.ref, entry.token])
+  );
+  const rated = new Map<string, SearchFeedbackRating>();
+  for (const { ref, rating } of options.callRatings ?? []) {
+    const token = byRef.get(ref);
+    if (!token) {
+      throw new Error(
+        `Unknown call ref "${ref}". Refs are printed after each Alexandria call and expire after 24 hours.`
+      );
+    }
+    rated.set(token, rating);
+  }
+  const tokens = [
+    ...new Set(explicit.length ? explicit : stored.map((entry) => entry.token)),
+  ].slice(-FEEDBACK_TOKEN_LIMIT);
+  return {
+    tokens,
+    callRatings: [...rated].map(([token, rating]) => ({ token, rating })),
+    sent: [...new Set([...tokens, ...rated.keys()])],
+  };
+}
+
+export function parseCallRatingArg(
+  value: string,
+  previous: { ref: string; rating: SearchFeedbackRating }[] = []
+): { ref: string; rating: SearchFeedbackRating }[] {
+  const separator = value.lastIndexOf('=');
+  const ref = value.slice(0, separator).trim();
+  if (separator < 1 || !ref) {
+    throw new Error('--call-rating must look like <ref>=<good|partial|bad>');
+  }
+  if (previous.length >= FEEDBACK_TOKEN_LIMIT) {
+    throw new Error(`Rate at most ${FEEDBACK_TOKEN_LIMIT} calls.`);
+  }
+  return [
+    ...previous,
+    {
+      ref,
+      rating: parseEndpointFeedbackRating(value.slice(separator + 1).trim()),
+    },
+  ];
+}
+
+export function parseFeedbackTokenArg(
+  value: string,
+  previous: string[] = []
+): string[] {
+  if (!value || value.length > 1024) {
+    throw new Error('--token must contain 1-1024 characters.');
+  }
+  if (previous.length >= FEEDBACK_TOKEN_LIMIT) {
+    throw new Error(`Pass at most ${FEEDBACK_TOKEN_LIMIT} tokens.`);
+  }
+  return [...previous, value];
+}
+
 export function isEndpointFeedbackDisabledLocally(
   env: NodeJS.ProcessEnv = process.env
 ): boolean {
@@ -281,6 +359,11 @@ export async function executeEndpointFeedback(
         '--valuable-results is only supported for search feedback.'
       );
     }
+    const scope = feedbackTokenScope(apiKey);
+    const attribution =
+      options.endpoint === 'alexandria'
+        ? resolveAlexandriaTokens(options, scope)
+        : undefined;
     const entries: Array<[string, unknown]> =
       options.endpoint === 'alexandria'
         ? [
@@ -289,6 +372,8 @@ export async function executeEndpointFeedback(
             ['objective', options.objective],
             ['providerFeedback', options.providerFeedback],
             ['capabilityFeedback', options.capabilityFeedback],
+            ['tokens', attribution?.tokens],
+            ['callRatings', attribution?.callRatings],
           ]
         : [
             ['issues', normalizeList(options.issues)],
@@ -352,6 +437,8 @@ export async function executeEndpointFeedback(
       };
     }
 
+    if (attribution) clearFeedbackTokens(scope, attribution.sent);
+
     return {
       success: true,
       feedbackId: data.feedbackId,
@@ -367,6 +454,9 @@ export async function executeEndpointFeedback(
       dailyCapReached: data.dailyCapReached === true,
       ...(data.websiteCapReached === true ? { websiteCapReached: true } : {}),
       alreadySubmitted: data.alreadySubmitted,
+      ...(typeof data.rejectedTokens === 'number'
+        ? { rejectedTokens: data.rejectedTokens }
+        : {}),
       warning: data.warning,
     };
   } catch (error: any) {
@@ -403,6 +493,11 @@ function formatReadable(result: EndpointFeedbackResult): string {
   } else if (result.websiteCapReached) {
     lines.push(
       'Daily refund cap reached for this website; feedback about other websites can still refund credits.'
+    );
+  }
+  if (result.rejectedTokens) {
+    lines.push(
+      `${result.rejectedTokens} call token(s) could not be verified and were ignored.`
     );
   }
   if (result.warning) {
@@ -457,6 +552,9 @@ export async function handleEndpointFeedbackCommand(
       ...(result.dailyCapReached ? { dailyCapReached: true } : {}),
       ...(result.websiteCapReached ? { websiteCapReached: true } : {}),
       ...(result.alreadySubmitted ? { alreadySubmitted: true } : {}),
+      ...(result.rejectedTokens
+        ? { rejectedTokens: result.rejectedTokens }
+        : {}),
       ...(result.warning ? { warning: result.warning } : {}),
     };
     outputContent = options.pretty

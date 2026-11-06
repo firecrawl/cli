@@ -1,4 +1,13 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { rmSync } from 'fs';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  afterAll,
+} from 'vitest';
 import {
   executeEndpointFeedback,
   handleEndpointFeedbackCommand,
@@ -15,6 +24,19 @@ import { parseAlexandriaFeedbackArray } from '../../commands/alexandria-feedback
 import { getClient } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { setupTest, teardownTest } from '../utils/mock-client';
+
+afterAll(() => rmSync(configDir, { recursive: true, force: true }));
+
+const configDir = vi.hoisted(() =>
+  require('fs').mkdtempSync(
+    require('path').join(require('os').tmpdir(), 'fc-feedback-')
+  )
+);
+
+vi.mock('../../utils/credentials', async () => ({
+  ...(await vi.importActual('../../utils/credentials')),
+  getConfigDirectoryPath: () => configDir,
+}));
 
 vi.mock('../../utils/agent-origin', () => ({
   getCliOrigin: () => 'cli.test@1.0.0',
