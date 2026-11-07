@@ -10,8 +10,9 @@
  *
  * `firecrawl init` installs core CLI skills and workflow skills.
  * `firecrawl setup skills` (alias `setup core`) installs core CLI skills,
- * `firecrawl setup build` installs build skills, and
- * `firecrawl setup workflows` installs workflow skills.
+ * `firecrawl setup build` installs build skills,
+ * `firecrawl setup workflows` installs workflow skills, and
+ * `firecrawl setup verticals` installs the opt-in vertical skills.
  */
 import { detectGlobalSkillAgents } from '../utils/skill-install-agents';
 import { getCatalogSkills, type SkillFamily } from '../utils/skill-catalog';
@@ -122,6 +123,17 @@ export const WORKFLOW_SKILL_SELECTION: SkillSelection = {
   family: 'workflows',
   skills: WORKFLOW_SKILLS,
   label: 'firecrawl workflow skills',
+};
+
+/**
+ * Vertical skills, authored in firecrawl/firecrawl-workflows `verticals/` and
+ * mirrored into the catalog under skills/verticals/. Opt-in only: `init`
+ * never installs them, so the family is always discovered from the catalog.
+ */
+export const VERTICAL_SKILL_SELECTION: SkillSelection = {
+  repo: CATALOG_REPO,
+  family: 'verticals',
+  label: 'firecrawl vertical skills',
 };
 
 /** Resolve names for installers that accept a skill list rather than a family. */
