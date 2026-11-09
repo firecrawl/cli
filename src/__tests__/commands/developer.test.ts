@@ -105,17 +105,14 @@ describe('handleDeveloperSearchCommand', () => {
   });
 
   describe('output', () => {
-    it('renders id, type, title, url, and passage in readable output', async () => {
+    it('renders type, title, url, and passage in readable output', async () => {
       mockHttpGet.mockResolvedValue(mockDeveloperResponse([sampleResult]));
 
       await handleDeveloperSearchCommand({ query: 'tokio spawn_blocking' });
 
       const [content] = vi.mocked(writeOutput).mock.calls[0];
       expect(content).toContain(
-        '## [issue:tokio-rs/tokio#2309] (issue) spawn_blocking panics when exceeding the thread limit'
-      );
-      expect(content).toContain(
-        'https://github.com/tokio-rs/tokio/issues/2309'
+        '## [issue] spawn_blocking panics when exceeding the thread limit\nhttps://github.com/tokio-rs/tokio/issues/2309\n'
       );
       expect(content).toContain('It will panic if this limit is too low.');
     });
@@ -147,22 +144,15 @@ describe('handleDeveloperSearchCommand', () => {
       expect(content).toContain('rust: not indexed');
     });
 
-    it('prints a result URL only when its id does not contain it', async () => {
-      const duplicateUrl = 'https://docs.rs/tokio/latest/tokio';
+    it('prints each result URL once, never inside the id', async () => {
+      const url = 'https://docs.rs/tokio/latest/tokio';
       mockHttpGet.mockResolvedValue(
         mockDeveloperResponse([
-          sampleResult,
           {
-            id: `web:${duplicateUrl}`,
-            url: duplicateUrl,
+            id: `doc:${url}`,
+            url,
             title: 'Tokio docs',
             passages: [{ text: 'Runtime documentation.' }],
-          },
-          {
-            id: `web:${duplicateUrl}/search`,
-            url: duplicateUrl,
-            title: 'Tokio search',
-            passages: [{ text: 'Search documentation.' }],
           },
         ])
       );
@@ -170,13 +160,8 @@ describe('handleDeveloperSearchCommand', () => {
       await handleDeveloperSearchCommand({ query: 'tokio runtime' });
 
       const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
-      expect(content.split(duplicateUrl).length - 1).toBe(3);
-      expect(content).toContain(
-        `## [web:${duplicateUrl}/search] Tokio search\n${duplicateUrl}\n`
-      );
-      expect(content).toContain(
-        '\nhttps://github.com/tokio-rs/tokio/issues/2309\n'
-      );
+      expect(content.split(url).length - 1).toBe(1);
+      expect(content).toContain(`## [doc] Tokio docs\n${url}\n`);
     });
 
     it('does not render separators for empty passages', async () => {

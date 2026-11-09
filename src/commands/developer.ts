@@ -39,19 +39,12 @@ function fmtLicense(license: DeveloperLicense | string): string {
   return `License: ${license.state.replace('_', ' ')}`;
 }
 
-function idEncodesUrl(id: string | undefined, url: string): boolean {
-  return id === url || id?.endsWith(`:${url}`) === true;
-}
-
 function fmtResult(item: DeveloperItem): string {
   // The wire carries no type field; the artifact kind is the id prefix
-  // (doc:, issue:, pull_request:, readme:).
-  const prefix = (item.id ?? '').split(':', 1)[0];
-  const kind = ['doc', 'issue', 'pull_request', 'readme'].includes(prefix)
-    ? ` (${prefix})`
-    : '';
-  const lines = [`## [${item.id ?? '?'}]${kind} ${item.title ?? '(untitled)'}`];
-  if (item.url && !idEncodesUrl(item.id, item.url)) lines.push(item.url);
+  // (doc:, issue:, pull_request:, readme:, web:).
+  const kind = item.id?.includes(':') ? `[${item.id.split(':', 1)[0]}] ` : '';
+  const lines = [`## ${kind}${item.title ?? '(untitled)'}`];
+  if (item.url) lines.push(item.url);
   if (item.license) lines.push(fmtLicense(item.license));
   const body = (item.passages ?? [])
     .map((passage) =>
