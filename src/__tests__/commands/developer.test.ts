@@ -154,14 +154,21 @@ describe('handleDeveloperSearchCommand', () => {
             title: 'Tokio docs',
             passages: [{ text: 'Runtime documentation.' }],
           },
+          {
+            id: `web:${url}`,
+            url,
+            title: 'Tokio runtime',
+            passages: [{ text: 'Runtime overview.' }],
+          },
         ])
       );
 
       await handleDeveloperSearchCommand({ query: 'tokio runtime' });
 
       const [content] = vi.mocked(writeOutput).mock.calls[0] as [string];
-      expect(content.split(url).length - 1).toBe(1);
+      expect(content.split(url).length - 1).toBe(2);
       expect(content).toContain(`## [doc] Tokio docs\n${url}\n`);
+      expect(content).toContain(`## [web] Tokio runtime\n${url}\n`);
     });
 
     it('does not render separators for empty passages', async () => {

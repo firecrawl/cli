@@ -16,7 +16,7 @@ There is **no fixed recipe**. Read the question, decide what kind it is, and cho
 - HTTP: **`GET|POST https://api.firecrawl.dev/v2/search/developer`**
   MCP: **`firecrawl_developer_search(query, k?, skills?)`**
   CLI: **`firecrawl developer <query> [--limit <n>]`**
-  Ranked results over the whole index. Each carries `id` (`issue:owner/repo#123`), `url`, and the **matched passages in markdown**, so tables and code blocks survive. The artifact kind is the `id` prefix: `doc:`, `issue:`, `pull_request:`, `readme:`, or `web:`. The CLI prints each result as `## [kind] title` and then its URL; `--json` keeps the full `id`.
+  Ranked results over the whole index. Each carries `id` (`issue:owner/repo#123`), `url`, and the **matched passages in markdown**, so tables and code blocks survive. The artifact kind is the `id` prefix: `doc:`, `issue:`, `pull_request:`, `readme:`, or `web:`. A `web:` result is a web page served beside the index hits; it is not a `types` value and cannot be requested. The CLI prints each result as `## [kind] title` and then its URL; `--json` keeps the full `id`.
   The default first move for a developer question. It is the only surface that returns the passages, which is what lets you answer instead of pointing at a page.
   `k` / `--limit` is 1–100 and defaults to 10. `skills="only"` (HTTP/MCP only) restricts the search to agent-skill files.
   Keyless; send `Authorization: Bearer $FIRECRAWL_API_KEY` for higher rate limits.
