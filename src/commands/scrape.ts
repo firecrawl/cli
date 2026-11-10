@@ -20,6 +20,12 @@ import { executeMap } from './map';
 import { getStatus } from './status';
 import { requireAlexandriaKey } from './alexandria';
 import { withoutToolPrice } from '../utils/alexandria-prices';
+import {
+  lookupSiteProviders,
+  settleSiteProviderHint,
+} from '../utils/alexandria-hint';
+
+const HINT_WAIT_MS = 500;
 
 /**
  * Output timing information if requested
@@ -146,6 +152,11 @@ export async function executeScrape(
 
   // Execute scrape with timing - only wrap the scrape call in try-catch
   const requestStartTime = Date.now();
+  const keyless = isKeylessMode(options.apiKey, options.apiUrl);
+  const siteLookup =
+    options.domainTools || options.lockdown || keyless
+      ? undefined
+      : lookupSiteProviders(options.url, options);
 
   try {
     if (options.toolDetail !== undefined)
@@ -155,7 +166,7 @@ export async function executeScrape(
       scrapeParams.domainTools = true;
     }
     let result: any;
-    if (isKeylessMode(options.apiKey, options.apiUrl)) {
+    if (keyless) {
       // Keyless free tier: header-less request. The API identifies the CLI via
       // the `integration: 'cli'` field already in scrapeParams.
       const json = await keylessRequest('/v2/scrape', {
@@ -190,6 +201,10 @@ export async function executeScrape(
       }
     }
 
+    const hint =
+      siteLookup && (await settleSiteProviderHint(siteLookup, HINT_WAIT_MS));
+    if (hint) process.stderr.write(`${hint}\n`);
+
     return {
       success: true,
       data: Array.isArray(result?.tools)
@@ -197,6 +212,7 @@ export async function executeScrape(
         : result,
     };
   } catch (error) {
+    siteLookup?.abort();
     const requestEndTime = Date.now();
     outputTiming(options, requestStartTime, requestEndTime, error);
 

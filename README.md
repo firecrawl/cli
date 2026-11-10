@@ -347,6 +347,8 @@ firecrawl https://example.com --format json -o data.json --pretty
 firecrawl scrape https://firecrawl.dev https://firecrawl.dev/blog https://docs.firecrawl.dev
 ```
 
+With an API key, a scrape also checks whether an Alexandria provider covers the page's site, sending only the host. When one does, a one-line hint on stderr names the provider and the `firecrawl list` command for its tools, at most once per site per run. `--domain-tools` and `--lockdown` skip the check.
+
 #### Scrape Options
 
 | Option                     | Description                                            |
