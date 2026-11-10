@@ -145,6 +145,52 @@ describe('executeScrape', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    it('looks up the cloud API given with a trailing slash', async () => {
+      mockClient.scrape.mockResolvedValue({ markdown: '# Page' });
+
+      await executeScrape({
+        url: 'https://example.com',
+        apiUrl: 'https://api.firecrawl.dev/',
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.firecrawl.dev/exchange/skills/resolve',
+        expect.anything()
+      );
+    });
+
+    it('keeps the hint for a concurrent same-host scrape when another fails', async () => {
+      let answer: (response: Response) => void = () => {};
+      fetchMock.mockImplementation(
+        () => new Promise<Response>((resolve) => (answer = resolve))
+      );
+      let failScrape: (error: Error) => void = () => {};
+      mockClient.scrape
+        .mockImplementationOnce(
+          () => new Promise((_resolve, reject) => (failScrape = reject))
+        )
+        .mockResolvedValueOnce({ markdown: '# Series' });
+      const stderr = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation(() => true);
+
+      const failing = executeScrape({ url: 'https://fred.stlouisfed.org/a' });
+      const succeeding = executeScrape({
+        url: 'https://fred.stlouisfed.org/b',
+      });
+      failScrape(new Error('boom'));
+      expect((await failing).success).toBe(false);
+      answer(resolveResponse([{ id: 'fred' }]));
+      expect((await succeeding).success).toBe(true);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(
+        stderr.mock.calls.some(([text]) =>
+          String(text).startsWith('Alexandria has')
+        )
+      ).toBe(true);
+    });
+
     it('aborts a late lookup instead of waiting for it', async () => {
       let signal: AbortSignal | undefined;
       fetchMock.mockImplementation(

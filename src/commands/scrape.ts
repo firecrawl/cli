@@ -22,6 +22,7 @@ import { requireAlexandriaKey } from './alexandria';
 import { withoutToolPrice } from '../utils/alexandria-prices';
 import {
   lookupSiteProviders,
+  releaseSiteProviderLookup,
   settleSiteProviderHint,
 } from '../utils/alexandria-hint';
 
@@ -212,7 +213,7 @@ export async function executeScrape(
         : result,
     };
   } catch (error) {
-    siteLookup?.abort();
+    if (siteLookup) releaseSiteProviderLookup(siteLookup);
     const requestEndTime = Date.now();
     outputTiming(options, requestStartTime, requestEndTime, error);
 
