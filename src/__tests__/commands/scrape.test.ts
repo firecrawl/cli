@@ -7,6 +7,7 @@ import { executeScrape } from '../../commands/scrape';
 import { getClient, isKeylessMode, keylessRequest } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { setupTest, teardownTest } from '../utils/mock-client';
+import { resetSiteProviderHints } from '../../utils/alexandria-hint';
 
 // Mock the Firecrawl client module
 vi.mock('../../utils/client', async () => {
@@ -19,11 +20,22 @@ vi.mock('../../utils/client', async () => {
   };
 });
 
+const resolveResponse = (skills: Array<{ id: string }>) =>
+  new Response(JSON.stringify({ skills }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+
 describe('executeScrape', () => {
   let mockClient: any;
+  let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     setupTest();
+    resetSiteProviderHints();
+    vi.mocked(isKeylessMode).mockReturnValue(false);
+    fetchMock = vi.fn(async () => resolveResponse([]));
+    vi.stubGlobal('fetch', fetchMock);
     // Initialize config with test API key
     initializeConfig({
       apiKey: 'test-api-key',
@@ -41,7 +53,164 @@ describe('executeScrape', () => {
 
   afterEach(() => {
     teardownTest();
+    resetSiteProviderHints();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     vi.clearAllMocks();
+  });
+
+  describe('Alexandria site hint', () => {
+    it('looks up the page host and prints a hint when a provider covers it', async () => {
+      fetchMock.mockResolvedValue(resolveResponse([{ id: 'fred' }]));
+      mockClient.scrape.mockResolvedValue({ markdown: '# Series' });
+      const stderr = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation(() => true);
+
+      const result = await executeScrape({
+        url: 'https://fred.stlouisfed.org/series/CPIAUCSL?x=1',
+      });
+
+      expect(result.success).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://api.firecrawl.dev/exchange/skills/resolve');
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body as string)).toEqual({
+        urls: ['https://fred.stlouisfed.org/'],
+      });
+      expect((init.headers as Record<string, string>).Authorization).toBe(
+        'Bearer test-api-key'
+      );
+      const output = stderr.mock.calls.map(([text]) => String(text)).join('');
+      expect(output).toContain(
+        'Alexandria has a structured-data provider for fred.stlouisfed.org (fred).'
+      );
+      expect(output).toContain('firecrawl list fred');
+      expect(output).toContain('firecrawl scrape fred/<capability>');
+    });
+
+    it('prints the hint once per host and looks the host up once', async () => {
+      fetchMock.mockResolvedValue(resolveResponse([{ id: 'fred' }]));
+      mockClient.scrape.mockResolvedValue({ markdown: '# Series' });
+      const stderr = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation(() => true);
+
+      await executeScrape({ url: 'https://fred.stlouisfed.org/a' });
+      await executeScrape({ url: 'https://fred.stlouisfed.org/b' });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const hints = stderr.mock.calls.filter(([text]) =>
+        String(text).startsWith('Alexandria has')
+      );
+      expect(hints).toHaveLength(1);
+    });
+
+    it('prints nothing when no provider matches or the lookup fails', async () => {
+      mockClient.scrape.mockResolvedValue({ markdown: '# Page' });
+      const stderr = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation(() => true);
+
+      await executeScrape({ url: 'https://example.com' });
+      fetchMock.mockResolvedValue(new Response('nope', { status: 503 }));
+      await executeScrape({ url: 'https://example.org' });
+      fetchMock.mockRejectedValue(new Error('offline'));
+      const result = await executeScrape({ url: 'https://example.net' });
+
+      expect(result.success).toBe(true);
+      expect(
+        stderr.mock.calls.some(([text]) =>
+          String(text).startsWith('Alexandria has')
+        )
+      ).toBe(false);
+    });
+
+    it('skips the lookup with --domain-tools, lockdown, keyless mode or a self-hosted API', async () => {
+      mockClient.scrape.mockResolvedValue({ markdown: '# Page' });
+
+      await executeScrape({ url: 'https://example.com', domainTools: true });
+      await executeScrape({ url: 'https://example.com', lockdown: true });
+      await executeScrape({
+        url: 'https://example.com',
+        apiUrl: 'http://localhost:3002',
+      });
+      vi.mocked(isKeylessMode).mockReturnValue(true);
+      vi.mocked(keylessRequest).mockResolvedValueOnce({
+        data: { markdown: '# Page' },
+      });
+      await executeScrape({ url: 'https://example.com' });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('looks up the cloud API given with a trailing slash', async () => {
+      mockClient.scrape.mockResolvedValue({ markdown: '# Page' });
+
+      await executeScrape({
+        url: 'https://example.com',
+        apiUrl: 'https://api.firecrawl.dev/',
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.firecrawl.dev/exchange/skills/resolve',
+        expect.anything()
+      );
+    });
+
+    it('keeps the hint for a concurrent same-host scrape when another fails', async () => {
+      let answer: (response: Response) => void = () => {};
+      fetchMock.mockImplementation(
+        () => new Promise<Response>((resolve) => (answer = resolve))
+      );
+      let failScrape: (error: Error) => void = () => {};
+      mockClient.scrape
+        .mockImplementationOnce(
+          () => new Promise((_resolve, reject) => (failScrape = reject))
+        )
+        .mockResolvedValueOnce({ markdown: '# Series' });
+      const stderr = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation(() => true);
+
+      const failing = executeScrape({ url: 'https://fred.stlouisfed.org/a' });
+      const succeeding = executeScrape({
+        url: 'https://fred.stlouisfed.org/b',
+      });
+      failScrape(new Error('boom'));
+      expect((await failing).success).toBe(false);
+      answer(resolveResponse([{ id: 'fred' }]));
+      expect((await succeeding).success).toBe(true);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(
+        stderr.mock.calls.some(([text]) =>
+          String(text).startsWith('Alexandria has')
+        )
+      ).toBe(true);
+    });
+
+    it('aborts a late lookup instead of waiting for it', async () => {
+      let signal: AbortSignal | undefined;
+      fetchMock.mockImplementation(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            signal = init.signal as AbortSignal;
+            signal.addEventListener('abort', () =>
+              reject(new DOMException('Aborted', 'AbortError'))
+            );
+          })
+      );
+      mockClient.scrape.mockResolvedValue({ markdown: '# Page' });
+
+      const started = Date.now();
+      const result = await executeScrape({ url: 'https://example.com' });
+
+      expect(result.success).toBe(true);
+      expect(Date.now() - started).toBeLessThan(2_000);
+      expect(signal?.aborted).toBe(true);
+    });
   });
 
   describe('API call generation', () => {
