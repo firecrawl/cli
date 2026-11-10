@@ -654,7 +654,10 @@ it('never accepts terms from the CLI and points to the dashboard instead', async
 
 it('executes Find Tools through the same API and refuses keyless access', async () => {
   const args = ['find-tools', '--options', '{"providers":["fred"]}'];
-  expect((await cli(args, '')).code).toBe(1);
+  const keyless = await cli(args, '');
+  expect(keyless.code).toBe(1);
+  expect(keyless.stderr).toContain('Alexandria needs a Firecrawl account.');
+  expect(keyless.stderr).toContain('firecrawl login --browser');
   expect(requests).toHaveLength(0);
   expect((await cli(args)).code).toBe(0);
   expect(requests[0]).toMatchObject({
