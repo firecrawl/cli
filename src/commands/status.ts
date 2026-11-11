@@ -268,7 +268,9 @@ export async function handleStatusCommand(): Promise<void> {
     );
   } else {
     console.log(`  ${red}●${reset} Not authenticated`);
-    console.log(`  ${dim}Run 'firecrawl login' to authenticate${reset}`);
+    console.log(
+      `  ${dim}Run 'firecrawl login --browser' to authenticate${reset}`
+    );
     console.log('');
     if (localStatus.firecrawlDirExists) {
       console.log(

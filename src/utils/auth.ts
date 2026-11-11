@@ -9,7 +9,7 @@ import {
   saveCredentials,
   getConfigDirectoryPath,
 } from './credentials';
-import { updateConfig, getApiKey } from './config';
+import { updateConfig, getApiKey, LOGIN_GUIDANCE } from './config';
 import { promptInput } from './prompt';
 import { bold, dim, orange, reset } from './terminal';
 
@@ -813,9 +813,7 @@ export async function ensureAuthenticated(): Promise<string> {
 
   // Without a terminal the login prompt can never be answered.
   if (!process.stdin.isTTY) {
-    console.error(
-      'Error: Not authenticated. Set FIRECRAWL_API_KEY, pass --api-key, or run "firecrawl login" in a terminal.'
-    );
+    console.error(`Error: Not authenticated. ${LOGIN_GUIDANCE}`);
     process.exit(1);
   }
 

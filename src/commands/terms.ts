@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { getApiKey, getConfig } from '../utils/config';
+import { getApiKey, getConfig, LOGIN_GUIDANCE } from '../utils/config';
 import { writeOutput } from '../utils/output';
 import { integrationHeaders } from '../utils/integration';
 
@@ -31,8 +31,7 @@ export async function requestTerms(
   if (!provider.trim() || provider.length > 200)
     throw new Error('Provide a provider ID of 1-200 characters.');
   const key = getApiKey(options.apiKey);
-  if (!key)
-    throw new Error('A Firecrawl API key is required. Run firecrawl login.');
+  if (!key) throw new Error(`Not authenticated. ${LOGIN_GUIDANCE}`);
   const base = (
     options.apiUrl ||
     getConfig().apiUrl ||

@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { Command, Option } from 'commander';
 import { type AlexandriaCall } from 'firecrawl';
 import { getClient } from '../utils/client';
-import { getApiKey } from '../utils/config';
+import { getApiKey, LOGIN_GUIDANCE } from '../utils/config';
 import { writeOutput } from '../utils/output';
 import { withoutResultPrices } from '../utils/alexandria-prices';
 import {
@@ -29,7 +29,7 @@ export type AlexandriaOptions = {
 export function requireAlexandriaKey(apiKey?: string): void {
   if (!getApiKey(apiKey))
     throw new Error(
-      'Alexandria requires a Firecrawl API key with access enabled.'
+      `Not authenticated. Alexandria requires a Firecrawl account with access enabled. ${LOGIN_GUIDANCE}`
     );
 }
 
