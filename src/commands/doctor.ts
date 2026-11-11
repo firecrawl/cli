@@ -12,7 +12,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import packageJson from '../../package.json';
-import { getConfig } from '../utils/config';
+import { getConfig, LOGIN_GUIDANCE } from '../utils/config';
 import { isJobId } from '../utils/job';
 import { detectAgents, type AgentDetection } from '../utils/agents';
 import { compareVersions, getLatestVersion } from '../utils/npm-registry';
@@ -679,7 +679,7 @@ export async function runSupportAsk(options: DoctorOptions): Promise<number> {
 
   if (!apiKey) {
     console.error(
-      `${red}Error:${reset} API key required for run diagnostics. Run \`firecrawl login\`.`
+      `${red}Error:${reset} Not authenticated. Run diagnostics need an account. ${LOGIN_GUIDANCE}`
     );
     return 1;
   }

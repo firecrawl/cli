@@ -143,7 +143,9 @@ describe('Authentication Utilities', () => {
 
       await expect(ensureAuthenticated()).rejects.toThrow('process.exit(1)');
       expect(console.error).toHaveBeenCalledWith(
-        expect.stringContaining('Not authenticated')
+        expect.stringContaining(
+          'Not authenticated. Run "firecrawl login --browser"'
+        )
       );
       expect(console.log).not.toHaveBeenCalledWith(
         expect.stringContaining('Welcome!')

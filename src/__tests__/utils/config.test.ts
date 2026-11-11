@@ -265,7 +265,9 @@ describe('Config Fallback Priority', () => {
 
     it('should require API key for cloud API URL', () => {
       initializeConfig({ apiUrl: 'https://api.firecrawl.dev' });
-      expect(() => validateConfig()).toThrow('API key is required');
+      expect(() => validateConfig()).toThrow(
+        /Not authenticated\. Run "firecrawl login --browser"/
+      );
     });
 
     it('should not throw when API key is provided for cloud API', () => {

@@ -444,7 +444,7 @@ async function offerSkillsAuth(options: SetupOptions): Promise<void> {
 
   if (!login) {
     console.log(
-      `${dim}No Firecrawl API key found. Skills walk agents through setup on first use; to be ready now, run "firecrawl login" or export FIRECRAWL_API_KEY.${reset}`
+      `${dim}No Firecrawl API key found. Skills walk agents through setup on first use; to be ready now, run "firecrawl login --browser" or export FIRECRAWL_API_KEY.${reset}`
     );
     return;
   }

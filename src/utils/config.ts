@@ -75,6 +75,14 @@ export function getApiKey(providedKey?: string): string | undefined {
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
 
 /**
+ * What to do when a command needs an account and none is configured. Browser
+ * login leads because it asks nothing on stdin, so an agent or script can run
+ * it; the person only has to open the printed URL.
+ */
+export const LOGIN_GUIDANCE =
+  'Run "firecrawl login --browser" to sign in: it needs no terminal input, prints a sign-in URL for the user to open, and waits up to 5 minutes for approval. Or set FIRECRAWL_API_KEY, or pass --api-key.';
+
+/**
  * Check if using a custom (non-cloud) API URL
  */
 export function isCustomApiUrl(apiUrl?: string): boolean {
@@ -94,9 +102,7 @@ export function validateConfig(apiKey?: string): void {
 
   const key = getApiKey(apiKey);
   if (!key) {
-    throw new Error(
-      'API key is required. Set FIRECRAWL_API_KEY environment variable, use --api-key flag, or run "firecrawl config" to set the API key.'
-    );
+    throw new Error(`Not authenticated. ${LOGIN_GUIDANCE}`);
   }
 }
 
