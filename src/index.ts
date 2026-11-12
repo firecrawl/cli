@@ -6,7 +6,6 @@
  */
 
 import { Command, InvalidArgumentError, Option } from 'commander';
-import { createSqlCommand } from './commands/sql';
 import { addFormatsAlias } from './utils/format-option';
 import {
   addAlexandriaScrapeOptions,
@@ -104,7 +103,6 @@ import type { SearchSource, SearchCategory } from './types/search';
 import type { ScrapeFormat } from './types/scrape';
 import type { RelatedPapersOptions } from './types/research';
 import type { AgentExchangeOptions, AgentWebhookConfig } from 'firecrawl';
-import { createCreateCommand } from './commands/create';
 import { createListCommand, createAlexandriaCommand } from './commands/list';
 
 // Initialize global configuration from environment variables
@@ -2688,11 +2686,6 @@ program.addCommand(createInteractCommand());
 // Hidden: deprecated browser command (still works, just not in --help)
 program.addCommand(createBrowserCommand(), { hidden: true });
 
-// Hidden: `firecrawl create <kind>` — scaffolds Firecrawl starter projects.
-// Undocumented until `firecrawl-agent-cli` is published to npm; flip to
-// visible by removing `{ hidden: true }`.
-program.addCommand(createCreateCommand(), { hidden: true });
-
 // Experimental: download command
 const experimental = new Command('experimental')
   .description('Experimental commands (download)')
@@ -2704,8 +2697,6 @@ Shorthand: "firecrawl x" is an alias for "firecrawl experimental".
 `
   );
 experimental.addCommand(createDownloadCommand());
-program.addCommand(createSqlCommand(), { hidden: true });
-experimental.addCommand(createSqlCommand(), { hidden: true });
 program.addCommand(experimental);
 
 program

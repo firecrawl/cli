@@ -40,33 +40,6 @@ describe('CLI compatibility aliases', { timeout: 30000 }, () => {
   }
 
   testWithBuiltCli(
-    'sql preserves experimental aliases and execution options',
-    () => {
-      const flags = ['SHOW CATEGORIES', '--execute', '--pretty'];
-      const canonical = run(['sql', ...flags]);
-      expect(canonical.status, canonical.stderr).toBe(0);
-      expect(JSON.parse(canonical.stdout)).toMatchObject({
-        calls: [
-          {
-            provider: 'firecrawl',
-            capability: 'sql',
-            options: { query: 'SHOW CATEGORIES', execute: true },
-          },
-        ],
-        options: { pretty: true },
-      });
-      for (const prefix of [
-        ['x', 'sql'],
-        ['experimental', 'sql'],
-      ]) {
-        const alias = run([...prefix, ...flags]);
-        expect(alias.status, alias.stderr).toBe(0);
-        expect(alias.stdout).toBe(canonical.stdout);
-      }
-    }
-  );
-
-  testWithBuiltCli(
     'credits preserves credit-usage options and authentication',
     () => {
       const flags = ['--json', '--pretty', '-o', 'credits.json'];
