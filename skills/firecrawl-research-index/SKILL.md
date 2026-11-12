@@ -38,12 +38,6 @@ There is **no fixed recipe**. Read the query, decide what kind it is, and choose
   In-body passages of **one** paper, to verify a load-bearing constraint (a method actually used, a score actually reported, an affiliation, what a paper compares to).
   Use it to settle a specific doubt, not on everything.
 
-- MCP: **`firecrawl_research_lookup_protein(protein, organism?)`**
-  CLI: **`firecrawl research lookup-protein <protein> [--organism <organism>]`**
-  UniProtKB/Swiss-Prot curated subcellular location, function, and GO cellular-component terms for **one** protein, by accession, entry name, gene symbol, or exact protein name. `organism` defaults to human.
-  Each location and function statement carries an evidence label and, where UniProt cites one, a `pmid:` id that `inspect_paper` and `read_paper` accept. Only labels starting with "Experimental" are measurements, so report the label with the statement.
-  If a symbol names several proteins, it lists candidates; run it again with one accession. For a free-text question, use `search_papers`.
-
 - MCP: **`firecrawl_search(query, categories: ["research"])`**
   CLI: **`firecrawl search <query> --categories research`**
   **Not this index.** This is a _website_ filter: it restricts a normal web search to a short list of research-affiliated domains — the list does include `pubmed.ncbi.nlm.nih.gov`, `biorxiv.org`, `medrxiv.org`, and `arxiv.org` alongside publisher sites — and returns page results in a `research` group beside `web`, each with `url`, `title`, `description` (the matched passage), `position`, and `category: "research"` — web results carry no `category`, so that is the field to key on when merging.

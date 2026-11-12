@@ -613,9 +613,14 @@ firecrawl research read-paper doi:10.1016/j.neunet.2025.108095 --question "What 
 
 # Curated location, function and GO terms for one protein, with cited paper ids
 firecrawl research lookup-protein RPUSD3
+
+# A gene symbol in another organism
+firecrawl research lookup-protein Prkcb --organism "Mus musculus"
 ```
 
 Paper ids accept `pmid:`, `pmcid:`, `doi:`, and `arxiv:` forms, plus canonical `paperId` values returned by search.
+
+`lookup-protein` prints data from UniProtKB/Swiss-Prot, copyright [UniProt Consortium](https://www.uniprot.org), under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 #### Subcommands
 

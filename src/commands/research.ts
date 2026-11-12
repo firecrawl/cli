@@ -1,4 +1,9 @@
-import { getClient, isKeylessMode, keylessGet } from '../utils/client';
+import {
+  getClient,
+  isKeylessMode,
+  keyedGet,
+  keylessGet,
+} from '../utils/client';
 import { getCliOrigin } from '../utils/agent-origin';
 import { writeOutput } from '../utils/output';
 import type {
@@ -55,13 +60,7 @@ async function getResearch<T>(
   }
 
   const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
-  try {
-    const response = await (app as any).http.get(url);
-    return (response?.data ?? {}) as T;
-  } catch (error: any) {
-    const message = error?.response?.data?.error;
-    throw typeof message === 'string' ? new Error(message) : error;
-  }
+  return (await keyedGet(app, url)) as T;
 }
 
 function displayId(paper: PaperHit): string {
@@ -166,9 +165,6 @@ const MATCHED_BY_LABELS: Record<ProteinMatchedBy, string> = {
   name: 'protein name',
 };
 
-const UNIPROT_LICENSE =
-  'CC BY 4.0, https://creativecommons.org/licenses/by/4.0/';
-
 const isMeasured = (kind: EvidenceKind) =>
   kind === 'experimental' || kind === 'large_scale_experimental';
 
@@ -183,9 +179,7 @@ const fmtIds = (ids: string[]) => (ids.length ? ` [${ids.join(', ')}]` : '');
 
 function fmtEvidence(evidence: ProteinEvidence[]): string {
   const idsByKind = new Map<EvidenceKind, string[]>();
-  for (const { kind, paperId, fromProtein } of evidence.length
-    ? evidence
-    : [{ kind: 'untagged' as const }]) {
+  for (const { kind, paperId, fromProtein } of evidence) {
     const ids = idsByKind.get(kind) ?? [];
     const id = paperId ?? fromProtein;
     if (id && !ids.includes(id)) ids.push(id);
@@ -218,7 +212,7 @@ function fmtStatements(statements: ProteinStatement[]): string[] {
   });
 }
 
-function fmtProtein(release: string, protein: ProteinEntry): string {
+function fmtProtein(notice: string, protein: ProteinEntry): string {
   const ids = protein.gene
     ? `${protein.gene} (${protein.accession}, ${protein.entryName})`
     : `${protein.accession} (${protein.entryName})`;
@@ -243,16 +237,14 @@ function fmtProtein(release: string, protein: ProteinEntry): string {
       'Open a cited paper with `firecrawl research inspect-paper <paperId>` or `firecrawl research read-paper <paperId> --question <question>`.'
     );
   }
-  lines.push(
-    `Source: UniProtKB/Swiss-Prot ${release}, ${protein.url}. ${UNIPROT_LICENSE}.`
-  );
+  lines.push(`Source: ${protein.url}. ${notice}`);
   return lines.join('\n');
 }
 
 function fmtProteinLookup(protein: string, data: ProteinLookup): string {
   switch (data.match) {
     case 'found':
-      return fmtProtein(data.release, data.protein);
+      return fmtProtein(data.notice, data.protein);
     case 'ambiguous': {
       const { candidates, candidateCount } = data;
       const listed =
@@ -266,7 +258,7 @@ function fmtProteinLookup(protein: string, data: ProteinLookup): string {
             `- ${[candidate.accession, candidate.entryName, candidate.gene ?? '-', candidate.name, candidate.organism.scientificName].join(', ')}`
         ),
         'Run `firecrawl research lookup-protein` again with one accession.',
-        `Source: UniProtKB/Swiss-Prot ${data.release}. ${UNIPROT_LICENSE}.`,
+        data.notice,
       ].join('\n');
     }
     case 'not_found':

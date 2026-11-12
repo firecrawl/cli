@@ -258,7 +258,7 @@ describe('handleLookupProteinCommand', () => {
         'Function',
         `- ${found.protein.function[0].text}. Experimental [pmid:27667664, pmid:27974379]`,
         'Open a cited paper with `firecrawl research inspect-paper <paperId>` or `firecrawl research read-paper <paperId> --question <question>`.',
-        'Source: UniProtKB/Swiss-Prot 2026_04, https://www.uniprot.org/uniprotkb/Q6P087/entry. CC BY 4.0, https://creativecommons.org/licenses/by/4.0/.',
+        `Source: https://www.uniprot.org/uniprotkb/Q6P087/entry. ${found.notice}`,
       ].join('\n')
     );
   });
@@ -301,9 +301,76 @@ describe('handleLookupProteinCommand', () => {
         '"kinase" does not resolve to one UniProtKB/Swiss-Prot entry in the requested organism (human unless --organism is set). 12 candidates, the first 1 listed, as accession, entry name, gene, name, organism:',
         '- P05771, KPCB_HUMAN, PRKCB, Protein kinase C beta type, Homo sapiens',
         'Run `firecrawl research lookup-protein` again with one accession.',
-        'Source: UniProtKB/Swiss-Prot 2026_04. CC BY 4.0, https://creativecommons.org/licenses/by/4.0/.',
+        found.notice,
       ].join('\n')
     );
+  });
+
+  it('says what to pass and names search-papers when no entry matches', async () => {
+    initializeConfig({
+      apiKey: 'test-api-key',
+      apiUrl: 'https://api.firecrawl.dev',
+    });
+    vi.mocked(getClient).mockReturnValue({
+      http: {
+        get: vi.fn().mockResolvedValue({
+          data: {
+            success: true,
+            release: '2026_04',
+            match: 'not_found',
+            notice: found.notice,
+          },
+        }),
+      },
+    } as any);
+
+    await handleLookupProteinCommand({ protein: 'where is RPUSD3 localized' });
+
+    expect(vi.mocked(writeOutput).mock.calls[0][0]).toBe(
+      'No UniProtKB/Swiss-Prot entry matches "where is RPUSD3 localized". Pass a UniProt accession (P05771), an entry name (KPCB_HUMAN), or a gene symbol with --organism. Only reviewed entries are covered. For a free-text question, use `firecrawl research search-papers`.'
+    );
+  });
+
+  it('fails on a body that is not a lookup result instead of saying no entry matches', async () => {
+    initializeConfig({
+      apiKey: 'test-api-key',
+      apiUrl: 'https://api.firecrawl.dev',
+    });
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    const exit = vi
+      .spyOn(process, 'exit')
+      .mockImplementation(() => undefined as never);
+
+    for (const body of [
+      {
+        success: true,
+        release: '2026_04',
+        match: 'partial',
+        notice: found.notice,
+      },
+      {},
+    ]) {
+      vi.mocked(getClient).mockReturnValue({
+        http: { get: vi.fn().mockResolvedValue({ data: body }) },
+      } as any);
+
+      await handleLookupProteinCommand({ protein: 'RPUSD3' });
+    }
+
+    expect(consoleError.mock.calls).toEqual([
+      [
+        'Error:',
+        'The protein lookup returned an unexpected response (match: "partial").',
+      ],
+      [
+        'Error:',
+        'The protein lookup returned an unexpected response (match: undefined).',
+      ],
+    ]);
+    expect(exit.mock.calls).toEqual([[1], [1]]);
+    expect(writeOutput).not.toHaveBeenCalled();
   });
 
   it('prints the API error for a refused organism with an API key', async () => {
