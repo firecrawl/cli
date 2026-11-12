@@ -2,8 +2,15 @@ import { getClient, isKeylessMode, keylessGet } from '../utils/client';
 import { getCliOrigin } from '../utils/agent-origin';
 import { writeOutput } from '../utils/output';
 import type {
+  EvidenceKind,
   InspectPaperOptions,
+  LookupProteinOptions,
   PaperHit,
+  ProteinEntry,
+  ProteinEvidence,
+  ProteinLookup,
+  ProteinMatchedBy,
+  ProteinStatement,
   ReadPaperOptions,
   RelatedPapersOptions,
   ResearchBaseOptions,
@@ -48,8 +55,13 @@ async function getResearch<T>(
   }
 
   const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
-  const response = await (app as any).http.get(url);
-  return (response?.data ?? {}) as T;
+  try {
+    const response = await (app as any).http.get(url);
+    return (response?.data ?? {}) as T;
+  } catch (error: any) {
+    const message = error?.response?.data?.error;
+    throw typeof message === 'string' ? new Error(message) : error;
+  }
 }
 
 function displayId(paper: PaperHit): string {
@@ -132,6 +144,138 @@ function fmtPaperMetadata(paper?: PaperHit): string {
   lines.push('', '## Abstract');
   lines.push((paper.abstract || '(no abstract)').replace(/\s+/g, ' '));
   return lines.join('\n');
+}
+
+const EVIDENCE_LABELS: Record<EvidenceKind, string> = {
+  experimental: 'Experimental',
+  large_scale_experimental: 'Experimental, large-scale',
+  author_statement: 'Author statement',
+  curator_inference: 'Curator inference',
+  by_similarity: 'Inferred from a related protein',
+  sequence_analysis: 'Predicted from sequence',
+  imported: 'Imported from another database',
+  untagged: 'No evidence tag',
+};
+
+const MATCHED_BY_LABELS: Record<ProteinMatchedBy, string> = {
+  accession: 'accession',
+  secondary_accession: 'secondary accession',
+  entry_name: 'entry name',
+  gene: 'gene symbol',
+  synonym: 'gene synonym',
+  name: 'protein name',
+};
+
+const UNIPROT_LICENSE =
+  'CC BY 4.0, https://creativecommons.org/licenses/by/4.0/';
+
+const isMeasured = (kind: EvidenceKind) =>
+  kind === 'experimental' || kind === 'large_scale_experimental';
+
+function measuredFirst<T>(items: T[], measured: (item: T) => boolean): T[] {
+  return [
+    ...items.filter(measured),
+    ...items.filter((item) => !measured(item)),
+  ];
+}
+
+const fmtIds = (ids: string[]) => (ids.length ? ` [${ids.join(', ')}]` : '');
+
+function fmtEvidence(evidence: ProteinEvidence[]): string {
+  const idsByKind = new Map<EvidenceKind, string[]>();
+  for (const { kind, paperId, fromProtein } of evidence.length
+    ? evidence
+    : [{ kind: 'untagged' as const }]) {
+    const ids = idsByKind.get(kind) ?? [];
+    const id = paperId ?? fromProtein;
+    if (id && !ids.includes(id)) ids.push(id);
+    idsByKind.set(kind, ids);
+  }
+  return measuredFirst([...idsByKind], ([kind]) => isMeasured(kind))
+    .map(([kind, ids]) => `${EVIDENCE_LABELS[kind] ?? kind}${fmtIds(ids)}`)
+    .join('; ');
+}
+
+function fmtStatements(statements: ProteinStatement[]): string[] {
+  if (!statements.length) return ['- No statement in this entry.'];
+  return measuredFirst(statements, (statement) =>
+    statement.evidence.some(({ kind }) => isMeasured(kind))
+  ).map((statement) => {
+    const qualifiers = [
+      statement.topology && `topology: ${statement.topology}`,
+      statement.orientation && `orientation: ${statement.orientation}`,
+    ]
+      .filter(Boolean)
+      .join('; ');
+    return [
+      '- ',
+      statement.molecule ? `[molecule: ${statement.molecule}] ` : '',
+      statement.note ? 'Note: ' : '',
+      statement.text.replace(/\.$/, ''),
+      qualifiers ? ` (${qualifiers})` : '',
+      `. ${fmtEvidence(statement.evidence)}`,
+    ].join('');
+  });
+}
+
+function fmtProtein(release: string, protein: ProteinEntry): string {
+  const ids = protein.gene
+    ? `${protein.gene} (${protein.accession}, ${protein.entryName})`
+    : `${protein.accession} (${protein.entryName})`;
+  const lines = [
+    `# ${ids}, ${protein.organism.scientificName}`,
+    `${protein.name}. Matched by ${MATCHED_BY_LABELS[protein.matchedBy] ?? protein.matchedBy}.`,
+    '',
+    'Subcellular location',
+    ...fmtStatements(protein.subcellularLocation),
+    'GO cellular component (experimental)',
+    ...(protein.goCellularComponent.length
+      ? protein.goCellularComponent.map(
+          (go) =>
+            `- ${go.term} (${go.id}), ${go.code}, ${go.assignedBy}${fmtIds(go.paperIds)}`
+        )
+      : ['- No experimental term in this entry.']),
+    'Function',
+    ...fmtStatements(protein.function),
+  ];
+  if (protein.paperIds.length) {
+    lines.push(
+      'Open a cited paper with `firecrawl research inspect-paper <paperId>` or `firecrawl research read-paper <paperId> --question <question>`.'
+    );
+  }
+  lines.push(
+    `Source: UniProtKB/Swiss-Prot ${release}, ${protein.url}. ${UNIPROT_LICENSE}.`
+  );
+  return lines.join('\n');
+}
+
+function fmtProteinLookup(protein: string, data: ProteinLookup): string {
+  switch (data.match) {
+    case 'found':
+      return fmtProtein(data.release, data.protein);
+    case 'ambiguous': {
+      const { candidates, candidateCount } = data;
+      const listed =
+        candidateCount > candidates.length
+          ? `${candidateCount} candidates, the first ${candidates.length} listed`
+          : `${candidateCount} ${candidateCount === 1 ? 'candidate' : 'candidates'}`;
+      return [
+        `${JSON.stringify(protein)} does not resolve to one UniProtKB/Swiss-Prot entry in the requested organism (human unless --organism is set). ${listed}, as accession, entry name, gene, name, organism:`,
+        ...candidates.map(
+          (candidate) =>
+            `- ${[candidate.accession, candidate.entryName, candidate.gene ?? '-', candidate.name, candidate.organism.scientificName].join(', ')}`
+        ),
+        'Run `firecrawl research lookup-protein` again with one accession.',
+        `Source: UniProtKB/Swiss-Prot ${data.release}. ${UNIPROT_LICENSE}.`,
+      ].join('\n');
+    }
+    case 'not_found':
+      return `No UniProtKB/Swiss-Prot entry matches ${JSON.stringify(protein)}. Pass a UniProt accession (P05771), an entry name (KPCB_HUMAN), or a gene symbol with --organism. Only reviewed entries are covered. For a free-text question, use \`firecrawl research search-papers\`.`;
+    default:
+      throw new Error(
+        `The protein lookup returned an unexpected response (match: ${JSON.stringify((data as { match?: unknown }).match)}).`
+      );
+  }
 }
 
 function writeResearchOutput(
@@ -247,6 +391,23 @@ export async function handleReadPaperCommand(
         : '(no full-text passages available for this paper)',
       options
     );
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+export async function handleLookupProteinCommand(
+  options: LookupProteinOptions
+): Promise<void> {
+  try {
+    const params = new URLSearchParams();
+    appendParam(params, 'protein', options.protein);
+    appendParam(params, 'organism', options.organism);
+    const data = await getResearch<ProteinLookup>(
+      withQuery(`${BASE}/proteins`, params),
+      options
+    );
+    writeResearchOutput(data, fmtProteinLookup(options.protein, data), options);
   } catch (error) {
     handleError(error);
   }

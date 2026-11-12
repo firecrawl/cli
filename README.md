@@ -610,6 +610,9 @@ firecrawl research related-papers pmcid:PMC12530322 --intent "in vivo delivery"
 
 # Read full-text passages to verify a specific claim
 firecrawl research read-paper doi:10.1016/j.neunet.2025.108095 --question "What was the sample size?"
+
+# Curated location, function and GO terms for one protein, with cited paper ids
+firecrawl research lookup-protein RPUSD3
 ```
 
 Paper ids accept `pmid:`, `pmcid:`, `doi:`, and `arxiv:` forms, plus canonical `paperId` values returned by search.
@@ -622,6 +625,7 @@ Paper ids accept `pmid:`, `pmcid:`, `doi:`, and `arxiv:` forms, plus canonical `
 | `inspect-paper <paperId>`     | Canonical metadata: title, abstract, authors, categories, source ids, dates |
 | `related-papers <seedIds...>` | Citation-graph expansion from seed papers, ranked against `--intent`        |
 | `read-paper <paperId>`        | Best-matching in-body full-text passages for a `--question`                 |
+| `lookup-protein <protein>`    | Curated UniProt location, function and GO terms for one protein             |
 
 #### `search-papers` Options
 
