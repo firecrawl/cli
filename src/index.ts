@@ -401,7 +401,7 @@ program
 function createScrapeCommand(): Command {
   const scrapeCmd = new Command('scrape')
     .description(
-      'Scrape URLs or execute Alexandria provider/capability tools. Multiple URLs are saved to .firecrawl/'
+      'Scrape URLs or execute Alexandria provider/capability tools. A single URL prints to stdout by default. Multiple URLs are saved to .firecrawl/'
     )
     .argument('[urls...]', 'URL(s) or provider/capability tool address(es)')
     .option(
@@ -411,7 +411,7 @@ function createScrapeCommand(): Command {
     .option('-H, --html', 'Output raw HTML (shortcut for --format html)')
     .option(
       '-f, --format <formats>',
-      'Output format(s). Multiple formats can be specified with commas (e.g., "markdown,links,images"). Available: markdown, html, rawHtml, links, images, screenshot, summary, changeTracking, json, attributes, branding. Single format outputs raw content; multiple formats output JSON.'
+      'Output format(s) (default: markdown). Multiple formats can be specified with commas (e.g., "markdown,links,images"). Available: markdown, html, rawHtml, links, images, screenshot, summary, changeTracking, json, attributes, branding. Single format outputs raw content; multiple formats output JSON.'
     )
     .option(
       '--max-pages <number>',
