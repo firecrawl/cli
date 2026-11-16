@@ -447,7 +447,7 @@ describe('handleSetupCommand', () => {
       'npx',
       [
         '-y',
-        'add-mcp@1.14.0',
+        'add-mcp@2.6.1',
         'https://mcp.firecrawl.dev/v2/mcp',
         '--name',
         'firecrawl',
@@ -527,7 +527,7 @@ describe('handleSetupCommand', () => {
       'npx',
       [
         '-y',
-        'add-mcp@1.14.0',
+        'add-mcp@2.6.1',
         'https://mcp.firecrawl.dev/v2/mcp',
         '--name',
         'firecrawl',
@@ -645,7 +645,7 @@ describe('handleSetupCommand', () => {
       'npx',
       [
         '-y',
-        'add-mcp@1.14.0',
+        'add-mcp@2.6.1',
         'https://mcp.firecrawl.dev/v2/mcp',
         '--name',
         'firecrawl',
@@ -970,7 +970,7 @@ describe('handleSetupCommand', () => {
       const addMcpCalls = vi
         .mocked(execFileSync)
         .mock.calls.filter(([, args]) =>
-          (args as string[])?.includes('add-mcp@1.14.0')
+          (args as string[])?.includes('add-mcp@2.6.1')
         );
       expect(addMcpCalls).toHaveLength(8);
       expect(addMcpCalls.flat(2)).not.toContain('--global');
@@ -1496,7 +1496,7 @@ describe('handleSetupCommand', () => {
       expect(passthruArgs.slice(0, 3)).toEqual(['/d', '/s', '/c']);
       expect(opts?.windowsVerbatimArguments).toBe(true);
       expect(passthruArgs[3]).toContain(`^\"${path.join(bin, 'npx.CMD')}^\"`);
-      expect(passthruArgs[3]).toContain('add-mcp@1.14.0');
+      expect(passthruArgs[3]).toContain('add-mcp@2.6.1');
       expect(passthruArgs[3]).toContain(
         '^"Authorization: Bearer ${FIRECRAWL_API_KEY}^"'
       );
