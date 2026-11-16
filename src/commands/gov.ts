@@ -1,4 +1,9 @@
-import { getClient, isKeylessMode, keylessGet } from '../utils/client';
+import {
+  getClient,
+  isKeylessMode,
+  keyedGet,
+  keylessGet,
+} from '../utils/client';
 import { getCliOrigin } from '../utils/agent-origin';
 import { writeOutput } from '../utils/output';
 import type {
@@ -24,13 +29,7 @@ async function getGov<T>(path: string, options: GovSearchOptions): Promise<T> {
   }
 
   const app = getClient({ apiKey: options.apiKey, apiUrl: options.apiUrl });
-  try {
-    const response = await (app as any).http.get(url);
-    return (response?.data ?? {}) as T;
-  } catch (error: any) {
-    const message = error?.response?.data?.error;
-    throw typeof message === 'string' ? new Error(message) : error;
-  }
+  return (await keyedGet(app, url)) as T;
 }
 
 function fmtResult(item: GovResult, index: number): string {

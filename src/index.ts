@@ -39,6 +39,7 @@ import { handleDeveloperSearchCommand } from './commands/developer';
 import { handleGovSearchCommand } from './commands/gov';
 import {
   handleInspectPaperCommand,
+  handleLookupProteinCommand,
   handleReadPaperCommand,
   handleRelatedPapersCommand,
   handleSearchPapersCommand,
@@ -1506,6 +1507,8 @@ Examples:
   $ firecrawl research related-papers pmcid:PMC12530322 --intent "in vivo delivery"
   $ firecrawl research read-paper doi:10.1016/j.neunet.2025.108095 --question "What was the sample size?"
   $ firecrawl research read-paper arxiv:1706.03762 --question "What is the attention mechanism?"
+  $ firecrawl research lookup-protein RPUSD3
+  $ firecrawl research lookup-protein Prkcb --organism "Mus musculus"
 `
     );
 
@@ -1689,6 +1692,39 @@ Examples:
         paperId,
         question: options.question,
         k: researchLimit(options),
+        apiKey: options.apiKey,
+        apiUrl: options.apiUrl,
+        output: options.output,
+        json: options.json,
+        pretty: options.pretty,
+      });
+    });
+
+  researchCmd
+    .command('lookup-protein')
+    .description(
+      'Look up one protein in UniProtKB/Swiss-Prot, the reviewed section of UniProt, and print what its curators state: subcellular location, function, and GO cellular-component terms. Each statement carries an evidence label and, where UniProt cites one, a pmid: paper ID that inspect-paper and read-paper accept. Only labels starting with "Experimental" are measurements. Not for free-text questions or lists of proteins; use search-papers for those. If a symbol names several proteins, the result lists candidates; run again with one accession.'
+    )
+    .argument(
+      '<protein>',
+      'One protein: a UniProt accession (P05771, or an isoform such as P05771-2), an entry name (KPCB_HUMAN), a gene symbol (PRKCB), or the exact protein name'
+    )
+    .option(
+      '--organism <organism>',
+      'Organism that scopes a gene symbol or protein name: an NCBI taxon ID (10090), a scientific name (Mus musculus), or a UniProt common name (Mouse). Default: human (9606). Accessions and entry names ignore it.'
+    )
+    .option(
+      '-k, --api-key <key>',
+      'Firecrawl API key (overrides global --api-key)'
+    )
+    .option('--api-url <url>', 'API URL (overrides global --api-url)')
+    .option('-o, --output <path>', 'Output file path (default: stdout)')
+    .option('--json', 'Output as compact JSON', false)
+    .option('--pretty', 'Pretty print JSON output', false)
+    .action(async (protein, options) => {
+      await handleLookupProteinCommand({
+        protein,
+        organism: options.organism,
         apiKey: options.apiKey,
         apiUrl: options.apiUrl,
         output: options.output,

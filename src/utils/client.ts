@@ -89,6 +89,16 @@ export async function keylessGet(path: string): Promise<any> {
   return json;
 }
 
+export async function keyedGet(app: Firecrawl, path: string): Promise<any> {
+  try {
+    const response = await (app as any).http.get(path);
+    return response?.data ?? {};
+  } catch (error: any) {
+    const message = error?.response?.data?.error;
+    throw typeof message === 'string' ? new Error(message) : error;
+  }
+}
+
 /**
  * Get or create the Firecrawl client instance
  * Uses global configuration if available, otherwise creates with provided options
