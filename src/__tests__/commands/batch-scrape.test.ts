@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   collectBatchScrapeUrls,
   executeBatchScrape,
+  handleBatchScrapeCommand,
 } from '../../commands/batch-scrape';
 import { getClient } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
@@ -439,5 +440,95 @@ describe('executeBatchScrape', () => {
       });
       expect(mockClient.cancelBatchScrape).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('handleBatchScrapeCommand exit status', () => {
+  let mockClient: any;
+
+  beforeEach(() => {
+    setupTest();
+    initializeConfig({
+      apiKey: 'test-api-key',
+      apiUrl: 'https://api.firecrawl.dev',
+    });
+    mockClient = {
+      startBatchScrape: vi.fn(),
+      getBatchScrapeStatus: vi.fn(),
+      batchScrape: vi.fn(),
+      cancelBatchScrape: vi.fn(),
+    };
+    vi.mocked(getClient).mockReturnValue(mockClient as any);
+  });
+
+  afterEach(() => {
+    process.exitCode = undefined;
+    teardownTest();
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
+  });
+
+  for (const status of ['failed', 'cancelled']) {
+    it(`should print the job and exit 1 when a waited batch ends ${status}`, async () => {
+      const stdout = vi
+        .spyOn(process.stdout, 'write')
+        .mockImplementation(() => true);
+      const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+      mockClient.batchScrape.mockResolvedValue({
+        id: JOB_ID,
+        status,
+        total: 2,
+        completed: 0,
+        data: [],
+      });
+
+      await handleBatchScrapeCommand({ urls: URLS, wait: true });
+
+      expect(
+        stdout.mock.calls.map(([chunk]) => String(chunk)).join('')
+      ).toContain(`"status":"${status}"`);
+      expect(stderr).toHaveBeenCalledWith(`Error: Batch scrape ${status}.`);
+      expect(process.exitCode).toBe(1);
+    });
+  }
+
+  it('should leave the exit status alone when a waited batch completes', async () => {
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    mockClient.batchScrape.mockResolvedValue({
+      id: JOB_ID,
+      status: 'completed',
+      total: 2,
+      completed: 2,
+      data: [],
+    });
+
+    await handleBatchScrapeCommand({ urls: URLS, wait: true });
+
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('should leave the exit status alone when a job is cancelled with --cancel --wait', async () => {
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    mockClient.cancelBatchScrape.mockResolvedValue(true);
+
+    await handleBatchScrapeCommand({ jobId: JOB_ID, cancel: true, wait: true });
+
+    expect(mockClient.cancelBatchScrape).toHaveBeenCalledWith(JOB_ID);
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('should leave the exit status alone when reading a failed job without --wait', async () => {
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    mockClient.getBatchScrapeStatus.mockResolvedValue({
+      id: JOB_ID,
+      status: 'failed',
+      total: 2,
+      completed: 0,
+      data: [],
+    });
+
+    await handleBatchScrapeCommand({ jobId: JOB_ID });
+
+    expect(process.exitCode).toBeUndefined();
   });
 });

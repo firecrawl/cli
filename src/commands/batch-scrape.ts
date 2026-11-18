@@ -246,4 +246,14 @@ export async function handleBatchScrapeCommand(
       `Check status: firecrawl batch-scrape ${result.data.jobId}\n`
     );
   }
+
+  const finalStatus = !started && result.data ? result.data.status : undefined;
+  if (
+    options.wait &&
+    !options.cancel &&
+    (finalStatus === 'failed' || finalStatus === 'cancelled')
+  ) {
+    console.error(`Error: Batch scrape ${finalStatus}.`);
+    process.exitCode = 1;
+  }
 }
