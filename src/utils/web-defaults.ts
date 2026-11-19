@@ -37,10 +37,60 @@ async function writeText(filePath: string, content: string): Promise<void> {
   await fs.writeFile(filePath, content, 'utf8');
 }
 
-function removeJsonComments(content: string): string {
-  return content
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:\\])\/\/.*$/gm, '$1');
+export function removeJsonComments(content: string): string {
+  let result = '';
+  let inString = false;
+  let isEscaped = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+    const nextChar = i + 1 < content.length ? content[i + 1] : '';
+
+    if (inLineComment) {
+      if (char === '\n') {
+        inLineComment = false;
+        result += char;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (char === '*' && nextChar === '/') {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+
+    if (inString) {
+      result += char;
+      if (isEscaped) {
+        isEscaped = false;
+      } else if (char === '\\') {
+        isEscaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      result += char;
+    } else if (char === '/' && nextChar === '/') {
+      inLineComment = true;
+      i++;
+    } else if (char === '/' && nextChar === '*') {
+      inBlockComment = true;
+      i++;
+    } else {
+      result += char;
+    }
+  }
+
+  return result;
 }
 
 async function configureClaudeDefaults(
@@ -52,7 +102,11 @@ async function configureClaudeDefaults(
 
   if (existing && existing.trim()) {
     try {
-      config = JSON.parse(removeJsonComments(existing));
+      try {
+        config = JSON.parse(existing);
+      } catch {
+        config = JSON.parse(removeJsonComments(existing));
+      }
     } catch {
       return {
         agent: 'Claude Code',
