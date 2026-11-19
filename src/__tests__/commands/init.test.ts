@@ -180,6 +180,62 @@ describe('handleInitCommand', () => {
     );
   });
 
+  it('leaves vertical skills out of init --yes and init --all', async () => {
+    const catalog = [
+      ...CLI_SKILLS.map((name) => ({
+        name,
+        family: 'core' as const,
+        files: {},
+      })),
+      { name: 'firecrawl-lead-gen', family: 'workflows' as const, files: {} },
+      {
+        name: 'firecrawl-legal-research',
+        family: 'verticals' as const,
+        files: {},
+      },
+    ];
+    for (const flags of [{ yes: true }, { all: true }]) {
+      vi.mocked(getCatalogSkills)
+        .mockResolvedValueOnce(catalog)
+        .mockResolvedValueOnce(catalog);
+      vi.mocked(execSync).mockClear();
+      await handleInitCommand({ ...flags, skipInstall: true, skipAuth: true });
+      const commands = vi
+        .mocked(execSync)
+        .mock.calls.map(([command]) => String(command));
+      expect(commands).toContainEqual(
+        expect.stringMatching(/--skill firecrawl-lead-gen$/)
+      );
+      expect(commands.join('\n')).not.toContain('firecrawl-legal-research');
+    }
+  });
+
+  it('does not offer vertical skills in the interactive workflow picker', async () => {
+    vi.mocked(getCatalogSkills).mockResolvedValueOnce([
+      { name: 'firecrawl-lead-gen', family: 'workflows', files: {} },
+      { name: 'firecrawl-legal-research', family: 'verticals', files: {} },
+    ]);
+    confirmMock
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false);
+    checkboxMock
+      .mockResolvedValueOnce(['workflows'])
+      .mockResolvedValueOnce(['firecrawl-lead-gen']);
+    await handleInitCommand({ skipInstall: true, skipAuth: true });
+    expect(checkboxMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        choices: [
+          {
+            name: 'firecrawl-lead-gen',
+            value: 'firecrawl-lead-gen',
+            checked: true,
+          },
+        ],
+      })
+    );
+  });
+
   it('summarizes interactive skills success even when npx output has no count', async () => {
     confirmMock
       .mockResolvedValueOnce(true)

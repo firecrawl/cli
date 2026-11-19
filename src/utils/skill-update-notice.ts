@@ -25,7 +25,7 @@ const SOURCES = new Set([
   'firecrawl/firecrawl-workflows',
   'firecrawl/firecrawl',
 ]);
-const FAMILY_ENTRY: Record<SkillFamily, string> = {
+const FAMILY_ENTRY: Partial<Record<SkillFamily, string>> = {
   core: 'firecrawl',
   build: 'firecrawl-build',
   workflows: 'firecrawl-workflows',
@@ -357,7 +357,7 @@ export async function maybeShowSkillUpdateNotice(
         ? !sameFiles(local, skill.files)
         : (pendingAdditions.has(skill.name) ||
             !previousNames.has(skill.name)) &&
-            installed.has(FAMILY_ENTRY[skill.family]);
+            installed.has(FAMILY_ENTRY[skill.family] ?? '');
     });
     cache.pendingAdditions = changes
       .filter((skill) => !installed.has(skill.name))
@@ -372,6 +372,12 @@ export async function maybeShowSkillUpdateNotice(
       for (const family of ['core', 'build', 'workflows'] as const) {
         if (!changes.some((skill) => skill.family === family)) continue;
         const command = `firecrawl setup ${family}`;
+        commands.push(command);
+        lines.push(`Run ${command}`);
+      }
+      for (const skill of changes) {
+        if (skill.family !== 'verticals') continue;
+        const command = `firecrawl setup ${skill.name}`;
         commands.push(command);
         lines.push(`Run ${command}`);
       }
