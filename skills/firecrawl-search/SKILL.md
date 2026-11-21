@@ -61,7 +61,7 @@ Use `list` for category/provider browsing and selected contracts. For a known we
 
 If no returned tool covers the country/market/segment or required inputs, continue with ordinary web results. Do not exhaust the catalogue or pay for adjacent tools just to probe coverage. With an API key, `--no-domain-tools` turns off domain matches only and semantic tool matches stay on; keyless searches return web results only.
 
-For Alexandria feedback about a provider result or coverage gap (each refunds 1 credit, up to 10 per website and 100 per team each UTC day), see [firecrawl-alexandria](../firecrawl-alexandria/SKILL.md).
+For Alexandria feedback about a provider result or coverage gap (refunds 1 credit, once per call and website, up to 10 per website and 100 per team each UTC day), see [firecrawl-alexandria](../firecrawl-alexandria/SKILL.md).
 
 ## Progressive discovery and output handling
 
