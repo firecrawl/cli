@@ -1360,7 +1360,9 @@ function createDeveloperCommand(): Command {
       'Number of results to return (default: 10, max: 100)',
       parseInt
     )
-    .addOption(new Option('--k <number>').argParser(parseInt).hideHelp())
+    .addOption(
+      new Option('--k <number>', 'Alias for --limit').argParser(parseInt)
+    )
     .option(
       '-k, --api-key <key>',
       'Firecrawl API key (overrides global --api-key)'
@@ -1409,7 +1411,9 @@ function createGovCommand(): Command {
       'Number of results to return (default: 10, max: 100)',
       parseInt
     )
-    .addOption(new Option('--k <number>').argParser(parseInt).hideHelp())
+    .addOption(
+      new Option('--k <number>', 'Alias for --limit').argParser(parseInt)
+    )
     .option(
       '--jurisdiction <code>',
       'Keep only pages of one jurisdiction: "us" for federal, or "us-" plus a two-letter state or territory code, such as "us-ca" or "us-dc"',
@@ -1523,7 +1527,9 @@ Examples:
       'Number of results to return (default: 40)',
       parseInt
     )
-    .addOption(new Option('--k <number>').argParser(parseInt).hideHelp())
+    .addOption(
+      new Option('--k <number>', 'Alias for --limit').argParser(parseInt)
+    )
     .option(
       '--authors <authors>',
       'Comma-separated author substring filter(s); all must match case-insensitively'
@@ -1621,7 +1627,9 @@ Examples:
       'Number of results to return (default: 40)',
       parseInt
     )
-    .addOption(new Option('--k <number>').argParser(parseInt).hideHelp())
+    .addOption(
+      new Option('--k <number>', 'Alias for --limit').argParser(parseInt)
+    )
     .option(
       '--rerank',
       'Apply an additional rerank over the fused candidates',
@@ -1678,7 +1686,9 @@ Examples:
       'Number of passages to return (default: 4)',
       parseInt
     )
-    .addOption(new Option('--k <number>').argParser(parseInt).hideHelp())
+    .addOption(
+      new Option('--k <number>', 'Alias for --limit').argParser(parseInt)
+    )
     .option(
       '-k, --api-key <key>',
       'Firecrawl API key (overrides global --api-key)'
