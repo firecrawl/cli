@@ -1,4 +1,4 @@
-export type SkillFamily = 'core' | 'build' | 'workflows';
+export type SkillFamily = 'core' | 'build' | 'workflows' | 'verticals';
 
 export interface CatalogSkill {
   name: string;
@@ -35,7 +35,7 @@ export function parseCatalogTree(value: unknown): CatalogSkill[] {
     if (!file || file.type !== 'blob' || typeof file.path !== 'string')
       continue;
     const match = file.path.match(
-      /^skills\/(core|build|workflows)\/(firecrawl(?:-[a-z0-9]+)*)\/(.+)$/
+      /^skills\/(core|build|workflows|verticals)\/(firecrawl(?:-[a-z0-9]+)*)\/(.+)$/
     );
     if (!match || !isSkillFile(match[3])) continue;
     if (typeof file.sha !== 'string' || !/^[a-f0-9]{40}$/.test(file.sha)) {
