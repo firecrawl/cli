@@ -978,21 +978,28 @@ describe('executeSearch', () => {
     it.each([{ json: true }, { pretty: true }])(
       'should return valid JSON for empty results with %j',
       async (options) => {
-        mockHttpPost.mockResolvedValue(mockSearchResponse({ web: [] }));
+        const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-        await handleSearchCommand({
-          query: 'test query',
-          ...options,
-        });
+        try {
+          mockHttpPost.mockResolvedValue(mockSearchResponse({ web: [] }));
 
-        expect(writeOutput).toHaveBeenCalledTimes(1);
+          await handleSearchCommand({
+            query: 'test query',
+            ...options,
+          });
 
-        const output = vi.mocked(writeOutput).mock.calls[0][0];
+          expect(consoleSpy).not.toHaveBeenCalled();
+          expect(writeOutput).toHaveBeenCalledTimes(1);
 
-        expect(JSON.parse(output)).toEqual({
-          success: true,
-          data: { web: [] },
-        });
+          const output = vi.mocked(writeOutput).mock.calls[0][0];
+
+          expect(JSON.parse(output)).toEqual({
+            success: true,
+            data: { web: [] },
+          });
+        } finally {
+          consoleSpy.mockRestore();
+        }
       }
     );
   });
