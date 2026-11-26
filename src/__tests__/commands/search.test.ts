@@ -974,6 +974,29 @@ describe('executeSearch', () => {
     });
   });
 
+  describe('Empty search results', () => {
+    it.each([{ json: true }, { pretty: true }])(
+      'should return valid JSON for empty results with %j',
+      async (options) => {
+        mockHttpPost.mockResolvedValue(mockSearchResponse({ web: [] }));
+
+        await handleSearchCommand({
+          query: 'test query',
+          ...options,
+        });
+
+        expect(writeOutput).toHaveBeenCalledTimes(1);
+
+        const output = vi.mocked(writeOutput).mock.calls[0][0];
+
+        expect(JSON.parse(output)).toEqual({
+          success: true,
+          data: { web: [] },
+        });
+      }
+    );
+  });
+
   describe('Developer results in the readable output', () => {
     // Read the text that `handleSearchCommand` sent to the writer.
     const writtenOutput = () =>
