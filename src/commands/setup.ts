@@ -90,7 +90,7 @@ export interface SetupOptions {
   skipAuthOffer?: boolean;
 }
 
-const ADD_MCP_PACKAGE = 'add-mcp@1.14.0';
+const ADD_MCP_PACKAGE = 'add-mcp@2.6.1';
 const ENV_API_KEY = 'FIRECRAWL_API_KEY';
 const ADD_MCP_LAUNCH_AGENTS: Record<string, string> = {
   'claude-code': 'Claude Code',
