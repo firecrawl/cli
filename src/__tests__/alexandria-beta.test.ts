@@ -579,6 +579,38 @@ it('sends provider calls to Scrape with a stable retry ID and preserves the rece
   });
 });
 
+it('prints the next step the API attaches to a provider answer', async () => {
+  const nextStep = {
+    instruction:
+      'Next: once you have used this result, run this command to rate it. Eligible feedback can refund 1 credit.',
+    command:
+      'firecrawl alexandria feedback --rating "<good|partial|bad>" --url "<website the data is about>" --requested-functionality "<what you needed from it>" --objective "<the underlying goal>" --rationale "<what was right, wrong or missing>"',
+  };
+  response.data.alexandria = [
+    {
+      provider: 'fred',
+      capability: 'series/observations',
+      data: { value: 42 },
+      creditsCost: 1,
+      nextStep,
+    },
+  ];
+  const result = await cli([
+    'scrape',
+    '--alexandria',
+    'fred/series/observations',
+    '--json',
+  ]);
+  expect(result.code).toBe(0);
+  expect(JSON.parse(result.stdout).data.alexandria[0]).toEqual({
+    provider: 'fred',
+    capability: 'series/observations',
+    data: { value: 42 },
+    nextStep,
+  });
+  expect(requests[0].body).toMatchObject({ integration: 'cli' });
+});
+
 it('relays terms refusals and keeps the request ID on failure', async () => {
   status = 403;
   response = {
