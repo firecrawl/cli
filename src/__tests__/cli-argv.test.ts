@@ -270,4 +270,29 @@ describe('CLI argv parsing', () => {
       expect(result.stderr).not.toContain('unknown command');
     }
   );
+
+  testWithBuiltCli(
+    'documents --k as an alias for --limit in research subcommands help',
+    () => {
+      for (const subcommand of [
+        'search-papers',
+        'related-papers',
+        'read-paper',
+      ]) {
+        const result = spawnSync(
+          process.execPath,
+          [cliPath, 'research', subcommand, '--help'],
+          {
+            cwd: process.cwd(),
+            encoding: 'utf8',
+          }
+        );
+
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain('--limit <number>');
+        expect(result.stdout).toContain('--k <number>');
+        expect(result.stdout).toContain('Alias for --limit');
+      }
+    }
+  );
 });
