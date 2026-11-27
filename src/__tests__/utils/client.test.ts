@@ -7,8 +7,13 @@
  * the API it is the CLI with X-Origin, including on requests without a body.
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { keylessGet, keylessRequest } from '../../utils/client';
+import { initializeConfig, resetConfig } from '../../utils/config';
+
+vi.mock('../../utils/credentials', () => ({
+  loadCredentials: vi.fn(() => null),
+}));
 
 vi.mock('../../utils/agent-origin', () => ({
   getCliOrigin: () => 'cli.test@1.0.0',
@@ -92,5 +97,43 @@ describe('keyless requests', () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
     expect(body.origin).toBe('cli.test@1.0.0');
     expect(body.integration).toBe('cli');
+  });
+});
+
+describe('keyless requests', () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    resetConfig();
+    initializeConfig({ apiUrl: 'https://api.firecrawl.dev///' });
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ success: true }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+    resetConfig();
+  });
+
+  it('joins POST paths after every trailing slash is removed', async () => {
+    await keylessRequest('/v2/scrape', { url: 'https://example.com' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.firecrawl.dev/v2/scrape',
+      expect.objectContaining({ method: 'POST' })
+    );
+  });
+
+  it('joins GET paths after every trailing slash is removed', async () => {
+    await keylessGet('/v2/search/research');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.firecrawl.dev/v2/search/research',
+      expect.objectContaining({ method: 'GET' })
+    );
   });
 });

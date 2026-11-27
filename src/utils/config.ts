@@ -74,6 +74,11 @@ export function getApiKey(providedKey?: string): string | undefined {
 
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
 
+/** Remove trailing slashes before comparing or joining an API base URL. */
+export function normalizeApiUrl(apiUrl: string): string {
+  return apiUrl.replace(/\/+$/, '');
+}
+
 /**
  * What to do when a command needs an account and none is configured. Browser
  * login leads because it asks nothing on stdin, so an agent or script can run
@@ -87,7 +92,7 @@ export const LOGIN_GUIDANCE =
  */
 export function isCustomApiUrl(apiUrl?: string): boolean {
   const url = apiUrl || globalConfig.apiUrl;
-  return !!url && url !== DEFAULT_API_URL;
+  return !!url && normalizeApiUrl(url) !== DEFAULT_API_URL;
 }
 
 /**
