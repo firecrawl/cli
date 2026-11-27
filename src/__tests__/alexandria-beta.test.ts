@@ -731,6 +731,10 @@ it('refuses invalid skill options before calling the API', async () => {
   const help = await cli(['--help']);
   expect(help.stdout).toContain('find-skills');
   expect(help.stdout).toContain('read-skill');
+  const updateHelp = await cli(['update-skill', '--help']);
+  expect(updateHelp.stdout.replace(/\s+/g, ' ')).toContain(
+    'a team skill can be deleted, or a turned-off skill turned back on, only by a team admin in the Firecrawl dashboard'
+  );
 });
 
 it('creates and updates team skills through the same API', async () => {
